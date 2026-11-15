@@ -111,11 +111,11 @@ def reset():
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
 
     (STATE / "health.json").unlink(missing_ok=True)
-    process_control.run_systemctl("daemon-reload", runner=run)
+    run(*process_control.systemctl_command("daemon-reload"))
     for service in ("petcam-stream.service", "petcam-web.service",
                     "petcam-timelapse.service", "petcam-motion.service",
                     "petcam-home-assistant.service"):
-        process_control.run_systemctl("start", service, runner=run)
+        run(*process_control.systemctl_command("start", service))
 
 
 def main():
