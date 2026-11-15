@@ -165,6 +165,34 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 <script src="/static/dashboard.js" defer></script></body></html>"""
 
 
+def build_capture_modes(camera, performance_budget):
+    """Return the server-approved capture-mode catalog consumed by the dashboard."""
+    modes = []
+    for advertised in camera["modes"]:
+        fps_values = advertised.get("fps") or [advertised.get("fps_range", {}).get("max") or 30]
+        if camera["kind"] == "usb":
+            fps_values = [fps for fps in fps_values if isinstance(fps, int) or (
+                isinstance(fps, float) and fps.is_integer()
+            )]
+        for fps in fps_values:
+            mode = {
+                "format": advertised.get("format") or "CSI",
+                "width": advertised["width"],
+                "height": advertised["height"],
+                "fps": fps,
+            }
+            estimated_rate = mode["width"] * mode["height"] * float(fps)
+            mode["estimated_pixels_per_second"] = estimated_rate
+            mode["performance_budget_pixels_per_second"] = performance_budget
+            mode["exceeds_performance_budget"] = (
+                mode["format"] != "H264"
+                and performance_budget > 0
+                and estimated_rate > performance_budget
+            )
+            modes.append(mode)
+    return modes
+
+
 def camera_inventory():
     # Use the discovery functions from the same camera module imported above.
     # Calling a separately installed CLI wrapper here can silently run a
@@ -182,6 +210,7 @@ def camera_inventory():
         result.append({
             **camera, "id": identity["id"], "stable_identity": identity["stable_identity"],
             "hardware_tier": tier, "hardware_budget_pixels_per_second": performance_budget,
+            "capture_modes": build_capture_modes(camera, performance_budget),
         })
     for item in csi_cameras:
         camera = {"kind": "csi", "camera": item["index"], "sensor": item["sensor"],
@@ -191,6 +220,7 @@ def camera_inventory():
         result.append({
             **camera, "id": identity["id"], "stable_identity": identity["stable_identity"],
             "hardware_tier": tier, "hardware_budget_pixels_per_second": performance_budget,
+            "capture_modes": build_capture_modes(camera, performance_budget),
         })
     return result
 
