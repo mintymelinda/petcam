@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .api import management_routes, streaming_routes
 if __package__:
+    from .api import management_routes, streaming_routes
     from .config import apply_config, ensure_config_lock, parse_config
     from .camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from .camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
@@ -27,9 +27,11 @@ if __package__:
     from .light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
     from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
     from .web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
-    from . import camera_controls, service_transactions, stream_metrics, system_metrics
+    from . import camera_controls, feature_services, service_transactions, stream_metrics, system_metrics
     from . import camera_configuration, capture_status, rtsp_status, stream_proxy
 else:  # Support the installed standalone web-manager entry point.
+    import api.management_routes as management_routes
+    import api.streaming_routes as streaming_routes
     from config import apply_config, ensure_config_lock, parse_config
     from camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
@@ -41,6 +43,7 @@ else:  # Support the installed standalone web-manager entry point.
     from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
     from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
     import camera_controls
+    import feature_services
     import service_transactions
     import stream_metrics
     import system_metrics
@@ -213,6 +216,51 @@ def set_rtmp_service(action):
     )
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or f"Unable to {action} OBS RTSP output service.")
+
+
+
+def update_timelapse(data):
+    return feature_services.update_timelapse(
+        data,
+        parse_config=parse_config,
+        config_path=CONFIG,
+        load_config=load_timelapse_config,
+        save_config=save_timelapse_config,
+        load_rtmp_config=load_rtmp_config,
+        apply_transaction=apply_service_config_transaction,
+    )
+
+
+def update_motion(data):
+    return feature_services.update_motion(
+        data,
+        parse_config=parse_config,
+        config_path=CONFIG,
+        load_config=load_motion_config,
+        save_config=save_motion_config,
+        load_rtmp_config=load_rtmp_config,
+        apply_transaction=apply_service_config_transaction,
+    )
+
+
+def update_light_sensor(data):
+    return feature_services.update_light_sensor(data, save_config=save_light_config)
+
+
+def update_rtmp_output(data):
+    return feature_services.update_rtmp_output(
+        data,
+        parse_config=parse_config,
+        config_path=CONFIG,
+        load_config=load_rtmp_config,
+        save_config=save_rtmp_config,
+        check_runtime=check_gstreamer_runtime,
+        run=subprocess.run,
+        service_command=rtmp_service_command,
+        apply_transaction=apply_service_config_transaction,
+        public_config=public_rtmp_config,
+        status_snapshot=rtmp_status_snapshot,
+    )
 
 
 def save_selection(data):
