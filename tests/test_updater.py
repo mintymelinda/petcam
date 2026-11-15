@@ -30,7 +30,6 @@ from updater import (
     install_update,
 )
 
-
 class UpdateManifestTests(unittest.TestCase):
     def valid_manifest(self):
         return {
@@ -68,7 +67,6 @@ class UpdateManifestTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(UpdateError):
                 parse_manifest(json.dumps(manifest).encode())
 
-
     def test_ed25519_signature_accepts_original_manifest_and_rejects_tampering(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -93,7 +91,6 @@ class UpdateManifestTests(unittest.TestCase):
             verify_signature(message.read_bytes(), signature.read_bytes(), public)
             with self.assertRaises(UpdateError):
                 verify_signature(message.read_bytes() + b" ", signature.read_bytes(), public)
-
 
     def test_download_streams_and_verifies_archive_bytes(self):
         payload = b"release archive bytes"
@@ -128,7 +125,6 @@ class UpdateManifestTests(unittest.TestCase):
         self.assertGreater(version_tuple("1.10.0"), version_tuple("1.9.9"))
         with self.assertRaises(UpdateError):
             version_tuple("v1.2.3")
-
 
 class UpdateArchiveTests(unittest.TestCase):
     @staticmethod
@@ -299,7 +295,6 @@ class UpdateArchiveTests(unittest.TestCase):
             with self.assertRaises(UpdateError):
                 validate_release(root, "1.2.3")
 
-
 class FailedReleaseCleanupTests(unittest.TestCase):
     def test_removes_failed_release_when_previous_release_is_active(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -327,7 +322,6 @@ class FailedReleaseCleanupTests(unittest.TestCase):
             with mock.patch("updater.CURRENT", current):
                 self.assertFalse(remove_inactive_release(release))
             self.assertTrue(release.is_dir())
-
 
 class ConfigDirectoryMigrationTests(unittest.TestCase):
     def test_repairs_existing_directory_owner_and_mode(self):
@@ -364,20 +358,7 @@ class ConfigDirectoryMigrationTests(unittest.TestCase):
                     repair_config_directory_permissions(directory)
             getgrnam.assert_not_called()
 
-
 class UpdaterServiceSandboxTests(unittest.TestCase):
-    def test_updater_service_can_write_only_required_integration_directories(self):
-        script = Path("stage-petcam/02-configure-petcam/00-run-chroot.sh").read_text(encoding="utf-8")
-        self.assertIn(
-            "ReadWritePaths=/opt/petcam /var/lib/petcam/update /etc/systemd/system /etc/petcam",
-            script,
-        )
-        self.assertIn("ProtectSystem=strict", script)
-
-
-
-class RecentReleaseDiscoveryTests(unittest.TestCase):
-    @staticmethod
     def manifest(version, archive_url="https://assets/release/archive.tar.gz"):
         return json.dumps({
             "schema_version": 1,

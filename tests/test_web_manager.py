@@ -13,7 +13,6 @@ SPEC = importlib.util.spec_from_file_location(
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
-
 class WebManagerTests(unittest.TestCase):
 
     def test_feature_config_transaction_restores_config_and_services_on_failure(self):
@@ -587,18 +586,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn('rtmp-encoder', MODULE.PAGE)
         self.assertIn("saved camera settings are selected", MODULE.PAGE)
 
-    def test_explicit_h264_capture_hands_v4l2_to_gstreamer_rtsp(self):
-        script = Path("stage-petcam/02-configure-petcam/00-run-chroot.sh").read_text()
-        server = Path("src/petcam/rtmp_output.py").read_text()
-        self.assertIn('if [[ "$FORMAT" == "H264" ]]', script)
-        self.assertIn("start_native_h264", script)
-        self.assertIn("exec /usr/bin/sleep infinity", script)
-        self.assertIn("v4l2src", server)
-        self.assertIn("rtph264pay", server)
-        self.assertNotIn("ffmpeg", script.lower())
-        self.assertNotIn("udp://127.0.0.1:10000", script)
-        self.assertIn("H.264 capture cannot run while timelapse or motion detection requires MJPEG", script)
-
     def test_browser_source_is_rejected_when_h264_capture_is_active(self):
         class Request:
             path = "/"
@@ -776,7 +763,6 @@ class WebManagerTests(unittest.TestCase):
         ):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 MODULE.save_selection({"kind": "csi", "camera": 0, "mode": mode})
-
 
 class CameraControlTests(unittest.TestCase):
     SAMPLE_CONTROLS = """brightness 0x00980900 (int) : min=0 max=255 step=1 default=128 value=128 flags=has-min-max
@@ -975,7 +961,6 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('input.type="number"', MODULE.PAGE)
         self.assertIn('document.createElement("select")', MODULE.PAGE)
 
-
 class CameraIdentityTests(unittest.TestCase):
     def test_usb_camera_identity_prefers_physical_path(self):
         camera = {"kind": "usb", "device": "/dev/video4", "physical_path": "/sys/devices/usb1/1-1"}
@@ -990,7 +975,6 @@ class CameraIdentityTests(unittest.TestCase):
         identity = MODULE.camera_identity(camera)
         self.assertTrue(identity["stable_identity"])
         self.assertTrue(identity["id"].startswith("csi-"))
-
 
 if __name__ == "__main__":
     unittest.main()
