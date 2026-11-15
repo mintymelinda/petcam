@@ -31,7 +31,7 @@ import stream_metrics
 import system_metrics
 import camera_configuration
 import capture_status
-import rtmp_status
+import rtsp_status
 import stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
@@ -634,7 +634,7 @@ class StreamHandler(BaseHTTPRequestHandler):
 
 
 def rtmp_status_snapshot():
-    return rtmp_status.snapshot(
+    return rtsp_status.snapshot(
         load_rtmp_config, RTMP_STATUS_FILE, run=subprocess.run, clock=time.time,
     )
 
