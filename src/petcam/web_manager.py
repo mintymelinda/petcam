@@ -33,6 +33,9 @@ import service_transactions
 import stream_metrics
 import system_metrics
 import camera_configuration
+import capture_status
+import rtmp_status
+import stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
@@ -129,86 +132,9 @@ def active_camera_config():
 
 
 def live_capture_status():
-    """Read capture metrics directly from the active stream backend.
-
-    The general-purpose petcam-status command also performs hardware discovery,
-    diagnostics, and a throughput sample. Running that command for a UI refresh
-    can exceed the manager's timeout on slower Pis, hiding otherwise available
-    capture-rate data. These two local endpoints expose only the live metrics.
-    """
-    try:
-        config = parse_config(CONFIG)
-        port = int(config["PORT"])
-    except Exception:
-        config = {}
-        port = 8081
-
-    # Native H.264 has no MJPEG HTTP backend. Report the actual runtime mode.
-    try:
-        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
-        pid = int(marker.get("pid", 0))
-        if marker.get("native_h264") is True and pid > 1:
-            os.kill(pid, 0)
-            result = {"active_capture_format": "H264", "active_resolution": marker.get("resolution") or config.get("RESOLUTION"),
-                      "configured_fps": marker.get("fps") or config.get("FPS"),
-                      "capture_mode": "native_h264_csi" if marker.get("backend") == "csi" else "native_h264",
-                      "hardware_encoder": marker.get("encoder")}
-            try:
-                status = json.loads(Path("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
-                if status.get("source") in ("native_h264", "native_h264_csi"):
-                    result["latest_captured_fps"] = status.get("fps")
-                    result["rtsp_output_ready"] = status.get("active") is True and status.get("state") == "publishing"
-            except (OSError, ValueError, TypeError):
-                pass
-            return result
-    except (OSError, ValueError, TypeError, ProcessLookupError):
-        pass
-
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=2) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        state = payload.get("result") if isinstance(payload, dict) else None
-        if isinstance(state, dict):
-            source = state.get("source") or {}
-            resolution = source.get("resolution") or {}
-            result = {
-                "latest_captured_fps": source.get("captured_fps"),
-                "active_resolution": (
-                    f"{resolution['width']}x{resolution['height']}"
-                    if resolution.get("width") and resolution.get("height") else None
-                ),
-                "active_capture_format": (
-                    "MJPEG" if (state.get("encoder") or {}).get("type") == "HW" else None
-                ),
-            }
-            if config.get("FPS") is not None:
-                result["configured_fps"] = config["FPS"]
-            return result
-    except (OSError, urllib.error.URLError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError, AttributeError):
-        pass
-
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=2) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if isinstance(payload, dict) and payload.get("backend") == "csi":
-            result = {
-                "latest_captured_fps": payload.get("captured_fps_average"),
-                "active_resolution": config.get("RESOLUTION"),
-                "active_capture_format": "MJPEG",
-            }
-            if config.get("FPS") is not None:
-                result["configured_fps"] = config["FPS"]
-            for key in ("frames_received", "last_frame_age_seconds", "capture_process_running"):
-                if key in payload:
-                    result[key] = payload[key]
-            if payload.get("error"):
-                result["capture_error"] = payload["error"]
-            return result
-    except (OSError, urllib.error.URLError, subprocess.TimeoutExpired, ValueError, TypeError):
-        pass
-    return {}
-
-
+    return capture_status.live_status(
+        CONFIG, parse_config, urlopen=urllib.request.urlopen, kill=os.kill,
+    )
 
 def parse_v4l2_controls(output):
     """Compatibility adapter for the camera-control service."""
@@ -323,55 +249,16 @@ def installed_version():
     return system_metrics.installed_version(__file__)
 
 def proxy_stream(handler, port):
-    """Proxy MJPEG, returning a useful HTTP error if capture is not ready yet."""
-    query = parse_qs(urlparse(handler.path).query)
-    source = ("obs_media_source" if query.get("client") == ["obs-media-source"] else "browser_source")
-    if parse_config(CONFIG).get("FORMAT") == "H264":
-        handler.send_error(503, "HTTP MJPEG streaming is disabled while H.264 capture is selected. Use the OBS RTSP Media Source.")
-        return
-    client_id = register_stream_client(source)
-    parser_state = {
-        "previous_byte": None,
-        "in_jpeg": False,
-        "last_frame_monotonic": None,
-    }
-    headers_sent = False
-    retry_delay = 0.1
-    try:
-        while True:
-            streamed_data = False
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/stream", timeout=5) as upstream:
-                    if not headers_sent:
-                        handler.send_response(upstream.status)
-                        handler.send_header(
-                            "Content-Type",
-                            upstream.headers.get("Content-Type", "multipart/x-mixed-replace"),
-                        )
-                        handler.send_header("Cache-Control", "no-store")
-                        handler.end_headers()
-                        headers_sent = True
-                    read_chunk = getattr(upstream, "read1", upstream.read)
-                    while chunk := read_chunk(65536):
-                        # Forward original bytes unchanged; metrics only scan JPEG markers.
-                        handler.wfile.write(chunk)
-                        record_stream_chunk(client_id, chunk, parser_state)
-                        streamed_data = True
-                if streamed_data:
-                    retry_delay = 0.1
-                else:
-                    retry_delay = min(2.0, retry_delay * 1.7)
-            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                return
-            except (OSError, urllib.error.URLError, TimeoutError, http.client.HTTPException):
-                if not headers_sent:
-                    handler.send_error(503, "Camera MJPEG stream is unavailable")
-                    return
-                retry_delay = min(2.0, retry_delay * 1.7)
-            time.sleep(retry_delay)
-    finally:
-        unregister_stream_client(client_id)
-
+    return stream_proxy.proxy(
+        handler,
+        port,
+        parse_config=lambda: parse_config(CONFIG),
+        register_client=register_stream_client,
+        unregister_client=unregister_stream_client,
+        record_chunk=record_stream_chunk,
+        urlopen=urllib.request.urlopen,
+        sleep=time.sleep,
+    )
 
 def _origin_ok(handler):
     origin = urlparse(handler.headers.get("Origin", ""))
@@ -750,35 +637,9 @@ class StreamHandler(BaseHTTPRequestHandler):
 
 
 def rtmp_status_snapshot():
-    config = load_rtmp_config()
-    try:
-        active_service = subprocess.run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-            check=False, timeout=1,
-        ).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        # A delayed systemd response must not turn the entire status API into
-        # HTTP 500 or block every dashboard refresh.
-        active_service = False
-    status = {}
-    try:
-        status = json.loads(RTMP_STATUS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        pass
-    updated_at = status.get("updated_at")
-    fresh = isinstance(updated_at, (int, float)) and time.time() - updated_at <= 10
-    state = status.get("state", "starting") if active_service else "stopped"
-    if active_service and updated_at is not None and not fresh:
-        state = "stalled"
-    return {
-        "enabled": config["enabled"],
-        "active": active_service and state == "publishing",
-        "state": state,
-        "fps": status.get("fps") if fresh else None,
-        "updated_at": updated_at,
-        "source": status.get("source") if fresh else None,
-    }
-
+    return rtmp_status.snapshot(
+        load_rtmp_config, RTMP_STATUS_FILE, run=subprocess.run, clock=time.time,
+    )
 
 def health_monitor_loop():
     from health_monitor import check_health
