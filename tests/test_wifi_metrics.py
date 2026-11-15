@@ -1,12 +1,8 @@
-import importlib.util
 import unittest
 from pathlib import Path
 from unittest import mock
 
-PATH = Path("src/petcam/wifi_metrics.py")
-SPEC = importlib.util.spec_from_file_location("petcam_wifi_metrics", PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import wifi_metrics as MODULE
 
 class WifiMetricsTests(unittest.TestCase):
     def setUp(self):
