@@ -28,6 +28,10 @@ from motion_detection import load_config as load_motion_config, save_config as s
 from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
 from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
 from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+import camera_controls
+import service_transactions
+import stream_metrics
+import system_metrics
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
@@ -36,11 +40,6 @@ HEALTH_FILE = Path("/var/lib/petcam/health.json")
 RTMP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
-_STREAM_METRICS_LOCK = threading.Lock()
-_STREAM_METRICS = {}
-_STREAM_CLIENT_SEQUENCE = 0
-_SYSTEM_METRICS_LOCK = threading.Lock()
-_SYSTEM_CPU_SAMPLE = None
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSETS = {
     "dashboard.js": "application/javascript; charset=utf-8",
@@ -297,80 +296,9 @@ def live_capture_status():
 
 
 
-V4L2_CONTROL_LINE = re.compile(
-    r"^\s*(?P<name>[a-zA-Z0-9_]+)\s+0x[0-9a-fA-F]+\s+"
-    r"\((?P<type>[^)]+)\)\s*:\s*(?P<metadata>.*)$"
-)
-V4L2_MENU_LINE = re.compile(r"^\s*(?P<value>-?\d+)\s*:\s*(?P<label>.+?)\s*$")
-
-
 def parse_v4l2_controls(output):
-    """Parse v4l2-ctl control metadata without assuming a particular camera model."""
-    controls = []
-    current = None
-    for raw_line in output.splitlines():
-        match = V4L2_CONTROL_LINE.match(raw_line)
-        if match:
-            metadata = match.group("metadata")
-            values = {}
-            for key in ("min", "max", "step", "default", "value"):
-                value_match = re.search(rf"(?:^|\s){key}=(-?\d+)", metadata)
-                if value_match:
-                    values[key] = int(value_match.group(1))
-            flags_match = re.search(r"(?:^|\s)flags=(.+)$", metadata)
-            flags = [flag.strip() for flag in flags_match.group(1).split(",")] if flags_match else []
-            control_type = match.group("type").lower()
-            supported = control_type in ("bool", "int", "menu", "intmenu")
-            current = {
-                "name": match.group("name"),
-                "type": control_type,
-                "min": values.get("min"),
-                "max": values.get("max"),
-                "step": max(1, values.get("step", 1)),
-                "default": values.get("default"),
-                "value": values.get("value"),
-                "flags": flags,
-                "menu": [],
-                "supported": supported,
-                "writable": supported and not any(flag in flags for flag in ("inactive", "read-only", "grabbed")),
-            }
-            controls.append(current)
-            continue
-        if current:
-            menu_match = V4L2_MENU_LINE.match(raw_line)
-            if menu_match:
-                current["menu"].append({
-                    "value": int(menu_match.group("value")),
-                    "label": menu_match.group("label"),
-                })
-    for control in controls:
-        control_type = control["type"]
-        menu_values = {option["value"] for option in control["menu"]}
-
-        def is_valid(value):
-            if value is None:
-                return False
-            if control_type == "bool":
-                return value in (0, 1)
-            if control_type in ("menu", "intmenu"):
-                return value in menu_values
-            if control_type == "int":
-                minimum = control["min"]
-                maximum = control["max"]
-                step = control["step"]
-                return (
-                    (minimum is None or value >= minimum)
-                    and (maximum is None or value <= maximum)
-                    and (minimum is None or (value - minimum) % step == 0)
-                )
-            return True
-
-        if not is_valid(control["value"]):
-            control["value"] = None
-        if not is_valid(control["default"]):
-            control["default"] = None
-    return controls
-
+    """Compatibility adapter for the camera-control service."""
+    return camera_controls.parse_controls(output)
 
 def active_usb_camera():
     """Resolve the configured primary USB camera through current discovery, never a client path."""
@@ -390,100 +318,29 @@ def active_usb_camera():
 
 
 def read_camera_controls(camera=None):
+    """Read controls through the dedicated camera-control service."""
     camera = camera or active_usb_camera()
-    if not camera:
-        return {
-            "supported": False,
-            "message": "Camera controls are available for the active USB camera. Select and apply a USB camera first.",
-            "controls": [],
-        }
-    device = camera.get("device", "")
-    if not device.startswith(("/dev/video", "/dev/v4l/by-id/", "/dev/v4l/by-path/")):
-        raise ValueError("The active camera has an invalid V4L2 device path.")
-    result = subprocess.run(
-        ["/usr/bin/v4l2-ctl", "--device", device, "--list-ctrls-menus"],
-        capture_output=True, text=True, timeout=10, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to read camera controls")
-    return {
-        "supported": True,
-        "device": device,
-        "label": camera.get("label", "Active USB camera"),
-        "controls": parse_v4l2_controls(result.stdout),
-    }
+    return camera_controls.read_controls(camera, subprocess.run)
 
 
 def set_camera_control(data):
-    name = data.get("name")
-    value = data.get("value")
-    if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_]+", name):
-        raise ValueError("Invalid camera control name.")
-    camera = active_usb_camera()
-    if not camera:
-        raise ValueError("There is no active USB camera.")
-    current = read_camera_controls(camera)
-    control = next((item for item in current["controls"] if item["name"] == name), None)
-    if not control:
-        raise ValueError("That control is not supported by the active camera.")
-    if not control["writable"]:
-        raise ValueError("That camera control is currently inactive or read-only.")
-    if control["type"] == "bool":
-        if isinstance(value, bool):
-            value = int(value)
-        if not isinstance(value, int) or value not in (0, 1):
-            raise ValueError("Boolean camera controls must be true or false.")
-    else:
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError("Camera control values must be integers.")
-        if control["min"] is not None and value < control["min"]:
-            raise ValueError("Camera control value is below the supported minimum.")
-        if control["max"] is not None and value > control["max"]:
-            raise ValueError("Camera control value is above the supported maximum.")
-        if control["min"] is not None and (value - control["min"]) % control["step"]:
-            raise ValueError("Camera control value does not match the supported step.")
-        if control["type"] in ("menu", "intmenu") and value not in {
-            option["value"] for option in control["menu"]
-        }:
-            raise ValueError("Camera control value is not an advertised menu option.")
-    result = subprocess.run(
-        ["/usr/bin/v4l2-ctl", "--device", camera["device"], f"--set-ctrl={name}={value}"],
-        capture_output=True, text=True, timeout=10, check=False,
+    """Apply a validated control through the dedicated camera-control service."""
+    return camera_controls.set_control(
+        data,
+        active_usb_camera(),
+        read_camera_controls,
+        subprocess.run,
     )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to update camera control")
-    return read_camera_controls(camera)
 
 def _run_service_commands(commands):
-    for command, timeout, failure_message in commands:
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout, check=False,
-        )
-        if result.returncode:
-            raise RuntimeError(result.stderr.strip() or failure_message)
+    return service_transactions.run_service_commands(commands, subprocess.run)
 
 
 def apply_service_config_transaction(save, previous, candidate, commands, rollback_commands):
-    """Persist a feature config only when its dependent services transition successfully."""
-    updated = save(candidate)
-    try:
-        _run_service_commands(commands)
-    except Exception as apply_error:
-        try:
-            save(previous)
-        except Exception as restore_error:
-            raise RuntimeError(
-                f"Applying the new settings failed ({apply_error}); restoring the previous settings also failed ({restore_error})."
-            ) from apply_error
-        try:
-            _run_service_commands(rollback_commands)
-        except Exception as rollback_error:
-            raise RuntimeError(
-                f"New settings failed ({apply_error}); previous settings were restored, but service recovery failed ({rollback_error})."
-            ) from apply_error
-        raise
-    return updated
-
+    """Compatibility adapter for the service-configuration transaction."""
+    return service_transactions.apply_config_transaction(
+        save, previous, candidate, commands, rollback_commands, subprocess.run,
+    )
 
 def rtmp_service_command(action):
     commands = {
@@ -642,157 +499,27 @@ def save_selection(data):
 
 
 def register_stream_client(source):
-    """Track one downstream MJPEG client without retaining its network address."""
-    global _STREAM_CLIENT_SEQUENCE
-    with _STREAM_METRICS_LOCK:
-        _STREAM_CLIENT_SEQUENCE += 1
-        client_id = str(_STREAM_CLIENT_SEQUENCE)
-        now = time.monotonic()
-        _STREAM_METRICS[client_id] = {
-            "source": source,
-            "started_monotonic": now,
-            "window_started_monotonic": now,
-            "window_frames": 0,
-            "window_bytes": 0,
-            "frames": 0,
-            "bytes": 0,
-            "inter_frame_count": 0,
-            "inter_frame_total_seconds": 0.0,
-            "max_frame_gap_seconds": 0.0,
-            "last_frame_at": None,
-            "last_frame_monotonic": None,
-        }
-    return client_id
+    return stream_metrics.register_client(source)
 
 
 def unregister_stream_client(client_id):
-    with _STREAM_METRICS_LOCK:
-        _STREAM_METRICS.pop(client_id, None)
+    return stream_metrics.unregister_client(client_id)
 
 
 def record_stream_chunk(client_id, chunk, parser_state):
-    """Count JPEG marker pairs using bytes.find; never decode or copy image data."""
-    data = (b"\xff" if parser_state["previous_byte"] == 0xFF else b"") + chunk
-    cursor = 0
-    frames = 0
-    last_frame_at = None
-    while True:
-        start = data.find(b"\xff\xd8", cursor)
-        end = data.find(b"\xff\xd9", cursor)
-        if start < 0 and end < 0:
-            break
-        if start >= 0 and (end < 0 or start < end):
-            parser_state["in_jpeg"] = True
-            cursor = start + 2
-        else:
-            if parser_state["in_jpeg"]:
-                frames += 1
-                parser_state["last_frame_monotonic"] = time.monotonic()
-                last_frame_at = time.time()
-            parser_state["in_jpeg"] = False
-            cursor = end + 2
-    if chunk:
-        parser_state["previous_byte"] = chunk[-1]
-    with _STREAM_METRICS_LOCK:
-        metrics = _STREAM_METRICS.get(client_id)
-        if metrics is not None:
-            metrics["bytes"] += len(chunk)
-            metrics["window_bytes"] += len(chunk)
-            metrics["frames"] += frames
-            metrics["window_frames"] += frames
-            if last_frame_at is not None:
-                previous = metrics["last_frame_monotonic"]
-                current = parser_state["last_frame_monotonic"]
-                if previous is not None:
-                    gap = max(0.0, current - previous)
-                    metrics["inter_frame_count"] += 1
-                    metrics["inter_frame_total_seconds"] += gap
-                    metrics["max_frame_gap_seconds"] = max(metrics["max_frame_gap_seconds"], gap)
-                metrics["last_frame_at"] = last_frame_at
-                metrics["last_frame_monotonic"] = current
+    return stream_metrics.record_chunk(client_id, chunk, parser_state)
 
 
 def stream_metrics_snapshot():
-    """Return bounded per-client throughput and frame-timing telemetry."""
-    now = time.monotonic()
-    with _STREAM_METRICS_LOCK:
-        clients = []
-        for client_id, metrics in _STREAM_METRICS.items():
-            elapsed = max(0.001, now - metrics["started_monotonic"])
-            window_elapsed = max(0.001, now - metrics["window_started_monotonic"])
-            last_frame = metrics["last_frame_monotonic"]
-            clients.append({
-                "client_id": client_id,
-                "source": metrics["source"],
-                "frames": metrics["frames"],
-                "bytes": metrics["bytes"],
-                "average_fps": round(metrics["frames"] / elapsed, 2),
-                "window_fps": round(metrics["window_frames"] / window_elapsed, 2),
-                "window_mbps": round(metrics["window_bytes"] * 8 / window_elapsed / 1_000_000, 3),
-                "average_frame_interval_ms": (
-                    round(metrics["inter_frame_total_seconds"] * 1000 / metrics["inter_frame_count"], 2)
-                    if metrics["inter_frame_count"] else None
-                ),
-                "max_frame_gap_ms": round(metrics["max_frame_gap_seconds"] * 1000, 2),
-                "last_frame_age_seconds": (
-                    round(max(0.0, now - last_frame), 2) if last_frame is not None else None
-                ),
-            })
-            metrics["window_started_monotonic"] = now
-            metrics["window_frames"] = 0
-            metrics["window_bytes"] = 0
-    return {"active_clients": len(clients), "clients": clients}
-
+    return stream_metrics.snapshot()
 
 
 def system_resource_metrics():
-    """Return low-cost CPU and memory usage from Linux procfs."""
-    global _SYSTEM_CPU_SAMPLE
-    cpu_percent = None
-    try:
-        with open("/proc/stat", encoding="ascii") as source:
-            fields = source.readline().split()[1:]
-        values = [int(value) for value in fields]
-        total = sum(values)
-        idle = values[3] + (values[4] if len(values) > 4 else 0)
-        now = time.monotonic()
-        with _SYSTEM_METRICS_LOCK:
-            previous = _SYSTEM_CPU_SAMPLE
-            _SYSTEM_CPU_SAMPLE = (total, idle, now)
-        if previous:
-            total_delta = total - previous[0]
-            idle_delta = idle - previous[1]
-            if total_delta > 0:
-                cpu_percent = round(max(0.0, min(100.0, (total_delta - idle_delta) * 100.0 / total_delta)), 1)
-    except (OSError, ValueError, IndexError):
-        pass
-    memory = {}
-    try:
-        with open("/proc/meminfo", encoding="ascii") as source:
-            for line in source:
-                key, value = line.split(":", 1)
-                if key in ("MemTotal", "MemAvailable"):
-                    memory[key] = int(value.split()[0])
-        total_kib = memory.get("MemTotal")
-        available_kib = memory.get("MemAvailable")
-        if total_kib is not None and available_kib is not None:
-            total_mb = round(total_kib / 1024)
-            used_mb = round(max(0, total_kib - available_kib) / 1024)
-        else:
-            total_mb = used_mb = None
-    except (OSError, ValueError, IndexError):
-        total_mb = used_mb = None
-    return {"cpu_percent": cpu_percent, "memory_used_mb": used_mb, "memory_total_mb": total_mb}
+    return system_metrics.resource_metrics()
+
 
 def installed_version():
-    """Read the VERSION file belonging to the active, resolved application release."""
-    version_file = Path(__file__).resolve().parent.parent / "VERSION"
-    try:
-        version = version_file.read_text(encoding="utf-8").strip()
-        return version or None
-    except OSError:
-        return None
-
+    return system_metrics.installed_version(__file__)
 
 def proxy_stream(handler, port):
     """Proxy MJPEG, returning a useful HTTP error if capture is not ready yet."""
