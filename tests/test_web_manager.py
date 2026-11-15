@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from petcam import web_manager as MODULE
+from petcam.api import management_routes
 
 DASHBOARD_JS = Path("src/petcam/static/dashboard.js").read_text(encoding="utf-8")
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
@@ -253,8 +254,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("/api/setup/status", PAGE_AND_JS)
         self.assertIn("/api/setup", PAGE_AND_JS)
         self.assertIn("SSH is not required", PAGE_AND_JS)
-        self.assertIn("initialize_password", MODULE.Handler.do_POST.__code__.co_names)
-        self.assertIn("is_configured", MODULE.Handler.do_GET.__code__.co_names)
+        self.assertIn("initialize_password", management_routes.handle_post.__code__.co_names)
+        self.assertIn("is_configured", management_routes.handle_get.__code__.co_names)
 
     def test_first_run_setup_endpoint_creates_session_and_cookie(self):
         payload = json.dumps({
