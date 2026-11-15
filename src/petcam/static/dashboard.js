@@ -16,6 +16,7 @@ let updateAvailable = false,
   updateBusy = false;
 let updatePollTimer = null,
   updatePollInFlight = false;
+// Authentication and API requests
 async function login() {
   if (loginPromise) return loginPromise;
   loginPromise = (async () => {
@@ -108,6 +109,7 @@ async function request(path, options = {}) {
   return d;
 }
 
+// Dashboard navigation
 function activateTab(name, moveFocus = false) {
   const selected = tabButtons.find((button) => button.dataset.tab === name);
   if (!selected) return;
@@ -122,6 +124,7 @@ function activateTab(name, moveFocus = false) {
   if (moveFocus) selected.focus();
 }
 
+// Camera selection and capture configuration
 function modesFor(camera) {
   return camera.kind === "usb"
     ? camera.modes.filter((m) =>
@@ -282,6 +285,7 @@ function fillModes(preferred = null) {
   $("mode").onchange = showSelectedModeWarning;
   showSelectedModeWarning();
 }
+// Capture and OBS output status
 function renderCaptureStatus() {
   const fps = Number(captureStatus.latest_captured_fps),
     configured = activeConfig?.FPS,
@@ -399,6 +403,7 @@ async function saveRTMP() {
     $("save-rtmp").disabled = false;
   }
 }
+// System statistics
 function renderStatCards(root, items) {
   root.replaceChildren();
   for (const [label, value] of items) {
@@ -515,6 +520,7 @@ async function refreshStatistics(data = null) {
       "Statistics unavailable: " + error.message;
   }
 }
+// Camera inventory and selection refresh
 async function refresh() {
   $("message").textContent = "Scanning connected cameras…";
   try {
@@ -582,6 +588,7 @@ async function refresh() {
   }
 }
 
+// Advanced camera controls
 function cameraControlLabel(name) {
   const labels = {
     auto_exposure: "Auto exposure",
@@ -795,6 +802,7 @@ async function refreshCameraControls() {
     status.textContent = "Camera controls unavailable: " + error.message;
   }
 }
+// Timelapse configuration and status
 async function refreshTimelapse() {
   try {
     const d = await request("/api/timelapse");
@@ -825,6 +833,7 @@ async function refreshTimelapse() {
       "Timelapse status unavailable: " + e.message;
   }
 }
+// Motion detection configuration and events
 async function refreshMotion() {
   try {
     const d = await request("/api/motion"),
@@ -885,6 +894,7 @@ async function refreshMotion() {
     $("motion-status").textContent = "Motion status unavailable: " + e.message;
   }
 }
+// Ambient light sensor configuration and status
 async function refreshLightSensor() {
   try {
     const d = await request("/api/light-sensor"),
@@ -905,6 +915,7 @@ async function refreshLightSensor() {
   }
 }
 
+// Diagnostics and support bundle
 async function refreshDiagnostics() {
   try {
     const d = await request("/api/diagnostics");
@@ -935,6 +946,7 @@ async function refreshDiagnostics() {
       "Diagnostics unavailable: " + e.message;
   }
 }
+// Health monitor status
 async function refreshHealth() {
   try {
     const h = await request("/api/health");
@@ -951,6 +963,7 @@ async function refreshHealth() {
     $("health-reason").textContent = e.message;
   }
 }
+// Signed application update workflow
 function scheduleUpdatePoll(delay = 2000) {
   if (updatePollTimer) clearTimeout(updatePollTimer);
   updatePollTimer = setTimeout(updateStatus, delay);
@@ -1091,6 +1104,7 @@ async function installUpdate() {
   }
 }
 
+// Event wiring and application startup
 function initializeDashboard() {
   $("first-run-form").onsubmit = async (event) => {
     event.preventDefault();
