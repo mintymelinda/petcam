@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import http.client
 """Small, dependency-free PetCam camera management HTTP interface."""
 import copy
 import json
 import os
-import re
 import ssl
 import socket
 import subprocess
@@ -12,7 +10,6 @@ import threading
 import time
 import hmac
 import sys
-import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
