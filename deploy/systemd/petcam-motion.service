@@ -6,7 +6,6 @@ Wants=network-online.target petcam-web.service
 [Service]
 Type=simple
 StateDirectory=petcam/motion
-StateDirectoryMode=0750
 ExecStart=/usr/bin/python3 /opt/petcam/current/lib/motion_detection.py
 Restart=on-failure
 RestartSec=5
