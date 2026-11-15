@@ -729,7 +729,7 @@ class StreamHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
         if path == "/":
-            body = b'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PetCam Browser Source</title><style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden}#status{position:absolute;inset:0;display:grid;place-items:center;color:#ddd;font:16px sans-serif;text-align:center;padding:1rem;box-sizing:border-box}img{position:relative;display:block;width:100%;height:100%;object-fit:contain}img:not([data-ready]){opacity:0}</style><div id="status">Connecting to PetCam camera...</div><img id="stream" src="/stream" alt="PetCam camera stream"><script src="/browser-source.js" defer></script></html>'
+            body = (STATIC_DIR / "browser-source.html").read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
