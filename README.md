@@ -46,7 +46,6 @@ GitHub Actions runs the application test and compilation checks. It does not bui
 
 PetCam application services run as unrestricted root processes during the initial
 functional validation phase. No systemd sandboxing, service-account isolation, or
-application-managed restrictive file modes are applied. The web manager retains
-its application authentication and CSRF checks; signed-update verification remains
-enabled. PetCam no longer installs a dedicated service account, sudoers policy,
-or privileged-command wrapper.
+application-managed restrictive file modes are applied. The web manager retains its application authentication and CSRF checks.
+PetCam no longer installs a dedicated service account, sudoers policy, or
+privileged-command wrapper.
