@@ -6,7 +6,7 @@ from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_factory_reset",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/factory_reset.py",
+    "src/petcam/factory_reset.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -35,9 +35,7 @@ class FactoryResetTests(unittest.TestCase):
             with mock.patch.object(MODULE, "ETC", etc), mock.patch.object(MODULE, "STATE", state), \
                     mock.patch.object(MODULE.os, "geteuid", return_value=0), \
                     mock.patch.object(MODULE.subprocess, "run"), \
-                    mock.patch.object(MODULE.os, "chown"), \
-                    mock.patch("pwd.getpwnam", return_value=mock.Mock(pw_uid=1000)), \
-                    mock.patch("grp.getgrnam", return_value=mock.Mock(gr_gid=1000)):
+                    mock.patch.object(MODULE.subprocess, "run"):
                 MODULE.reset()
             self.assertFalse((etc / "web-auth.json").exists())
             self.assertFalse((etc / "petcam.conf.last-good").exists())

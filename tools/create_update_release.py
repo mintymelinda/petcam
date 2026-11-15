@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Build and sign a PetCam application update from an image release tree."""
+"""Build and sign a PetCam application update from a staged runtime release."""
 
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import tarfile
 from pathlib import Path
@@ -40,6 +39,10 @@ REQUIRED_FILES = (
 # update archives only; do not reintroduce it into the current image release tree.
 COMPATIBILITY_FILES = {
     "lib/camera_profiles.py": b'"""Compatibility marker for pre-v0.2.3 updaters."""\n',
+    # Older field updaters require these archive members during validation.
+    # The new updater never installs them and removes previously installed copies.
+    "bin/petcam-rtmp-service": b'#!/bin/sh\necho "This legacy privilege helper has been removed." >&2\nexit 1\n',
+    "etc/sudoers.d/petcam-rtmp": b"# Retired by the root-run PetCam application migration.\n",
     # Existing field updaters require this archive member even though the
     # current image and release no longer ship or execute MediaMTX.
     "bin/mediamtx": b'#!/bin/sh\necho "MediaMTX was replaced by the GStreamer RTSP server." >&2\nexit 1\n',
@@ -87,7 +90,6 @@ def build_release(release_dir: Path, version: str, archive_url: str,
         for relative, content in COMPATIBILITY_FILES.items():
             info = tarfile.TarInfo(relative)
             info.size = len(content)
-            info.mode = 0o644
             bundle.addfile(info, io.BytesIO(content))
         # Include any future regular application assets while refusing links/special files.
         for path in sorted(release_dir.rglob("*")):
@@ -115,14 +117,12 @@ def build_release(release_dir: Path, version: str, archive_url: str,
         json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
-    os.chmod(manifest_path, 0o644)
     subprocess.run(
         ["openssl", "pkeyutl", "-sign", "-inkey", str(private_key),
          "-rawin", "-in", str(manifest_path), "-out", str(signature_path)],
         check=True,
         capture_output=True,
     )
-    os.chmod(signature_path, 0o644)
     return archive, manifest_path, signature_path
 
 

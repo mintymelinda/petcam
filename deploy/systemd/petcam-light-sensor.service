@@ -1,0 +1,12 @@
+[Unit]
+Description=PetCam TSL2591 ambient light sensor
+After=local-fs.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/petcam/current/lib/light_sensor.py
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

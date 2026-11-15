@@ -53,7 +53,6 @@ def save_state(state: dict[str, Any]) -> None:
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = STATE_FILE.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
-    temporary.chmod(0o644)
     temporary.replace(STATE_FILE)
 
 

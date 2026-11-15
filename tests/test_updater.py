@@ -21,7 +21,6 @@ from updater import (
     safe_extract,
     validate_release,
     install_runtime_integration_files,
-    repair_config_directory_permissions,
     remove_inactive_release,
     restart_services,
     verify_signature,
@@ -29,7 +28,6 @@ from updater import (
     release_manifest_candidates,
     install_update,
 )
-
 
 class UpdateManifestTests(unittest.TestCase):
     def valid_manifest(self):
@@ -68,7 +66,6 @@ class UpdateManifestTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(UpdateError):
                 parse_manifest(json.dumps(manifest).encode())
 
-
     def test_ed25519_signature_accepts_original_manifest_and_rejects_tampering(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -93,7 +90,6 @@ class UpdateManifestTests(unittest.TestCase):
             verify_signature(message.read_bytes(), signature.read_bytes(), public)
             with self.assertRaises(UpdateError):
                 verify_signature(message.read_bytes() + b" ", signature.read_bytes(), public)
-
 
     def test_download_streams_and_verifies_archive_bytes(self):
         payload = b"release archive bytes"
@@ -129,7 +125,6 @@ class UpdateManifestTests(unittest.TestCase):
         with self.assertRaises(UpdateError):
             version_tuple("v1.2.3")
 
-
 class UpdateArchiveTests(unittest.TestCase):
     @staticmethod
     def archive(files):
@@ -138,7 +133,7 @@ class UpdateArchiveTests(unittest.TestCase):
             for name, content in files.items():
                 info = tarfile.TarInfo(name)
                 info.size = len(content)
-                info.mode = 0o755 if name.endswith((".sh", "ustreamer")) or name in ("bin/mediamtx", "bin/petcam-rtmp-service") else 0o644
+                info.mode = 0o755 if name.endswith((".sh", "ustreamer")) or name == "bin/mediamtx" else 0o644
                 bundle.addfile(info, io.BytesIO(content))
         return stream.getvalue()
 
@@ -162,82 +157,52 @@ class UpdateArchiveTests(unittest.TestCase):
             with self.assertRaises(UpdateError):
                 safe_extract(stream.getvalue(), Path(temp))
 
-    def test_installs_signed_home_assistant_unit_and_preserves_existing_settings(self):
+    def test_installs_root_owned_units_preserves_settings_and_removes_legacy_sudo_bridge(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             release = root / "release"
             etc_root = root / "etc"
             (release / "systemd").mkdir(parents=True)
             (release / "etc/petcam").mkdir(parents=True)
-            (release / "etc/sudoers.d").mkdir(parents=True)
-            (release / "bin").mkdir(parents=True)
-            (release / "systemd/petcam-home-assistant.service").write_text("[Service]\nExecStart=petcam\n")
-            (release / "systemd/petcam-timelapse.service").write_text("[Service]\nExecStart=timelapse\n")
-            (release / "systemd/petcam-motion.service").write_text("[Service]\nExecStart=motion\n")
-            (release / "systemd/petcam-rtmp.service").write_text("[Service]\nExecStart=rtmp\n")
+            for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
+                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\n")
             (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\n")
             (release / "etc/petcam/rtmp.json").write_text("{\"enabled\":false}\n")
-            (release / "bin/petcam-rtmp-service").write_text("#!/bin/sh\nexit 0\n")
-            (release / "etc/sudoers.d/petcam-rtmp").write_text("petcam ALL=(root) NOPASSWD: /usr/local/sbin/petcam-rtmp-service restart\n")
             config_path = etc_root / "petcam/home-assistant.conf"
             config_path.parent.mkdir(parents=True)
             config_path.write_text("MQTT_ENABLED=true\nMQTT_PASSWORD=preserve-me\n")
             rtmp_config_path = etc_root / "petcam/rtmp.json"
             rtmp_config_path.write_text("{\"enabled\":true,\"stream_key\":\"keep-this-secret\"}\n")
-            with mock.patch("updater.grp.getgrnam", return_value=mock.Mock(gr_gid=1000)), \
-                    mock.patch("updater.pwd.getpwnam", return_value=mock.Mock(pw_uid=1001)), \
-                    mock.patch("updater.os.chown") as chown, \
-                    mock.patch("updater.os.geteuid", return_value=0):
-                install_runtime_integration_files(release, etc_root, root / "usr")
-            chown.assert_any_call(rtmp_config_path, 1001, 1000)
-            self.assertEqual(
-                (etc_root / "systemd/system/petcam-home-assistant.service").read_text(),
-                "[Service]\nExecStart=petcam\n",
-            )
+            legacy_helper = root / "usr/local/sbin/petcam-rtmp-service"
+            legacy_helper.parent.mkdir(parents=True)
+            legacy_helper.write_text("#!/bin/sh\nexit 0\n")
+            legacy_sudoers = etc_root / "sudoers.d/petcam-rtmp"
+            legacy_sudoers.parent.mkdir(parents=True)
+            legacy_sudoers.write_text("# old policy\n")
+            install_runtime_integration_files(release, etc_root, root / "usr")
             self.assertEqual(config_path.read_text(), "MQTT_ENABLED=true\nMQTT_PASSWORD=preserve-me\n")
             self.assertEqual(rtmp_config_path.read_text(), "{\"enabled\":true,\"stream_key\":\"keep-this-secret\"}\n")
-            self.assertEqual((etc_root / "systemd/system/petcam-timelapse.service").read_text(), "[Service]\nExecStart=timelapse\n")
-            self.assertEqual((etc_root / "systemd/system/petcam-motion.service").read_text(), "[Service]\nExecStart=motion\n")
-            self.assertEqual((etc_root / "systemd/system/petcam-rtmp.service").read_text(), "[Service]\nExecStart=rtmp\n")
-            helper = root / "usr/local/sbin/petcam-rtmp-service"
-            sudoers = etc_root / "sudoers.d/petcam-rtmp"
-            self.assertEqual(helper.read_text(), "#!/bin/sh\nexit 0\n")
-            self.assertEqual(helper.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sudoers.read_text(), "petcam ALL=(root) NOPASSWD: /usr/local/sbin/petcam-rtmp-service restart\n")
-            self.assertEqual(sudoers.stat().st_mode & 0o777, 0o440)
-            chown.assert_any_call(helper, 0, 0)
-            chown.assert_any_call(sudoers, 0, 0)
-            self.assertEqual(config_path.stat().st_mode & 0o777, 0o640)
+            for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
+                self.assertTrue((etc_root / f"systemd/system/petcam-{unit}.service").is_file())
+            self.assertFalse(legacy_helper.exists())
+            self.assertFalse(legacy_sudoers.exists())
 
-    def test_installs_default_home_assistant_config_when_missing(self):
+    def test_installs_default_root_private_configs_when_missing(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             release = root / "release"
             (release / "systemd").mkdir(parents=True)
             (release / "etc/petcam").mkdir(parents=True)
-            (release / "etc/sudoers.d").mkdir(parents=True)
-            (release / "bin").mkdir(parents=True)
-            (release / "systemd/petcam-home-assistant.service").write_text("[Service]\n")
-            (release / "systemd/petcam-timelapse.service").write_text("[Service]\n")
-            (release / "systemd/petcam-motion.service").write_text("[Service]\n")
-            (release / "systemd/petcam-rtmp.service").write_text("[Service]\n")
+            for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
+                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\n")
             (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\n")
             (release / "etc/petcam/rtmp.json").write_text("{\"enabled\":false}\n")
-            (release / "bin/petcam-rtmp-service").write_text("#!/bin/sh\nexit 0\n")
-            (release / "etc/sudoers.d/petcam-rtmp").write_text("petcam ALL=(root) NOPASSWD: /usr/local/sbin/petcam-rtmp-service restart\n")
-            with mock.patch("updater.grp.getgrnam", return_value=mock.Mock(gr_gid=1000)), \
-                    mock.patch("updater.os.geteuid", return_value=1000):
+            with mock.patch("updater.os.geteuid", return_value=1000):
                 install_runtime_integration_files(release, root / "etc", root / "usr")
             config = root / "etc/petcam/home-assistant.conf"
-            self.assertEqual(config.read_text(), "MQTT_ENABLED=false\n")
-            self.assertEqual(config.stat().st_mode & 0o777, 0o640)
             rtmp_config = root / "etc/petcam/rtmp.json"
+            self.assertEqual(config.read_text(), "MQTT_ENABLED=false\n")
             self.assertEqual(rtmp_config.read_text(), "{\"enabled\":false}\n")
-            self.assertEqual(rtmp_config.stat().st_mode & 0o777, 0o640)
-            helper = root / "usr/local/sbin/petcam-rtmp-service"
-            sudoers = root / "etc/sudoers.d/petcam-rtmp"
-            self.assertEqual(helper.stat().st_mode & 0o777, 0o755)
-            self.assertEqual(sudoers.stat().st_mode & 0o777, 0o440)
 
     def test_restart_services_restarts_optional_workers_only_when_active(self):
         results = [
@@ -281,8 +246,6 @@ class UpdateArchiveTests(unittest.TestCase):
             "etc/petcam/home-assistant.conf": b"MQTT_ENABLED=false\n",
             "etc/petcam/rtmp.json": b"{\"enabled\":false}\n",
             "bin/mediamtx": b"MediaMTX binary",
-            "bin/petcam-rtmp-service": b"#!/bin/sh\n",
-            "etc/sudoers.d/petcam-rtmp": b"petcam ALL=(root) NOPASSWD: /usr/local/sbin/petcam-rtmp-service restart\n",
             "lib/start-stream.sh": b"#!/bin/sh\n",
             "vendor/bin/ustreamer": b"binary",
         }
@@ -292,13 +255,11 @@ class UpdateArchiveTests(unittest.TestCase):
             validate_release(root, "1.2.3")
             self.assertTrue((root / "vendor/bin/ustreamer").stat().st_mode & 0o111)
             self.assertTrue((root / "bin/mediamtx").stat().st_mode & 0o111)
-            self.assertTrue((root / "bin/petcam-rtmp-service").stat().st_mode & 0o111)
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             safe_extract(self.archive({"VERSION": b"9.9.9"}), root)
             with self.assertRaises(UpdateError):
                 validate_release(root, "1.2.3")
-
 
 class FailedReleaseCleanupTests(unittest.TestCase):
     def test_removes_failed_release_when_previous_release_is_active(self):
@@ -328,55 +289,7 @@ class FailedReleaseCleanupTests(unittest.TestCase):
                 self.assertFalse(remove_inactive_release(release))
             self.assertTrue(release.is_dir())
 
-
-class ConfigDirectoryMigrationTests(unittest.TestCase):
-    def test_repairs_existing_directory_owner_and_mode(self):
-        with tempfile.TemporaryDirectory() as temp:
-            directory = Path(temp) / "etc/petcam"
-            directory.mkdir(parents=True)
-            with mock.patch("updater.grp.getgrnam", return_value=mock.Mock(gr_gid=985)), \
-                    mock.patch("updater.os.chown") as chown, \
-                    mock.patch("updater.os.chmod") as chmod:
-                repair_config_directory_permissions(directory)
-            chown.assert_called_once_with(directory, 0, 985)
-            chmod.assert_called_once_with(directory, 0o1770)
-
-    def test_creates_missing_directory_with_restricted_permissions(self):
-        with tempfile.TemporaryDirectory() as temp:
-            directory = Path(temp) / "etc/petcam"
-            with mock.patch("updater.grp.getgrnam", return_value=mock.Mock(gr_gid=985)), \
-                    mock.patch("updater.os.chown") as chown, \
-                    mock.patch("updater.os.chmod") as chmod:
-                repair_config_directory_permissions(directory)
-            self.assertTrue(directory.is_dir())
-            chown.assert_called_once_with(directory, 0, 985)
-            chmod.assert_called_once_with(directory, 0o1770)
-
-    def test_refuses_to_follow_a_symlinked_config_directory(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            target = root / "target"
-            target.mkdir()
-            directory = root / "petcam"
-            directory.symlink_to(target, target_is_directory=True)
-            with mock.patch("updater.grp.getgrnam") as getgrnam:
-                with self.assertRaisesRegex(UpdateError, "symlinked"):
-                    repair_config_directory_permissions(directory)
-            getgrnam.assert_not_called()
-
-
 class UpdaterServiceSandboxTests(unittest.TestCase):
-    def test_updater_service_can_write_only_required_integration_directories(self):
-        script = Path("stage-petcam/02-configure-petcam/00-run-chroot.sh").read_text(encoding="utf-8")
-        self.assertIn(
-            "ReadWritePaths=/opt/petcam /var/lib/petcam/update /etc/systemd/system /etc/petcam",
-            script,
-        )
-        self.assertIn("ProtectSystem=strict", script)
-
-
-
-class RecentReleaseDiscoveryTests(unittest.TestCase):
     @staticmethod
     def manifest(version, archive_url="https://assets/release/archive.tar.gz"):
         return json.dumps({

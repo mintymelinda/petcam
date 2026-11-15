@@ -8,14 +8,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER_SPEC = importlib.util.spec_from_file_location(
     "petcam_updater_progress",
-    ROOT / "stage-petcam/00-install-files/files/usr/local/lib/petcam/updater.py",
+    ROOT / "src/petcam/updater.py",
 )
 UPDATER = importlib.util.module_from_spec(UPDATER_SPEC)
 UPDATER_SPEC.loader.exec_module(UPDATER)
 
 MANAGER_SPEC = importlib.util.spec_from_file_location(
     "petcam_web_manager_progress",
-    ROOT / "stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py",
+    ROOT / "src/petcam/web_manager.py",
 )
 MANAGER = importlib.util.module_from_spec(MANAGER_SPEC)
 MANAGER_SPEC.loader.exec_module(MANAGER)
@@ -30,7 +30,6 @@ class UpdateProgressTests(unittest.TestCase):
                 first = json.loads((state_dir / "status.json").read_text())
                 self.assertEqual(first["stage"], "downloading")
                 self.assertEqual(first["target_version"], "1.2.3")
-                self.assertEqual((state_dir / "status.json").stat().st_mode & 0o777, 0o644)
                 UPDATER.write_update_state("complete", "Installed", installed_version="1.2.3")
                 UPDATER.write_update_state("checking", "Checking signed release metadata")
                 second = json.loads((state_dir / "status.json").read_text())
@@ -48,7 +47,7 @@ class UpdateProgressTests(unittest.TestCase):
             subprocess_mock.run.side_effect = results
             MANAGER.start_update()
         self.assertEqual(subprocess_mock.run.call_args_list[1].args[0], [
-            "sudo", "-n", "/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"
+            "/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"
         ])
 
     def test_start_update_does_not_queue_a_second_active_install(self):

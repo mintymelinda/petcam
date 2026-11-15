@@ -309,7 +309,6 @@ def create_support_bundle(performance: dict[str, Any] | None = None) -> bytes:
             data = value.encode("utf-8", errors="replace")
             info = tarfile.TarInfo(name)
             info.size = len(data)
-            info.mode = 0o600
             info.mtime = int(time.time())
             archive.addfile(info, io.BytesIO(data))
     return output.getvalue()
@@ -329,12 +328,6 @@ def main() -> int:
             "petcam-support-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + ".tar.gz"
         )
         destination.write_bytes(create_support_bundle())
-        os.chmod(destination, 0o600)
-        if os.geteuid() == 0 and os.environ.get("SUDO_UID"):
-            try:
-                os.chown(destination, int(os.environ["SUDO_UID"]), int(os.environ["SUDO_GID"]))
-            except (KeyError, ValueError, OSError):
-                pass
         print(destination)
         return 0
     print(json.dumps(collect_diagnostics(), indent=2))

@@ -59,17 +59,16 @@ def run(*command):
     subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
 
 
-def write_file(path, content, mode=0o640):
+def write_file(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".reset-tmp")
     temporary.write_text(content, encoding="utf-8")
-    os.chmod(temporary, mode)
     os.replace(temporary, path)
 
 
 def reset():
     if os.geteuid() != 0:
-        raise PermissionError("Run with sudo: sudo petcam-admin")
+        raise PermissionError("Factory reset must run as root.")
 
     # Stop every PetCam worker before clearing its configuration and data.
     profiles = sorted((ETC / "cameras.d").glob("*.conf"))
@@ -95,26 +94,15 @@ def reset():
     for path in (ETC / "cameras.d",):
         shutil.rmtree(path, ignore_errors=True)
         path.mkdir(parents=True, exist_ok=True)
-        os.chown(path, -1, __import__("grp").getgrnam("petcam").gr_gid)
-        os.chmod(path, 0o750)
 
     write_file(ETC / "petcam.conf", CAMERA_DEFAULTS)
-    os.chown(ETC / "petcam.conf", __import__("pwd").getpwnam("petcam").pw_uid,
-             __import__("grp").getgrnam("petcam").gr_gid)
     write_file(ETC / "home-assistant.conf", HOME_ASSISTANT_DEFAULTS)
-    os.chown(ETC / "home-assistant.conf", __import__("pwd").getpwnam("petcam").pw_uid,
-             __import__("grp").getgrnam("petcam").gr_gid)
 
     for name, defaults in (("timelapse", TIMELAPSE_DEFAULTS), ("motion", MOTION_DEFAULTS)):
         directory = STATE / name
         shutil.rmtree(directory, ignore_errors=True)
         directory.mkdir(parents=True, exist_ok=True)
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
-        os.chown(directory / "config.json", __import__("pwd").getpwnam("petcam").pw_uid,
-                 __import__("grp").getgrnam("petcam").gr_gid)
-        os.chown(directory, __import__("pwd").getpwnam("petcam").pw_uid,
-                 __import__("grp").getgrnam("petcam").gr_gid)
-        os.chmod(directory, 0o750)
 
     (STATE / "health.json").unlink(missing_ok=True)
     run("/usr/bin/systemctl", "daemon-reload")
@@ -126,7 +114,7 @@ def reset():
 
 def main():
     if os.geteuid() != 0:
-        raise SystemExit("Run with sudo: sudo petcam-admin")
+        raise SystemExit("Factory reset must run as root.")
     print("This will erase PetCam settings, administrator credentials, camera profiles,")
     print("timelapse frames, motion snapshots, and PetCam integration settings.")
     print("It will preserve Raspberry Pi OS, Wi-Fi/networking, SSH, TLS identity,")

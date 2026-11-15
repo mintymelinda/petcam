@@ -8,11 +8,10 @@ from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_web_manager",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py",
+    "src/petcam/web_manager.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
-
 
 class WebManagerTests(unittest.TestCase):
 
@@ -147,7 +146,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["capture_mode"], "native_h264_csi")
 
     def test_browser_source_shows_camera_connection_status_and_retries(self):
-        source = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py").read_text()
+        source = Path("src/petcam/web_manager.py").read_text()
         self.assertIn('id="status">Connecting to PetCam camera...', source)
         self.assertIn('image.onerror=', source)
         self.assertIn('image.src="/stream?retry="+Date.now()', source)
@@ -275,25 +274,25 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('$("confirm-update-install").onclick=installUpdate', MODULE.PAGE)
         self.assertNotIn('confirm("Install the signed PetCam application update now?"', MODULE.PAGE)
 
-    def test_update_check_uses_fixed_privileged_command(self):
+    def test_update_check_runs_directly_as_root(self):
         completed = mock.Mock(returncode=0, stdout='{"update_available": false}', stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
             self.assertFalse(MODULE.update_check()["update_available"])
-        self.assertEqual(run.call_args.args[0], ["sudo", "-n", "/usr/local/bin/petcam-update", "check"])
+        self.assertEqual(run.call_args.args[0], ["/usr/local/bin/petcam-update", "check"])
 
-    def test_set_rtmp_service_uses_noninteractive_scoped_helper(self):
+    def test_rtmp_service_actions_use_direct_systemctl_commands(self):
         completed = mock.Mock(returncode=0, stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
             MODULE.set_rtmp_service("restart")
         self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart",
+            "/usr/bin/systemctl", "restart", "petcam-rtmp.service",
         ])
+        with self.assertRaises(ValueError):
+            MODULE.rtmp_service_command("arbitrary-command")
 
-    def test_web_manager_privileged_systemctl_calls_are_noninteractive(self):
+    def test_web_manager_has_no_sudo_privilege_handoffs(self):
         source = Path(SPEC.origin).read_text(encoding="utf-8")
-        self.assertNotIn('["sudo", "/usr/bin/systemctl"', source)
-        self.assertNotIn('["sudo", "/usr/local/sbin/petcam-rtmp-service"', source)
-        self.assertIn('["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]', source)
+        self.assertNotIn('"sudo"', source)
 
     def test_update_status_reports_active_state_and_recent_logs(self):
         outputs = [
@@ -348,7 +347,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(apply.call_args.args[0]["FORMAT"], "H264")
         save_rtmp.assert_called_once_with({"enabled": True})
         self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "enable"
+            "/usr/bin/systemctl", "enable", "--now", "petcam-rtmp.service"
         ])
 
     def test_h264_selection_is_rejected_when_mjpeg_consumers_are_enabled(self):
@@ -587,18 +586,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn('rtmp-encoder', MODULE.PAGE)
         self.assertIn("saved camera settings are selected", MODULE.PAGE)
 
-    def test_explicit_h264_capture_hands_v4l2_to_gstreamer_rtsp(self):
-        script = Path("stage-petcam/02-configure-petcam/00-run-chroot.sh").read_text()
-        server = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam/rtmp_output.py").read_text()
-        self.assertIn('if [[ "$FORMAT" == "H264" ]]', script)
-        self.assertIn("start_native_h264", script)
-        self.assertIn("exec /usr/bin/sleep infinity", script)
-        self.assertIn("v4l2src", server)
-        self.assertIn("rtph264pay", server)
-        self.assertNotIn("ffmpeg", script.lower())
-        self.assertNotIn("udp://127.0.0.1:10000", script)
-        self.assertIn("H.264 capture cannot run while timelapse or motion detection requires MJPEG", script)
-
     def test_browser_source_is_rejected_when_h264_capture_is_active(self):
         class Request:
             path = "/"
@@ -776,7 +763,6 @@ class WebManagerTests(unittest.TestCase):
         ):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 MODULE.save_selection({"kind": "csi", "camera": 0, "mode": mode})
-
 
 class CameraControlTests(unittest.TestCase):
     SAMPLE_CONTROLS = """brightness 0x00980900 (int) : min=0 max=255 step=1 default=128 value=128 flags=has-min-max
@@ -975,7 +961,6 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('input.type="number"', MODULE.PAGE)
         self.assertIn('document.createElement("select")', MODULE.PAGE)
 
-
 class CameraIdentityTests(unittest.TestCase):
     def test_usb_camera_identity_prefers_physical_path(self):
         camera = {"kind": "usb", "device": "/dev/video4", "physical_path": "/sys/devices/usb1/1-1"}
@@ -990,7 +975,6 @@ class CameraIdentityTests(unittest.TestCase):
         identity = MODULE.camera_identity(camera)
         self.assertTrue(identity["stable_identity"])
         self.assertTrue(identity["id"].startswith("csi-"))
-
 
 if __name__ == "__main__":
     unittest.main()

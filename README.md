@@ -1,29 +1,39 @@
 # PetCam
 
-PetCam is the application source for a Raspberry Pi camera streaming and management system. It supports USB UVC webcams and Raspberry Pi CSI cameras, exposes camera streams for OBS, and provides an authenticated web manager.
+PetCam is a Raspberry Pi camera streaming and management application. It supports USB UVC webcams and Raspberry Pi CSI cameras, provides an authenticated web manager, and exposes streams for OBS.
 
-This repository contains the runtime application, its runtime configuration and service definitions, tests, and feature documentation. Raspberry Pi OS image generation and publishing are maintained separately in [petcam-os](https://github.com/mintymelinda/petcam-os).
+This repository owns the application source and its runtime deployment assets. [petcam-os](https://github.com/mintymelinda/petcam-os) owns operating-system image generation, assembly, signing, validation, and publishing.
 
-## Repository contents
+## Repository layout
 
-- Runtime Python application modules: `stage-petcam/00-install-files/files/usr/local/lib/petcam/`
-- Runtime configuration, systemd units, and service helpers: `stage-petcam/00-install-files/files/`
-- Unit tests: `tests/`
-- Feature and operations documentation: `docs/`
-- Application version: `VERSION`
+```text
+src/petcam/       Python application
+deploy/           Runtime configuration, systemd units, and privileged helpers
+tests/            Application tests
+tools/            Application release tooling
+docs/             Feature and operations documentation
+assets/           Project assets
+VERSION           Application version
+```
 
-The source layout is retained so existing tests and runtime packaging references remain valid. Image-generation workflows, pi-gen stages, image assembly scripts, and image publication tooling are not part of this repository.
+Deployment assets are grouped by purpose rather than by the image-builder mechanism that originally installed them. The OS image project is responsible for mapping these files into the target filesystem.
 
 ## Development
 
-The application uses Python's standard library at runtime. Install the test dependency and run the suite:
+Python 3.11 or newer is supported. Create an environment and install the development dependencies:
 
 ```bash
-python -m pip install pytest
-python -m pytest -q
+python -m pip install -e ".[test]"
+python -m pytest
 ```
 
-GitHub Actions runs unit tests and Python compilation checks. This repository does not build Raspberry Pi OS images, run pi-gen, assemble Docker images, or publish OS images.
+Run static bytecode compilation with:
+
+```bash
+python -m compileall -q src tests tools
+```
+
+GitHub Actions runs the application test and compilation checks. It does not build Raspberry Pi OS images, run pi-gen, assemble Docker images, or publish OS images.
 
 ## Documentation
 
@@ -32,3 +42,13 @@ GitHub Actions runs unit tests and Python compilation checks. This repository do
 - [Motion detection](docs/motion-detection.md)
 - [Timelapse capture](docs/timelapse.md)
 - [Application update engine](docs/update-engine.md)
+
+
+## Runtime privileges
+
+PetCam application services run as unrestricted root processes during the initial
+functional validation phase. No systemd sandboxing, service-account isolation, or
+application-managed restrictive file modes are applied. The web manager retains
+its application authentication and CSRF checks; signed-update verification remains
+enabled. PetCam no longer installs a dedicated service account, sudoers policy,
+or privileged-command wrapper.

@@ -101,7 +101,6 @@ def save_config(values, path=CONFIG):
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
-    os.chmod(temporary, 0o640)
     os.replace(temporary, path)
     return config
 
@@ -169,7 +168,6 @@ def save_events(events, path=EVENTS):
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
-    os.chmod(temporary, 0o640)
     os.replace(temporary, path)
 
 
@@ -381,7 +379,6 @@ def write_state(state, path=STATE):
     preserved.update(state)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_text(json.dumps(preserved, indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o640)
     os.replace(temporary, path)
 
 

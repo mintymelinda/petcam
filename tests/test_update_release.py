@@ -13,30 +13,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "stage-petcam/00-in
 from create_update_release import build_release
 from updater import parse_manifest, verify_signature
 
-
 class SignedReleasePublisherTests(unittest.TestCase):
-    def test_image_stage_copies_every_required_python_module_into_update_release(self):
-        repo = Path(__file__).resolve().parents[1]
-        stage_script = repo / "stage-petcam/00-install-files/00-run.sh"
-        source_dir = repo / "stage-petcam/00-install-files/files/usr/local/lib/petcam"
-        script = stage_script.read_text(encoding="utf-8")
-        self.assertNotIn("mediamtx", script.lower())
-        from create_update_release import REQUIRED_FILES
-        systemd_source_dir = repo / "stage-petcam/00-install-files/files/etc/systemd/system"
-        for relative in REQUIRED_FILES:
-            if relative.startswith("lib/") and relative.endswith(".py"):
-                source = source_dir / Path(relative).name
-                install_line = f'install -m 0644 files/usr/local/lib/petcam/{source.name} "$RELEASE_DIR/{relative}"'
-            elif relative.startswith("systemd/") and relative.endswith(".service"):
-                source = systemd_source_dir / Path(relative).name
-                install_line = f'install -m 0644 files/etc/systemd/system/{source.name} "$RELEASE_DIR/{relative}"'
-            elif relative == "etc/petcam/rtmp.json":
-                source = repo / "stage-petcam/00-install-files/files/etc/petcam/rtmp.json"
-                install_line = 'install -m 0640 files/etc/petcam/rtmp.json "$RELEASE_DIR/etc/petcam/rtmp.json"'
-            else:
-                continue
-            self.assertTrue(source.is_file(), f"Missing staged source for {relative}")
-            self.assertIn(install_line, script, f"Image stage does not install required release asset {relative}")
 
     def make_release_tree(self, root):
         files = {
@@ -124,7 +101,6 @@ class SignedReleasePublisherTests(unittest.TestCase):
             (release / "vendor/bin/ustreamer").unlink()
             with self.assertRaises(ValueError):
                 build_release(release, "1.2.3", *args)
-
 
 if __name__ == "__main__":
     unittest.main()

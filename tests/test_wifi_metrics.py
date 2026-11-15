@@ -3,11 +3,10 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-PATH = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam/wifi_metrics.py")
+PATH = Path("src/petcam/wifi_metrics.py")
 SPEC = importlib.util.spec_from_file_location("petcam_wifi_metrics", PATH)
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
-
 
 class WifiMetricsTests(unittest.TestCase):
     def setUp(self):
@@ -32,10 +31,6 @@ class WifiMetricsTests(unittest.TestCase):
         self.assertEqual(result["wifi"]["tx_retries"], 12)
         self.assertEqual(result["wifi"]["channel"], 36)
 
-    def test_image_installs_iw_for_wireless_link_metrics(self):
-        packages = Path("stage-petcam-base/01-install-packages/00-packages").read_text()
-        self.assertIn("\niw\n", "\n" + packages.strip() + "\n")
-
     def test_reports_wired_link_without_claiming_wifi_data(self):
         with mock.patch.object(MODULE, "_command", return_value='[{"dev":"eth0"}]'), \
                 mock.patch.object(MODULE.Path, "exists", return_value=False), \
@@ -43,7 +38,6 @@ class WifiMetricsTests(unittest.TestCase):
             result = MODULE.collect_network_performance()
         self.assertEqual(result["type"], "wired_or_other")
         self.assertIsNone(result["wifi"]["signal_dbm"])
-
 
 if __name__ == "__main__":
     unittest.main()

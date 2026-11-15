@@ -551,7 +551,7 @@ def main():
         status = "unknown"
     try:
         log = subprocess.run(
-            ["sudo", "-n", "/usr/bin/journalctl", "-u", "petcam-stream.service", "-n", "300", "--no-pager"],
+            ["/usr/bin/journalctl", "-u", "petcam-stream.service", "-n", "300", "--no-pager"],
             capture_output=True, text=True, check=False,
         ).stdout
     except OSError:

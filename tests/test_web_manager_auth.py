@@ -11,7 +11,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-LIB = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam")
+LIB = Path("src/petcam")
 import sys
 sys.path.insert(0, str(LIB))
 import web_auth

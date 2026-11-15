@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 AUTH_MODULE_PATH = Path(
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/web_auth.py"
+    "src/petcam/web_auth.py"
 )
 SPEC = importlib.util.spec_from_file_location("petcam_web_auth", AUTH_MODULE_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)

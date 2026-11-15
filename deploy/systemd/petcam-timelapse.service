@@ -5,9 +5,6 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=petcam
-Group=petcam
-SupplementaryGroups=petcam video
 ExecStart=/usr/bin/python3 /opt/petcam/current/lib/timelapse.py
 Restart=on-failure
 RestartSec=5
@@ -17,17 +14,6 @@ CPUQuota=25%
 MemoryMax=96M
 IOSchedulingClass=idle
 IOSchedulingPriority=7
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ReadWritePaths=/var/lib/petcam /mnt/petcam-network
-RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
-ProtectKernelTunables=true
-ProtectKernelModules=true
-ProtectControlGroups=true
-LockPersonality=true
-RestrictSUIDSGID=true
 
 [Install]
 WantedBy=multi-user.target

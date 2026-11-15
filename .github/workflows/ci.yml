@@ -12,26 +12,16 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    env:
-      PYTHONPATH: stage-petcam/00-install-files/files/usr/local/lib/petcam:tools
+    container:
+      image: python:3.11-slim-bookworm
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - name: Install test dependencies
-        run: python -m pip install --upgrade pip pytest Pillow
-      - name: Compile application and tests
-        run: python -m compileall -q stage-petcam/00-install-files/files/usr/local/lib/petcam tools tests
+      - name: Install application test dependencies
+        run: |
+          python -m pip install --no-cache-dir --upgrade pip
+          python -m pip install --no-cache-dir -e ".[test]"
+      - name: Compile source and tests
+        run: python -m compileall -q src tests tools
       - name: Run unit tests
-        run: >-
-          python -m pytest -q
-          -k "not test_image_stage_copies_every_required_python_module_into_update_release
-          and not test_updater_service_can_write_only_required_integration_directories
-          and not test_embedded_upstream_patch_has_valid_unified_diff_hunk_lengths
-          and not test_pinned_ustreamer_build_applies_hardware_fps_patch_before_compiling
-          and not test_usb_startup_sets_hardware_rate_and_keeps_output_pacing
-          and not test_explicit_h264_capture_hands_v4l2_to_gstreamer_rtsp
-          and not test_image_installs_iw_for_wireless_link_metrics"
+        run: python -m pytest -q

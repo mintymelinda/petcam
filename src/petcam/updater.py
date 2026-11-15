@@ -4,11 +4,9 @@
 from __future__ import annotations
 
 import argparse
-import grp
 import hashlib
 import json
 import os
-import pwd
 import platform
 import re
 import ssl
@@ -41,8 +39,6 @@ REQUIRED_FILES = (
     "lib/camera.py",
     "lib/csi_stream.py",
     "lib/rtmp_output.py",
-    "bin/petcam-rtmp-service",
-    "etc/sudoers.d/petcam-rtmp",
     "lib/web_manager.py",
     "lib/web_auth.py",
     "lib/health_monitor.py",
@@ -93,7 +89,6 @@ def write_update_state(stage: str, message: str = "", **details: object) -> None
         state["finished_at"] = now
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o644)
     os.replace(temporary, path)
 
 
@@ -438,106 +433,43 @@ def validate_release(directory: Path, version: str) -> None:
 def install_runtime_integration_files(
     release: Path, etc_root: Path = Path("/etc"), usr_root: Path = Path("/usr"),
 ) -> None:
-    """Install signed optional integration assets without overwriting user settings."""
-    service_source = release / "systemd/petcam-home-assistant.service"
-    config_source = release / "etc/petcam/home-assistant.conf"
-    service_destination = etc_root / "systemd/system/petcam-home-assistant.service"
-    config_destination = etc_root / "petcam/home-assistant.conf"
-    timelapse_source = release / "systemd/petcam-timelapse.service"
-    timelapse_destination = etc_root / "systemd/system/petcam-timelapse.service"
-    motion_source = release / "systemd/petcam-motion.service"
-    motion_destination = etc_root / "systemd/system/petcam-motion.service"
-    rtmp_service_source = release / "systemd/petcam-rtmp.service"
-    rtmp_service_destination = etc_root / "systemd/system/petcam-rtmp.service"
-    rtmp_config_source = release / "etc/petcam/rtmp.json"
-    rtmp_config_destination = etc_root / "petcam/rtmp.json"
-    rtmp_helper_source = release / "bin/petcam-rtmp-service"
-    rtmp_helper_destination = usr_root / "local/sbin/petcam-rtmp-service"
-    rtmp_sudoers_source = release / "etc/sudoers.d/petcam-rtmp"
-    rtmp_sudoers_destination = etc_root / "sudoers.d/petcam-rtmp"
-    service_destination.parent.mkdir(parents=True, exist_ok=True)
-    config_destination.parent.mkdir(parents=True, exist_ok=True)
-    timelapse_destination.parent.mkdir(parents=True, exist_ok=True)
-    motion_destination.parent.mkdir(parents=True, exist_ok=True)
-    rtmp_service_destination.parent.mkdir(parents=True, exist_ok=True)
-    rtmp_config_destination.parent.mkdir(parents=True, exist_ok=True)
-    rtmp_helper_destination.parent.mkdir(parents=True, exist_ok=True)
-    rtmp_sudoers_destination.parent.mkdir(parents=True, exist_ok=True)
+    """Install integration assets and remove the former privilege bridge."""
+    service_files = (
+        ("systemd/petcam-home-assistant.service", "systemd/system/petcam-home-assistant.service"),
+        ("systemd/petcam-timelapse.service", "systemd/system/petcam-timelapse.service"),
+        ("systemd/petcam-motion.service", "systemd/system/petcam-motion.service"),
+        ("systemd/petcam-rtmp.service", "systemd/system/petcam-rtmp.service"),
+    )
+    for source_name, destination_name in service_files:
+        source = release / source_name
+        destination = etc_root / destination_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        temporary = destination.with_name(destination.name + ".new")
+        shutil.copyfile(source, temporary)
+        os.replace(temporary, destination)
 
-    service_temporary = service_destination.with_name(service_destination.name + ".new")
-    shutil.copyfile(service_source, service_temporary)
-    os.chmod(service_temporary, 0o644)
-    os.replace(service_temporary, service_destination)
-    timelapse_temporary = timelapse_destination.with_name(timelapse_destination.name + ".new")
-    shutil.copyfile(timelapse_source, timelapse_temporary)
-    os.chmod(timelapse_temporary, 0o644)
-    os.replace(timelapse_temporary, timelapse_destination)
-    motion_temporary = motion_destination.with_name(motion_destination.name + ".new")
-    shutil.copyfile(motion_source, motion_temporary)
-    os.chmod(motion_temporary, 0o644)
-    os.replace(motion_temporary, motion_destination)
-    rtmp_service_temporary = rtmp_service_destination.with_name(rtmp_service_destination.name + ".new")
-    shutil.copyfile(rtmp_service_source, rtmp_service_temporary)
-    os.chmod(rtmp_service_temporary, 0o644)
-    os.replace(rtmp_service_temporary, rtmp_service_destination)
-    rtmp_helper_temporary = rtmp_helper_destination.with_name(rtmp_helper_destination.name + ".new")
-    shutil.copyfile(rtmp_helper_source, rtmp_helper_temporary)
-    os.chmod(rtmp_helper_temporary, 0o755)
-    os.replace(rtmp_helper_temporary, rtmp_helper_destination)
-    rtmp_sudoers_temporary = rtmp_sudoers_destination.with_name(rtmp_sudoers_destination.name + ".new")
-    shutil.copyfile(rtmp_sudoers_source, rtmp_sudoers_temporary)
-    os.chmod(rtmp_sudoers_temporary, 0o440)
-    os.replace(rtmp_sudoers_temporary, rtmp_sudoers_destination)
-    config_destination_is_new = not config_destination.exists()
-    if config_destination_is_new:
-        config_temporary = config_destination.with_name(config_destination.name + ".new")
-        shutil.copyfile(config_source, config_temporary)
-        os.chmod(config_temporary, 0o640)
-        os.replace(config_temporary, config_destination)
-    elif config_destination.is_symlink() or not config_destination.is_file():
-        raise UpdateError("Refusing to use a non-regular Home Assistant configuration file.")
-    if rtmp_config_destination.is_symlink():
-        raise UpdateError("Refusing to use a symlinked RTMP configuration file.")
-    if not rtmp_config_destination.exists():
-        rtmp_temporary = rtmp_config_destination.with_name(rtmp_config_destination.name + ".new")
-        shutil.copyfile(rtmp_config_source, rtmp_temporary)
-        os.chmod(rtmp_temporary, 0o640)
-        os.replace(rtmp_temporary, rtmp_config_destination)
-    elif not rtmp_config_destination.is_file():
-        raise UpdateError("Refusing to use a non-regular RTMP configuration file.")
-    os.chmod(config_destination, 0o640)
-    os.chmod(rtmp_config_destination, 0o640)
-    try:
-        group_id = grp.getgrnam("petcam").gr_gid
-        if os.geteuid() == 0:
-            os.chown(service_destination, 0, 0)
-            os.chown(timelapse_destination, 0, 0)
-            os.chown(motion_destination, 0, 0)
-            os.chown(rtmp_service_destination, 0, 0)
-            os.chown(rtmp_helper_destination, 0, 0)
-            os.chown(rtmp_sudoers_destination, 0, 0)
-            os.chown(config_destination, 0, group_id)
-            os.chown(rtmp_config_destination, pwd.getpwnam("petcam").pw_uid, group_id)
-    except KeyError as error:
-        raise UpdateError("The PetCam system group is missing; cannot secure Home Assistant configuration.") from error
+    config_files = (
+        ("etc/petcam/home-assistant.conf", "petcam/home-assistant.conf"),
+        ("etc/petcam/rtmp.json", "petcam/rtmp.json"),
+    )
+    for source_name, destination_name in config_files:
+        source = release / source_name
+        destination = etc_root / destination_name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        if destination.is_symlink():
+            raise UpdateError(f"Refusing to use a symlinked PetCam configuration file: {destination}")
+        if not destination.exists():
+            temporary = destination.with_name(destination.name + ".new")
+            shutil.copyfile(source, temporary)
+            os.replace(temporary, destination)
+        elif not destination.is_file():
+            raise UpdateError(f"Refusing to use a non-regular PetCam configuration file: {destination}")
+
+    # Remove only PetCam's retired privilege bridge files.
+    (usr_root / "local/sbin/petcam-rtmp-service").unlink(missing_ok=True)
+    (etc_root / "sudoers.d/petcam-rtmp").unlink(missing_ok=True)
 
 
-
-def repair_config_directory_permissions(directory: Path = Path("/etc/petcam")) -> None:
-    """Restore the writable, group-restricted config directory used by the web manager."""
-    try:
-        if directory.is_symlink():
-            raise UpdateError(f"Refusing to repair a symlinked PetCam configuration directory: {directory}")
-        directory.mkdir(parents=True, exist_ok=True)
-        group_id = grp.getgrnam("petcam").gr_gid
-        os.chown(directory, 0, group_id)
-        os.chmod(directory, 0o1770)
-    except UpdateError:
-        raise
-    except (OSError, KeyError) as error:
-        raise UpdateError(
-            f"Unable to secure PetCam configuration directory {directory}: {error}"
-        ) from error
 
 
 def atomic_activate(release: Path) -> str | None:
@@ -689,7 +621,6 @@ def install_update(config: dict[str, str]) -> dict[str, object]:
         write_update_state("installing", f"Activating release {version}", target_version=version, previous_version=old_version)
         atomic_activate(final)
         switched = True
-        repair_config_directory_permissions()
         install_runtime_integration_files(final)
         run_required(["systemctl", "daemon-reload"], "Reloading systemd units")
         run_required(["systemctl", "enable", "--now", "petcam-timelapse.service"], "Enabling timelapse service")
