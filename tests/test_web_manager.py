@@ -13,6 +13,9 @@ SPEC = importlib.util.spec_from_file_location(
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
+DASHBOARD_JS = Path("src/petcam/static/dashboard.js").read_text(encoding="utf-8")
+PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
+
 class WebManagerTests(unittest.TestCase):
 
     def test_feature_config_transaction_restores_config_and_services_on_failure(self):
@@ -76,55 +79,60 @@ class WebManagerTests(unittest.TestCase):
         with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam.example.net"):
             self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.example.net")
     def test_management_page_uses_the_four_tab_layout(self):
-        self.assertIn("Refresh", MODULE.PAGE)
-        self.assertIn("Browser Source", MODULE.PAGE)
-        self.assertIn('role="tablist"', MODULE.PAGE)
-        tab_order = [MODULE.PAGE.index('data-tab="camera"'), MODULE.PAGE.index('data-tab="timelapse"'),
-                     MODULE.PAGE.index('data-tab="motion"'), MODULE.PAGE.index('data-tab="system"')]
+        self.assertIn("Refresh", PAGE_AND_JS)
+        self.assertIn("Browser Source", PAGE_AND_JS)
+        self.assertIn('role="tablist"', PAGE_AND_JS)
+        tab_order = [PAGE_AND_JS.index('data-tab="camera"'), PAGE_AND_JS.index('data-tab="timelapse"'),
+                     PAGE_AND_JS.index('data-tab="motion"'), PAGE_AND_JS.index('data-tab="system"')]
         self.assertEqual(tab_order, sorted(tab_order))
-        self.assertIn('id="logout" type="button" class="sign-out">Sign out</button>', MODULE.PAGE)
-        self.assertNotIn(">OBS</button>", MODULE.PAGE)
-        self.assertNotIn(">Streams</button>", MODULE.PAGE)
-        self.assertNotIn("copy-media-source", MODULE.PAGE)
-        self.assertIn('id="panel-camera"', MODULE.PAGE)
-        self.assertIn('id="panel-timelapse"', MODULE.PAGE)
-        self.assertIn('id="panel-motion"', MODULE.PAGE)
-        self.assertIn('id="panel-system"', MODULE.PAGE)
-        self.assertIn('id="advanced-camera-dialog"', MODULE.PAGE)
-        self.assertIn('setInterval(()=>{if(pendingCameraControlChanges.size===0)refreshCameraControls()},60000)', MODULE.PAGE)
-        self.assertIn('setTimeout(()=>{if(pendingCameraControlChanges.size)applyCameraControlChanges()},800)', MODULE.PAGE)
-        self.assertIn('id="camera-controls-list"', MODULE.PAGE)
-        self.assertIn('id="apply-camera-controls" type="button" hidden disabled', MODULE.PAGE)
-        self.assertIn('grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))', MODULE.PAGE)
-        self.assertIn('id="system-info"', MODULE.PAGE)
-        self.assertIn('id="release-notes"', MODULE.PAGE)
-        self.assertIn('id="install-update" hidden disabled', MODULE.PAGE)
-        self.assertIn('OBS Feed FPS (RTSP)', MODULE.PAGE)
-        self.assertIn("rtmp.enabled", MODULE.PAGE)
-        self.assertIn("rtmp.state", MODULE.PAGE)
-        self.assertIn('id="rtmp-output"', MODULE.PAGE)
-        self.assertIn("OBS Media Source URL", MODULE.PAGE)
-        self.assertIn('"GREY","H264"', MODULE.PAGE)
-        self.assertIn("syncOutputModeControls", MODULE.PAGE)
-        self.assertIn("data-browser-feed-link", MODULE.PAGE)
-        self.assertIn("forces OBS RTSP output on", MODULE.PAGE)
-        self.assertNotIn("rtmp://", MODULE.PAGE)
-        self.assertNotIn("stream_key", MODULE.PAGE)
-        self.assertNotIn("rtmp-server-url", MODULE.PAGE)
-        self.assertNotIn("rtmp-stream-key", MODULE.PAGE)
-        self.assertIn('id="obs-rtsp-url"', MODULE.PAGE)
-        self.assertIn('id="obs-rtsp-url" type="text"', MODULE.PAGE)
-        self.assertIn('MJPEG delivered FPS', MODULE.PAGE)
-        self.assertIn('Network Up / Down', MODULE.PAGE)
-        self.assertIn('Wi-Fi signal', MODULE.PAGE)
-        self.assertIn("signal>=-50?4:signal>=-60?3:signal>=-67?2:signal>=-75?1:0", MODULE.PAGE)
-        self.assertIn('"▮".repeat(bars)+"▯".repeat(4-bars)', MODULE.PAGE)
-        self.assertIn('Network and OBS diagnostics', MODULE.PAGE)
-        self.assertIn('/api/diagnostics', MODULE.PAGE)
-        self.assertIn('/api/support-bundle', MODULE.PAGE)
-        self.assertNotIn('/api/streams', MODULE.PAGE)
-        self.assertNotIn('change-password', MODULE.PAGE)
-        self.assertNotIn('/api/password', MODULE.PAGE)
+        self.assertIn('id="logout" type="button" class="sign-out">Sign out</button>', PAGE_AND_JS)
+        self.assertNotIn(">OBS</button>", PAGE_AND_JS)
+        self.assertNotIn(">Streams</button>", PAGE_AND_JS)
+        self.assertNotIn("copy-media-source", PAGE_AND_JS)
+        self.assertIn('id="panel-camera"', PAGE_AND_JS)
+        self.assertIn('id="panel-timelapse"', PAGE_AND_JS)
+        self.assertIn('id="panel-motion"', PAGE_AND_JS)
+        self.assertIn('id="panel-system"', PAGE_AND_JS)
+        self.assertIn('id="advanced-camera-dialog"', PAGE_AND_JS)
+        self.assertIn('setInterval(() => {', PAGE_AND_JS)
+        self.assertIn('pendingCameraControlChanges.size === 0', PAGE_AND_JS)
+        self.assertIn('refreshCameraControls()', PAGE_AND_JS)
+        self.assertIn('advancedApplyHandle = setTimeout(() => {', PAGE_AND_JS)
+        self.assertIn('if (pendingCameraControlChanges.size) applyCameraControlChanges();', PAGE_AND_JS)
+        self.assertIn('id="camera-controls-list"', PAGE_AND_JS)
+        self.assertIn('id="apply-camera-controls" type="button" hidden disabled', PAGE_AND_JS)
+        self.assertIn('grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))', PAGE_AND_JS)
+        self.assertIn('id="system-info"', PAGE_AND_JS)
+        self.assertIn('id="release-notes"', PAGE_AND_JS)
+        self.assertIn('id="install-update" hidden disabled', PAGE_AND_JS)
+        self.assertIn('OBS Feed FPS (RTSP)', PAGE_AND_JS)
+        self.assertIn("rtmp.enabled", PAGE_AND_JS)
+        self.assertIn("rtmp.state", PAGE_AND_JS)
+        self.assertIn('id="rtmp-output"', PAGE_AND_JS)
+        self.assertIn("OBS Media Source URL", PAGE_AND_JS)
+        self.assertIn('"GREY"', PAGE_AND_JS)
+        self.assertIn('"H264"', PAGE_AND_JS)
+        self.assertIn("syncOutputModeControls", PAGE_AND_JS)
+        self.assertIn("data-browser-feed-link", PAGE_AND_JS)
+        self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
+        self.assertNotIn("rtmp://", PAGE_AND_JS)
+        self.assertNotIn("stream_key", PAGE_AND_JS)
+        self.assertNotIn("rtmp-server-url", PAGE_AND_JS)
+        self.assertNotIn("rtmp-stream-key", PAGE_AND_JS)
+        self.assertIn('id="obs-rtsp-url"', PAGE_AND_JS)
+        self.assertIn('id="obs-rtsp-url" type="text"', PAGE_AND_JS)
+        self.assertIn('MJPEG delivered FPS', PAGE_AND_JS)
+        self.assertIn('Network Up / Down', PAGE_AND_JS)
+        self.assertIn('Wi-Fi signal', PAGE_AND_JS)
+        self.assertIn("signal >= -50", PAGE_AND_JS)
+        self.assertIn("signal >= -75", PAGE_AND_JS)
+        self.assertIn('"▮".repeat(bars) + "▯".repeat(4 - bars)', PAGE_AND_JS)
+        self.assertIn('Network and OBS diagnostics', PAGE_AND_JS)
+        self.assertIn('/api/diagnostics', PAGE_AND_JS)
+        self.assertIn('/api/support-bundle', PAGE_AND_JS)
+        self.assertNotIn('/api/streams', PAGE_AND_JS)
+        self.assertNotIn('change-password', PAGE_AND_JS)
+        self.assertNotIn('/api/password', PAGE_AND_JS)
 
     def test_live_capture_status_reports_csi_hardware_h264_marker(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -147,9 +155,55 @@ class WebManagerTests(unittest.TestCase):
 
     def test_browser_source_shows_camera_connection_status_and_retries(self):
         source = Path("src/petcam/web_manager.py").read_text()
+        script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
         self.assertIn('id="status">Connecting to PetCam camera...', source)
-        self.assertIn('image.onerror=', source)
-        self.assertIn('image.src="/stream?retry="+Date.now()', source)
+        self.assertIn('<script src="/browser-source.js" defer></script>', source)
+        self.assertIn('image.onerror = () =>', script)
+        self.assertIn('image.src = "/stream?retry=" + Date.now()', script)
+
+    def test_dashboard_javascript_is_external_and_served_without_authentication(self):
+        self.assertIn('<script src="/static/dashboard.js" defer></script>', MODULE.PAGE)
+        self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
+        class Request:
+            path = "/static/dashboard.js"
+            def __init__(self):
+                self.headers = {}
+                self.wfile = io.BytesIO()
+                self.response_headers = []
+            def send_response(self, status):
+                self.status = status
+            def send_header(self, name, value):
+                self.response_headers.append((name, value))
+            def end_headers(self):
+                pass
+            def send_error(self, status, message=None):
+                self.status = status
+        request = Request()
+        MODULE.Handler.do_GET(request)
+        self.assertEqual(request.status, 200)
+        self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
+        self.assertEqual(request.wfile.getvalue().decode(), DASHBOARD_JS)
+
+    def test_browser_source_javascript_is_served_on_stream_port(self):
+        script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
+        class Request:
+            path = "/browser-source.js"
+            def __init__(self):
+                self.wfile = io.BytesIO()
+                self.response_headers = []
+            def send_response(self, status):
+                self.status = status
+            def send_header(self, name, value):
+                self.response_headers.append((name, value))
+            def end_headers(self):
+                pass
+            def send_error(self, status, message=None):
+                self.status = status
+        request = Request()
+        MODULE.StreamHandler.do_GET(request)
+        self.assertEqual(request.status, 200)
+        self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
+        self.assertEqual(request.wfile.getvalue().decode(), script)
 
     def test_stream_proxy_returns_503_when_camera_stream_is_unavailable(self):
         class Request:
@@ -191,18 +245,18 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["fps"], 29.8)
 
     def test_admin_reauthentication_uses_masked_password_dialog_not_prompt(self):
-        self.assertIn('<dialog id="login-dialog"', MODULE.PAGE)
-        self.assertIn('id="login-password" type="password"', MODULE.PAGE)
-        self.assertIn('autocomplete="current-password"', MODULE.PAGE)
-        self.assertIn('dialog.showModal()', MODULE.PAGE)
-        self.assertNotIn('window.prompt("Enter your PetCam manager password")', MODULE.PAGE)
+        self.assertIn('<dialog id="login-dialog"', PAGE_AND_JS)
+        self.assertIn('id="login-password" type="password"', PAGE_AND_JS)
+        self.assertIn('autocomplete="current-password"', PAGE_AND_JS)
+        self.assertIn('dialog.showModal()', PAGE_AND_JS)
+        self.assertNotIn('window.prompt("Enter your PetCam manager password")', PAGE_AND_JS)
 
     def test_first_run_admin_setup_is_available_in_the_browser(self):
-        self.assertIn('id="first-run-form"', MODULE.PAGE)
-        self.assertIn('id="setup-password"', MODULE.PAGE)
-        self.assertIn("/api/setup/status", MODULE.PAGE)
-        self.assertIn("/api/setup", MODULE.PAGE)
-        self.assertIn("SSH is not required", MODULE.PAGE)
+        self.assertIn('id="first-run-form"', PAGE_AND_JS)
+        self.assertIn('id="setup-password"', PAGE_AND_JS)
+        self.assertIn("/api/setup/status", PAGE_AND_JS)
+        self.assertIn("/api/setup", PAGE_AND_JS)
+        self.assertIn("SSH is not required", PAGE_AND_JS)
         self.assertIn("initialize_password", MODULE.Handler.do_POST.__code__.co_names)
         self.assertIn("is_configured", MODULE.Handler.do_GET.__code__.co_names)
 
@@ -267,12 +321,12 @@ class WebManagerTests(unittest.TestCase):
         initialize.assert_not_called()
 
     def test_update_install_uses_in_page_confirmation_not_native_dialogs(self):
-        self.assertIn('id="update-confirmation" hidden', MODULE.PAGE)
-        self.assertIn('id="cancel-update-install"', MODULE.PAGE)
-        self.assertIn('id="confirm-update-install"', MODULE.PAGE)
-        self.assertIn('$("update-confirmation").hidden=false', MODULE.PAGE)
-        self.assertIn('$("confirm-update-install").onclick=installUpdate', MODULE.PAGE)
-        self.assertNotIn('confirm("Install the signed PetCam application update now?"', MODULE.PAGE)
+        self.assertIn('id="update-confirmation" hidden', PAGE_AND_JS)
+        self.assertIn('id="cancel-update-install"', PAGE_AND_JS)
+        self.assertIn('id="confirm-update-install"', PAGE_AND_JS)
+        self.assertIn('$("update-confirmation").hidden = false;', PAGE_AND_JS)
+        self.assertIn('$("confirm-update-install").onclick = installUpdate;', PAGE_AND_JS)
+        self.assertNotIn('confirm("Install the signed PetCam application update now?"', PAGE_AND_JS)
 
     def test_update_check_runs_directly_as_root(self):
         completed = mock.Mock(returncode=0, stdout='{"update_available": false}', stderr="")
@@ -570,21 +624,21 @@ class WebManagerTests(unittest.TestCase):
         )
 
     def test_camera_page_restores_saved_camera_and_mode_and_refreshes_preview(self):
-        self.assertIn("activeCameraMatches", MODULE.PAGE)
-        self.assertIn("activeConfig", MODULE.PAGE)
-        self.assertNotIn("refreshLivePreview", MODULE.PAGE)
-        self.assertNotIn("dashboard-preview", MODULE.PAGE)
-        self.assertIn("MJPEG delivered FPS", MODULE.PAGE)
-        self.assertIn("OBS Feed FPS (RTSP)", MODULE.PAGE)
-        self.assertIn("rtmp.enabled", MODULE.PAGE)
-        self.assertIn("rtmp.state", MODULE.PAGE)
-        self.assertIn('id="rtmp-output"', MODULE.PAGE)
-        self.assertIn('id="obs-rtsp-url"', MODULE.PAGE)
-        self.assertIn('id="obs-rtsp-url" type="text"', MODULE.PAGE)
-        self.assertIn('http://__PETCAM_HOST__:8080/', MODULE.PAGE)
-        self.assertNotIn('id="live-preview"', MODULE.PAGE)
-        self.assertNotIn('rtmp-encoder', MODULE.PAGE)
-        self.assertIn("saved camera settings are selected", MODULE.PAGE)
+        self.assertIn("activeCameraMatches", PAGE_AND_JS)
+        self.assertIn("activeConfig", PAGE_AND_JS)
+        self.assertNotIn("refreshLivePreview", PAGE_AND_JS)
+        self.assertNotIn("dashboard-preview", PAGE_AND_JS)
+        self.assertIn("MJPEG delivered FPS", PAGE_AND_JS)
+        self.assertIn("OBS Feed FPS (RTSP)", PAGE_AND_JS)
+        self.assertIn("rtmp.enabled", PAGE_AND_JS)
+        self.assertIn("rtmp.state", PAGE_AND_JS)
+        self.assertIn('id="rtmp-output"', PAGE_AND_JS)
+        self.assertIn('id="obs-rtsp-url"', PAGE_AND_JS)
+        self.assertIn('id="obs-rtsp-url" type="text"', PAGE_AND_JS)
+        self.assertIn('http://__PETCAM_HOST__:8080/', PAGE_AND_JS)
+        self.assertNotIn('id="live-preview"', PAGE_AND_JS)
+        self.assertNotIn('rtmp-encoder', PAGE_AND_JS)
+        self.assertIn("saved camera settings are selected", PAGE_AND_JS)
 
     def test_browser_source_is_rejected_when_h264_capture_is_active(self):
         class Request:
@@ -601,23 +655,23 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("Use the OBS RTSP Media Source", request.errors[0][1])
 
     def test_camera_page_displays_measured_capture_rate_separately_from_configured_fps(self):
-        self.assertIn("Actual captured rate:", MODULE.PAGE)
-        self.assertIn("latest_captured_fps", MODULE.PAGE)
-        self.assertIn("configured:", MODULE.PAGE)
-        self.assertIn("actual ", MODULE.PAGE)
-        self.assertIn("setInterval(refreshLiveStatus,5000)", MODULE.PAGE)
-        self.assertIn("Capture status refreshes every 5 seconds", MODULE.PAGE)
-        self.assertIn("forwarded JPEG FPS", MODULE.PAGE)
-        self.assertIn('id="capture-status-freshness"', MODULE.PAGE)
+        self.assertIn("Actual captured rate:", PAGE_AND_JS)
+        self.assertIn("latest_captured_fps", PAGE_AND_JS)
+        self.assertIn("configured:", PAGE_AND_JS)
+        self.assertIn("actual ", PAGE_AND_JS)
+        self.assertIn("setInterval(refreshLiveStatus, 5000)", PAGE_AND_JS)
+        self.assertIn("Capture status refreshes every 5 seconds", PAGE_AND_JS)
+        self.assertIn("forwarded JPEG FPS", PAGE_AND_JS)
+        self.assertIn('id="capture-status-freshness"', PAGE_AND_JS)
 
     def test_system_tab_displays_the_installed_application_version(self):
-        self.assertIn('id="installed-version"', MODULE.PAGE)
-        self.assertIn('id="frame-statistics"', MODULE.PAGE)
-        self.assertIn('id="viewer-statistics"', MODULE.PAGE)
-        self.assertIn('id="network-statistics"', MODULE.PAGE)
-        self.assertIn("refreshStatistics", MODULE.PAGE)
-        self.assertIn("/api/live-status", MODULE.PAGE)
-        self.assertIn("/api/system", MODULE.PAGE)
+        self.assertIn('id="installed-version"', PAGE_AND_JS)
+        self.assertIn('id="frame-statistics"', PAGE_AND_JS)
+        self.assertIn('id="viewer-statistics"', PAGE_AND_JS)
+        self.assertIn('id="network-statistics"', PAGE_AND_JS)
+        self.assertIn("refreshStatistics", PAGE_AND_JS)
+        self.assertIn("/api/live-status", PAGE_AND_JS)
+        self.assertIn("/api/system", PAGE_AND_JS)
         with tempfile.TemporaryDirectory() as directory:
             version_file = Path(directory) / "VERSION"
             version_file.write_text("9.8.7\n", encoding="utf-8")
@@ -661,12 +715,12 @@ class WebManagerTests(unittest.TestCase):
             MODULE.unregister_stream_client(client_id)
 
     def test_camera_performance_warning_uses_single_capture_budget(self):
-        self.assertIn("projectedPixelRate", MODULE.PAGE)
-        self.assertIn("hardware_budget_pixels_per_second", MODULE.PAGE)
-        self.assertIn("exceedsPerformanceBudget", MODULE.PAGE)
-        self.assertIn("pixels/second", MODULE.PAGE)
-        self.assertNotIn("aggregate pixels/second", MODULE.PAGE)
-        self.assertNotIn("primary_estimated_pixels_per_second", MODULE.PAGE)
+        self.assertIn("projectedPixelRate", PAGE_AND_JS)
+        self.assertIn("hardware_budget_pixels_per_second", PAGE_AND_JS)
+        self.assertIn("exceedsPerformanceBudget", PAGE_AND_JS)
+        self.assertIn("pixels/second", PAGE_AND_JS)
+        self.assertNotIn("aggregate pixels/second", PAGE_AND_JS)
+        self.assertNotIn("primary_estimated_pixels_per_second", PAGE_AND_JS)
 
     def test_active_camera_config_returns_only_selection_fields(self):
         config = {
@@ -816,9 +870,13 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertEqual(controls["power_line_frequency"]["default"], 2)
 
     def test_camera_control_ui_labels_invalid_defaults_as_unavailable(self):
-        self.assertIn('defaultLabel=control.default===null?"unavailable"', MODULE.PAGE)
-        self.assertIn('" · Default: "+defaultLabel', MODULE.PAGE)
-        self.assertIn('" · Default: "+(menuOption(control.default)?.label??"unavailable")', MODULE.PAGE)
+        self.assertIn("defaultLabel =", PAGE_AND_JS)
+        self.assertIn("control.default === null", PAGE_AND_JS)
+        self.assertIn('? "unavailable"', PAGE_AND_JS)
+        self.assertIn('" · Default: "', PAGE_AND_JS)
+        self.assertIn("defaultLabel", PAGE_AND_JS)
+        self.assertIn("menuOption(control.default)?.label", PAGE_AND_JS)
+        self.assertIn('"unavailable"', PAGE_AND_JS)
 
     def test_active_usb_camera_is_resolved_from_saved_physical_identity(self):
         camera = {
@@ -938,28 +996,33 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertEqual([control["default"] for control in controls], [128, 2, 1])
 
     def test_unknown_camera_control_values_are_visible_in_editors(self):
-        self.assertIn('input.indeterminate=control.value===null', MODULE.PAGE)
-        self.assertIn('unknown.textContent="Unknown"', MODULE.PAGE)
-        self.assertIn('input.placeholder=control.value===null?"Unknown":""', MODULE.PAGE)
+        self.assertIn('input.indeterminate = control.value === null;', PAGE_AND_JS)
+        self.assertIn('unknown.textContent = "Unknown";', PAGE_AND_JS)
+        self.assertIn('input.placeholder = control.value === null ? "Unknown" : "";', PAGE_AND_JS)
 
     def test_boolean_camera_controls_use_enabled_and_disabled_labels(self):
-        self.assertIn('booleanLabel=value=>value===null?"unknown":Number(value)===1?"Enabled":"Disabled"', MODULE.PAGE)
-        self.assertIn('isBoolean?booleanLabel(control.value)', MODULE.PAGE)
-        self.assertIn('isBoolean?booleanLabel(control.default)', MODULE.PAGE)
+        self.assertIn('booleanLabel = (value) =>', PAGE_AND_JS)
+        self.assertIn('"Enabled"', PAGE_AND_JS)
+        self.assertIn('"Disabled"', PAGE_AND_JS)
+        self.assertIn('booleanLabel(control.value)', PAGE_AND_JS)
+        self.assertIn('booleanLabel(control.default)', PAGE_AND_JS)
 
     def test_management_page_exposes_dynamic_camera_controls(self):
-        self.assertIn('id="camera-controls-list"', MODULE.PAGE)
-        self.assertIn("/api/camera-controls", MODULE.PAGE)
-        self.assertIn("Dynamic framerate", MODULE.PAGE)
-        self.assertIn("actual captured FPS", MODULE.PAGE)
+        self.assertIn('id="camera-controls-list"', PAGE_AND_JS)
+        self.assertIn("/api/camera-controls", PAGE_AND_JS)
+        self.assertIn("Dynamic framerate", PAGE_AND_JS)
+        self.assertIn("actual captured FPS", PAGE_AND_JS)
 
     def test_all_camera_control_editor_types_are_added_to_the_editor(self):
-        self.assertIn('let input,output,isRange=false;', MODULE.PAGE)
-        self.assertIn('if(output)editor.append(input,output);else editor.append(input);', MODULE.PAGE)
-        self.assertIn('input.type="checkbox"', MODULE.PAGE)
-        self.assertIn('input.type="range"', MODULE.PAGE)
-        self.assertIn('input.type="number"', MODULE.PAGE)
-        self.assertIn('document.createElement("select")', MODULE.PAGE)
+        self.assertIn('let input,', PAGE_AND_JS)
+        self.assertIn('output,', PAGE_AND_JS)
+        self.assertIn('isRange = false;', PAGE_AND_JS)
+        self.assertIn('if (output) editor.append(input, output);', PAGE_AND_JS)
+        self.assertIn('else editor.append(input);', PAGE_AND_JS)
+        self.assertIn('input.type = "checkbox";', PAGE_AND_JS)
+        self.assertIn('input.type = "range";', PAGE_AND_JS)
+        self.assertIn('input.type = "number";', PAGE_AND_JS)
+        self.assertIn('document.createElement("select")', PAGE_AND_JS)
 
 class CameraIdentityTests(unittest.TestCase):
     def test_usb_camera_identity_prefers_physical_path(self):
