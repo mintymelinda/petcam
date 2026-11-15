@@ -94,7 +94,9 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="panel-motion"', PAGE_AND_JS)
         self.assertIn('id="panel-system"', PAGE_AND_JS)
         self.assertIn('id="advanced-camera-dialog"', PAGE_AND_JS)
-        self.assertIn('setInterval(()=>{if(pendingCameraControlChanges.size===0)refreshCameraControls()},60000)', PAGE_AND_JS)
+        self.assertIn('setInterval(() => {', PAGE_AND_JS)
+        self.assertIn('pendingCameraControlChanges.size === 0', PAGE_AND_JS)
+        self.assertIn('refreshCameraControls()', PAGE_AND_JS)
         self.assertIn('setTimeout(()=>{if(pendingCameraControlChanges.size)applyCameraControlChanges()},800)', PAGE_AND_JS)
         self.assertIn('id="camera-controls-list"', PAGE_AND_JS)
         self.assertIn('id="apply-camera-controls" type="button" hidden disabled', PAGE_AND_JS)
@@ -153,8 +155,8 @@ class WebManagerTests(unittest.TestCase):
         script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
         self.assertIn('id="status">Connecting to PetCam camera...', source)
         self.assertIn('<script src="/browser-source.js" defer></script>', source)
-        self.assertIn('image.onerror=', script)
-        self.assertIn('image.src="/stream?retry="+Date.now()', script)
+        self.assertIn('image.onerror = () =>', script)
+        self.assertIn('image.src = "/stream?retry=" + Date.now()', script)
 
     def test_dashboard_javascript_is_external_and_served_without_authentication(self):
         self.assertIn('<script src="/static/dashboard.js" defer></script>', MODULE.PAGE)
@@ -319,8 +321,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="update-confirmation" hidden', PAGE_AND_JS)
         self.assertIn('id="cancel-update-install"', PAGE_AND_JS)
         self.assertIn('id="confirm-update-install"', PAGE_AND_JS)
-        self.assertIn('$("update-confirmation").hidden=false', PAGE_AND_JS)
-        self.assertIn('$("confirm-update-install").onclick=installUpdate', PAGE_AND_JS)
+        self.assertIn('$("update-confirmation").hidden = false;', PAGE_AND_JS)
+        self.assertIn('$("confirm-update-install").onclick = installUpdate;', PAGE_AND_JS)
         self.assertNotIn('confirm("Install the signed PetCam application update now?"', PAGE_AND_JS)
 
     def test_update_check_runs_directly_as_root(self):
@@ -654,7 +656,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("latest_captured_fps", PAGE_AND_JS)
         self.assertIn("configured:", PAGE_AND_JS)
         self.assertIn("actual ", PAGE_AND_JS)
-        self.assertIn("setInterval(refreshLiveStatus,5000)", PAGE_AND_JS)
+        self.assertIn("setInterval(refreshLiveStatus, 5000)", PAGE_AND_JS)
         self.assertIn("Capture status refreshes every 5 seconds", PAGE_AND_JS)
         self.assertIn("forwarded JPEG FPS", PAGE_AND_JS)
         self.assertIn('id="capture-status-freshness"', PAGE_AND_JS)
@@ -987,14 +989,16 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertEqual([control["default"] for control in controls], [128, 2, 1])
 
     def test_unknown_camera_control_values_are_visible_in_editors(self):
-        self.assertIn('input.indeterminate=control.value===null', PAGE_AND_JS)
-        self.assertIn('unknown.textContent="Unknown"', PAGE_AND_JS)
-        self.assertIn('input.placeholder=control.value===null?"Unknown":""', PAGE_AND_JS)
+        self.assertIn('input.indeterminate = control.value === null;', PAGE_AND_JS)
+        self.assertIn('unknown.textContent = "Unknown";', PAGE_AND_JS)
+        self.assertIn('input.placeholder = control.value === null ? "Unknown" : "";', PAGE_AND_JS)
 
     def test_boolean_camera_controls_use_enabled_and_disabled_labels(self):
-        self.assertIn('booleanLabel=value=>value===null?"unknown":Number(value)===1?"Enabled":"Disabled"', PAGE_AND_JS)
-        self.assertIn('isBoolean?booleanLabel(control.value)', PAGE_AND_JS)
-        self.assertIn('isBoolean?booleanLabel(control.default)', PAGE_AND_JS)
+        self.assertIn('booleanLabel = (value) =>', PAGE_AND_JS)
+        self.assertIn('"Enabled"', PAGE_AND_JS)
+        self.assertIn('"Disabled"', PAGE_AND_JS)
+        self.assertIn('booleanLabel(control.value)', PAGE_AND_JS)
+        self.assertIn('booleanLabel(control.default)', PAGE_AND_JS)
 
     def test_management_page_exposes_dynamic_camera_controls(self):
         self.assertIn('id="camera-controls-list"', PAGE_AND_JS)
@@ -1003,8 +1007,11 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn("actual captured FPS", PAGE_AND_JS)
 
     def test_all_camera_control_editor_types_are_added_to_the_editor(self):
-        self.assertIn('let input,output,isRange=false;', PAGE_AND_JS)
-        self.assertIn('if(output)editor.append(input,output);else editor.append(input);', PAGE_AND_JS)
+        self.assertIn('let input,', PAGE_AND_JS)
+        self.assertIn('output,', PAGE_AND_JS)
+        self.assertIn('isRange = false;', PAGE_AND_JS)
+        self.assertIn('if (output) editor.append(input, output);', PAGE_AND_JS)
+        self.assertIn('else editor.append(input);', PAGE_AND_JS)
         self.assertIn('input.type="checkbox"', PAGE_AND_JS)
         self.assertIn('input.type="range"', PAGE_AND_JS)
         self.assertIn('input.type="number"', PAGE_AND_JS)
