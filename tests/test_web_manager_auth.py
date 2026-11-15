@@ -87,20 +87,26 @@ class WebManagerRouteAuthenticationTests(unittest.TestCase):
         return cookie, csrf
 
     def test_post_update_login_field_is_explicitly_masked(self):
-        page = MANAGER.PAGE + (LIB / "static/dashboard.js").read_text(encoding="utf-8")
+        scripts = ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
+        page = MANAGER.PAGE + "\\n".join(
+            (LIB / "static" / name).read_text(encoding="utf-8") for name in scripts
+        )
         self.assertIn('id="login-password" type="password"', page)
         self.assertIn("#login-password{-webkit-text-security:disc!important}", page)
         self.assertIn('password.setAttribute("type", "password");', page)
         self.assertIn('password.type = "password";', page)
 
-    def test_dashboard_script_is_public_static_content(self):
-        status, headers, payload = self.request("GET", "/static/dashboard.js")
-        self.assertEqual(status, 200)
-        self.assertTrue(any(
-            key.lower() == "content-type" and value == "application/javascript; charset=utf-8"
-            for key, value in headers
-        ))
-        self.assertEqual(payload.decode(), (LIB / "static/dashboard.js").read_text(encoding="utf-8"))
+    def test_dashboard_scripts_are_public_static_content(self):
+        scripts = ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
+        for name in scripts:
+            with self.subTest(asset=name):
+                status, headers, payload = self.request("GET", f"/static/{name}")
+                self.assertEqual(status, 200)
+                self.assertTrue(any(
+                    key.lower() == "content-type" and value == "application/javascript; charset=utf-8"
+                    for key, value in headers
+                ))
+                self.assertEqual(payload.decode(), (LIB / "static" / name).read_text(encoding="utf-8"))
 
     def test_management_api_rejects_unauthenticated_clients(self):
         status, _, payload = self.request("GET", "/api/cameras")
