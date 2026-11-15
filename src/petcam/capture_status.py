@@ -8,7 +8,7 @@ import urllib.error
 import urllib.request
 
 
-def live_status(config_path, parse_config, urlopen=urllib.request.urlopen, kill=os.kill):
+def live_status(config_path, parse_config, urlopen=urllib.request.urlopen, kill=os.kill, path_factory=Path):
     """Read capture metrics directly from the active stream backend."""
     try:
         config = parse_config(config_path)
@@ -18,7 +18,7 @@ def live_status(config_path, parse_config, urlopen=urllib.request.urlopen, kill=
         port = 8081
 
     try:
-        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
+        marker = json.loads(path_factory("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
         pid = int(marker.get("pid", 0))
         if marker.get("native_h264") is True and pid > 1:
             kill(pid, 0)
@@ -30,7 +30,7 @@ def live_status(config_path, parse_config, urlopen=urllib.request.urlopen, kill=
                 "hardware_encoder": marker.get("encoder"),
             }
             try:
-                status = json.loads(Path("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
+                status = json.loads(path_factory("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
                 if status.get("source") in ("native_h264", "native_h264_csi"):
                     result["latest_captured_fps"] = status.get("fps")
                     result["rtsp_output_ready"] = status.get("active") is True and status.get("state") == "publishing"
