@@ -13,8 +13,8 @@ import shlex
 import time
 from pathlib import Path
 
-CONFIG_PATH = Path(os.environ.get("PETCAM_RTSP_CONFIG", "/etc/petcam/RTSP.json"))
-STATUS_PATH = Path(os.environ.get("PETCAM_RTSP_STATUS", "/run/petcam/RTSP-status.json"))
+CONFIG_PATH = Path(os.environ.get("PETCAM_RTSP_CONFIG", "/etc/petcam/rtsp.json"))
+STATUS_PATH = Path(os.environ.get("PETCAM_RTSP_STATUS", "/run/petcam/rtsp-status.json"))
 RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 DEFAULTS = {"enabled": False}
