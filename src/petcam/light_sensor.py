@@ -8,18 +8,11 @@ STATUS=Path("/var/lib/petcam/light-sensor.json")
 I2C_SLAVE=0x0703
 COMMAND,ENABLE,CONTROL,ID,CHANNEL0,CHANNEL1=0xA0,0x00,0x01,0x12,0x14,0x16
 STOP=False
-DEFAULTS={"ENABLED":"false","I2C_BUS":"1","I2C_ADDRESS":"0x29","BRIGHT_THRESHOLD_LUX":"100","DARK_THRESHOLD_LUX":"30","POLL_SECONDS":"10"}
-class SensorError(RuntimeError): pass
-def validate(values):
-    if str(values["ENABLED"]).lower() not in {"true","false"}: raise SensorError("ENABLED must be true or false.")
-    try:
-        bus=int(str(values["I2C_BUS"])); address=int(str(values["I2C_ADDRESS"]),0)
-        bright=float(str(values["BRIGHT_THRESHOLD_LUX"])); dark=float(str(values["DARK_THRESHOLD_LUX"])); poll=int(str(values["POLL_SECONDS"]))
-    except ValueError as error: raise SensorError("Light sensor settings contain an invalid number.") from error
-    if not 0<=bus<=255 or not 0x03<=address<=0x77: raise SensorError("I2C bus or 7-bit device address is out of range.")
-    if not 0<=dark<bright<=100000: raise SensorError("Thresholds must satisfy 0 <= dark < bright <= 100000 lux.")
-    if not 2<=poll<=300: raise SensorError("POLL_SECONDS must be between 2 and 300.")
-    return {"ENABLED":str(values["ENABLED"]).lower()=="true","I2C_BUS":bus,"I2C_ADDRESS":address,"BRIGHT_THRESHOLD_LUX":bright,"DARK_THRESHOLD_LUX":dark,"POLL_SECONDS":poll}
+if __package__:
+    from .light_sensor_policy import DEFAULTS, SensorError, classify, validate
+else:
+    from light_sensor_policy import DEFAULTS, SensorError, classify, validate
+
 def load_config(path=CONFIG):
     values=dict(DEFAULTS)
     try: lines=path.read_text(encoding="utf-8").splitlines()
@@ -78,10 +71,6 @@ class TSL2591:
             except OSError: pass
             os.close(self.fd); self.fd=None
     def __exit__(self,*_): self.close()
-def classify(lux,previous,bright,dark):
-    if lux>=bright: return "bright"
-    if lux<=dark: return "dark"
-    return previous if previous in {"bright","dark"} else "unknown"
 def _write_status(value):
     STATUS.parent.mkdir(parents=True,exist_ok=True); tmp=STATUS.with_name(STATUS.name+".tmp")
     tmp.write_text(json.dumps(value,separators=(",",":"))+"\n",encoding="utf-8")
