@@ -42,7 +42,7 @@ def save_config(updates,path=CONFIG):
     output={"ENABLED":str(result["ENABLED"]).lower(),"I2C_BUS":str(result["I2C_BUS"]),"I2C_ADDRESS":hex(result["I2C_ADDRESS"]),"BRIGHT_THRESHOLD_LUX":str(result["BRIGHT_THRESHOLD_LUX"]),"DARK_THRESHOLD_LUX":str(result["DARK_THRESHOLD_LUX"]),"POLL_SECONDS":str(result["POLL_SECONDS"])}
     path.parent.mkdir(parents=True,exist_ok=True); tmp=path.with_name(path.name+".tmp")
     tmp.write_text("# PetCam TSL2591 settings.\n"+"".join(f"{k}={v}\n" for k,v in output.items()),encoding="utf-8")
-    os.chmod(tmp,0o640); os.replace(tmp,path)
+    os.replace(tmp,path)
     return load_config(path)
 def read_status(path=STATUS):
     try:
@@ -85,7 +85,7 @@ def classify(lux,previous,bright,dark):
 def _write_status(value):
     STATUS.parent.mkdir(parents=True,exist_ok=True); tmp=STATUS.with_name(STATUS.name+".tmp")
     tmp.write_text(json.dumps(value,separators=(",",":"))+"\n",encoding="utf-8")
-    os.chmod(tmp,0o640); os.replace(tmp,STATUS)
+    os.replace(tmp,STATUS)
 def run(stop=lambda:STOP,sleep=time.sleep,sensor_factory=TSL2591,config_path=CONFIG):
     while not stop():
         try:
