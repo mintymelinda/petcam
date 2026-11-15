@@ -130,7 +130,7 @@ def active_camera_config():
 
 def live_capture_status():
     return capture_status.live_status(
-        CONFIG, parse_config, urlopen=urllib.request.urlopen, kill=os.kill,
+        CONFIG, parse_config, urlopen=urllib.request.urlopen, kill=os.kill, path_factory=Path,
     )
 
 def parse_v4l2_controls(output):
