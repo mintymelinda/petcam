@@ -55,16 +55,6 @@ def is_configured():
     return AUTH_FILE.exists()
 
 
-def _set_auth_owner():
-    """Keep the auth file replaceable by the unprivileged manager in the sticky config directory."""
-    try:
-        import pwd
-        account = pwd.getpwnam("petcam")
-        os.chown(AUTH_FILE, account.pw_uid, account.pw_gid)
-    except (ImportError, KeyError, PermissionError):
-        pass
-
-
 def initialize_password(password):
     """Create the first administrator password without replacing an existing one."""
     if AUTH_FILE.exists():
@@ -74,7 +64,7 @@ def initialize_password(password):
     payload = json.dumps(data) + "\n"
     with _lock:
         try:
-            descriptor = os.open(AUTH_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o640)
+            descriptor = os.open(AUTH_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
         except FileExistsError as error:
             raise ValueError("PetCam administrator setup has already been completed.") from error
         try:
@@ -82,8 +72,6 @@ def initialize_password(password):
                 output.write(payload)
                 output.flush()
                 os.fsync(output.fileno())
-            os.chmod(AUTH_FILE, 0o640)
-            _set_auth_owner()
             _sessions.clear()
         except Exception:
             try:
@@ -98,9 +86,7 @@ def save_password(password):
     AUTH_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary = AUTH_FILE.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(data) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o640)
     os.replace(temporary, AUTH_FILE)
-    _set_auth_owner()
     with _lock:
         _sessions.clear()
 
