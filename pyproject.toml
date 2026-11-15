@@ -17,6 +17,9 @@ test = ["pytest>=8", "Pillow>=10"]
 [tool.setuptools]
 package-dir = {"" = "src"}
 
+[tool.setuptools.package-data]
+petcam = ["static/*.js"]
+
 [tool.setuptools.dynamic]
 version = {file = ["VERSION"]}
 
