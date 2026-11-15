@@ -34,6 +34,7 @@ if __package__:
     )
     from .config import parse_config
     from .network_diagnostics import collect_diagnostics
+
 else:  # Support the installed standalone worker entry point.
     from camera_capabilities import (
         NATIVE_H264_FORMATS,
@@ -57,6 +58,7 @@ else:  # Support the installed standalone worker entry point.
     )
     from config import parse_config
     from network_diagnostics import collect_diagnostics
+
 
 def discover_csi_cameras():
     result = subprocess.run(
