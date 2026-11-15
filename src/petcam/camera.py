@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""PetCam camera capability discovery and hardware-aware mode selection."""
+"""PetCam hardware discovery and camera worker orchestration."""
 import argparse
-import hashlib
 import json
 import os
 import re
