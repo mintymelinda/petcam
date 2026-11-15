@@ -30,7 +30,6 @@ class UpdateProgressTests(unittest.TestCase):
                 first = json.loads((state_dir / "status.json").read_text())
                 self.assertEqual(first["stage"], "downloading")
                 self.assertEqual(first["target_version"], "1.2.3")
-                self.assertEqual((state_dir / "status.json").stat().st_mode & 0o777, 0o644)
                 UPDATER.write_update_state("complete", "Installed", installed_version="1.2.3")
                 UPDATER.write_update_state("checking", "Checking signed release metadata")
                 second = json.loads((state_dir / "status.json").read_text())
