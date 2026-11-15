@@ -1,8 +1,16 @@
 """Application service for validating and applying camera selections."""
 
 if __package__:
+    from .camera_capture_policy import (
+        validate_capture_feature_compatibility,
+        validate_performance_budget,
+    )
     from .camera_selection import resolve_camera_selection
 else:  # Support the installed standalone web-manager entry point.
+    from camera_capture_policy import (
+        validate_capture_feature_compatibility,
+        validate_performance_budget,
+    )
     from camera_selection import resolve_camera_selection
 
 
@@ -31,16 +39,17 @@ def save_selection(
         discover_cameras=discover_cameras,
         mode_supports_fps=mode_supports_fps,
     )
-    kind = values["SOURCE"]
     width, height = map(int, values["RESOLUTION"].split("x"))
     fps = float(values["FPS"])
-    estimated_pixels_per_second = width * height * float(fps)
     pixel_budget = pixel_budgets[model_tier(read_model())]
-    if values["FORMAT"] != "H264" and estimated_pixels_per_second > pixel_budget and data.get("allow_performance_override") is not True:
-        raise ValueError(
-            "This capture mode exceeds the estimated performance budget for this device. "
-            "Confirm the warning to use it anyway, or choose a lower resolution or FPS."
-        )
+    validate_performance_budget(
+        width,
+        height,
+        fps,
+        pixel_budget,
+        capture_format=values["FORMAT"],
+        allow_override=data.get("allow_performance_override") is True,
+    )
     requested_h264 = values["FORMAT"] == "H264"
     previous_camera = parse_config(config_path)
     previous_rtmp = load_rtmp_config()
@@ -52,8 +61,11 @@ def save_selection(
         ).returncode == 0
 
     if requested_h264:
-        if load_timelapse_config().get("enabled") or load_motion_config().get("enabled"):
-            raise ValueError("Disable timelapse and motion detection before selecting H.264; both require the MJPEG capture feed.")
+        validate_capture_feature_compatibility(
+            values["FORMAT"],
+            timelapse_enabled=load_timelapse_config().get("enabled") is True,
+            motion_enabled=load_motion_config().get("enabled") is True,
+        )
         try:
             check_gstreamer_runtime()
         except ValueError as error:
