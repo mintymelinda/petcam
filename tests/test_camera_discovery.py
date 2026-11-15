@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from petcam import camera as MODULE
-from petcam import camera_capabilities, camera_modes
+from petcam import camera_capabilities, camera_discovery, camera_modes
 
 
 CSI_SAMPLE = """Available cameras
@@ -41,6 +41,8 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertIs(MODULE.parse_modes, camera_capabilities.parse_modes)
         self.assertIs(MODULE.select_mode, camera_modes.select_mode)
         self.assertIs(MODULE.PIXEL_BUDGETS, camera_modes.PIXEL_BUDGETS)
+        self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
+        self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
 
     def test_parses_formats_resolutions_and_frame_rates(self):
         modes = MODULE.parse_modes(SAMPLE)
