@@ -3,35 +3,20 @@ let inventory = [],
   activeConfig = null,
   captureStatus = {},
   rtmpSettings = { enabled: false };
-$("first-run-form").onsubmit = async (event) => {
-  event.preventDefault();
-  const password = $("setup-password").value,
-    confirmation = $("setup-password-confirm").value,
-    message = $("setup-message"),
-    button = $("setup-submit");
-  if (password !== confirmation) {
-    message.textContent = "The passwords do not match.";
-    return;
-  }
-  button.disabled = true;
-  message.textContent = "Creating administrator account…";
-  try {
-    const response = await fetch("/api/setup", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password, password_confirmation: confirmation }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw Error(data.error || "Initial setup failed");
-    message.textContent = "Administrator account created. Opening PetCam…";
-    location.reload();
-  } catch (error) {
-    message.textContent = error.message;
-    button.disabled = false;
-  }
-};
 let csrfToken = null;
 let loginPromise = null;
+
+const tabButtons = [...document.querySelectorAll("[data-tab]")];
+const pendingCameraControlChanges = new Map();
+let advancedPollHandle = null,
+  advancedApplyHandle = null;
+const advancedDialog = $("advanced-camera-dialog");
+const autoCheck = $("auto-check");
+let updateAvailable = false,
+  updateBusy = false;
+let updatePollTimer = null,
+  updatePollInFlight = false;
+// Authentication and API requests
 async function login() {
   if (loginPromise) return loginPromise;
   loginPromise = (async () => {
@@ -124,7 +109,7 @@ async function request(path, options = {}) {
   return d;
 }
 
-const tabButtons = [...document.querySelectorAll("[data-tab]")];
+// Dashboard navigation
 function activateTab(name, moveFocus = false) {
   const selected = tabButtons.find((button) => button.dataset.tab === name);
   if (!selected) return;
@@ -138,25 +123,8 @@ function activateTab(name, moveFocus = false) {
   }
   if (moveFocus) selected.focus();
 }
-for (const button of tabButtons) {
-  button.addEventListener("click", () => activateTab(button.dataset.tab));
-  button.addEventListener("keydown", (event) => {
-    const index = tabButtons.indexOf(button);
-    let next = null;
-    if (event.key === "ArrowRight") next = (index + 1) % tabButtons.length;
-    else if (event.key === "ArrowLeft")
-      next = (index - 1 + tabButtons.length) % tabButtons.length;
-    else if (event.key === "Home") next = 0;
-    else if (event.key === "End") next = tabButtons.length - 1;
-    if (next !== null) {
-      event.preventDefault();
-      activateTab(tabButtons[next].dataset.tab, true);
-    }
-  });
-}
-activateTab("camera");
-refreshRTMP();
 
+// Camera selection and capture configuration
 function modesFor(camera) {
   return camera.kind === "usb"
     ? camera.modes.filter((m) =>
@@ -317,6 +285,7 @@ function fillModes(preferred = null) {
   $("mode").onchange = showSelectedModeWarning;
   showSelectedModeWarning();
 }
+// Capture and OBS output status
 function renderCaptureStatus() {
   const fps = Number(captureStatus.latest_captured_fps),
     configured = activeConfig?.FPS,
@@ -434,8 +403,7 @@ async function saveRTMP() {
     $("save-rtmp").disabled = false;
   }
 }
-$("save-rtmp").onclick = saveRTMP;
-$("refresh-rtmp").onclick = refreshRTMP;
+// System statistics
 function renderStatCards(root, items) {
   root.replaceChildren();
   for (const [label, value] of items) {
@@ -552,7 +520,7 @@ async function refreshStatistics(data = null) {
       "Statistics unavailable: " + error.message;
   }
 }
-$("refresh-statistics").onclick = refreshStatistics;
+// Camera inventory and selection refresh
 async function refresh() {
   $("message").textContent = "Scanning connected cameras…";
   try {
@@ -620,6 +588,7 @@ async function refresh() {
   }
 }
 
+// Advanced camera controls
 function cameraControlLabel(name) {
   const labels = {
     auto_exposure: "Auto exposure",
@@ -637,7 +606,6 @@ function cameraControlLabel(name) {
     name.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase())
   );
 }
-const pendingCameraControlChanges = new Map();
 function updateCameraControlDirtyState(control, input, applyButton) {
   const value =
       control.type === "bool" ? (input.checked ? 1 : 0) : Number(input.value),
@@ -834,84 +802,7 @@ async function refreshCameraControls() {
     status.textContent = "Camera controls unavailable: " + error.message;
   }
 }
-$("apply-camera-controls").onclick = applyCameraControlChanges;
-$("refresh-camera-controls").onclick = refreshCameraControls;
-let advancedPollHandle = null,
-  advancedApplyHandle = null;
-const advancedDialog = $("advanced-camera-dialog");
-$("advanced-camera-open").onclick = () => {
-  advancedDialog.showModal();
-  refreshCameraControls();
-  if (advancedPollHandle) clearInterval(advancedPollHandle);
-  advancedPollHandle = setInterval(() => {
-    if (pendingCameraControlChanges.size === 0) refreshCameraControls();
-  }, 60000);
-};
-$("advanced-camera-close").onclick = () => advancedDialog.close();
-advancedDialog.addEventListener("close", () => {
-  if (advancedPollHandle) {
-    clearInterval(advancedPollHandle);
-    advancedPollHandle = null;
-  }
-  if (advancedApplyHandle) {
-    clearTimeout(advancedApplyHandle);
-    advancedApplyHandle = null;
-  }
-});
-$("refresh").onclick = refresh;
-$("camera").onchange = () => {
-  fillModes();
-  syncOutputModeControls();
-};
-$("apply").onclick = async () => {
-  const c = inventory[+$("camera").value],
-    m = $("mode").value;
-  if (!c || !m) return;
-  const mode = JSON.parse(m),
-    override = confirmPerformanceOverride(c, mode);
-  if (exceedsPerformanceBudget(c, mode) && !override) return;
-  $("apply").disabled = true;
-  $("message").textContent = "Applying camera settings…";
-  try {
-    await request("/api/select", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        kind: c.kind,
-        camera_id: c.id,
-        device: c.device,
-        physical_path: c.physical_path,
-        device_path: c.device_path,
-        camera: c.camera,
-        mode,
-        allow_performance_override: override,
-      }),
-    });
-    await refresh();
-    await refreshRTMP();
-    $("message").textContent =
-      mode.format === "H264"
-        ? "H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled."
-        : "Camera settings saved. The live preview has been reconnected.";
-  } catch (e) {
-    $("message").textContent = e.message;
-  } finally {
-    $("apply").disabled = false;
-  }
-};
-$("logout").onclick = async () => {
-  try {
-    await request("/api/logout", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    csrfToken = null;
-    location.reload();
-  } catch (e) {
-    alert(e.message);
-  }
-};
+// Timelapse configuration and status
 async function refreshTimelapse() {
   try {
     const d = await request("/api/timelapse");
@@ -942,35 +833,7 @@ async function refreshTimelapse() {
       "Timelapse status unavailable: " + e.message;
   }
 }
-$("refresh-timelapse").onclick = refreshTimelapse;
-$("save-timelapse").onclick = async () => {
-  const b = $("save-timelapse");
-  b.disabled = true;
-  try {
-    await request("/api/timelapse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        enabled: $("timelapse-enabled").checked,
-        interval_seconds: Number($("timelapse-interval").value),
-        schedule_start: $("timelapse-start").value,
-        schedule_end: $("timelapse-end").value,
-        retention_days: Number($("timelapse-retention").value),
-        max_storage_mb: Number($("timelapse-storage").value),
-        min_free_mb: Number($("timelapse-free").value),
-        max_width: Number($("timelapse-width").value),
-        jpeg_quality: Number($("timelapse-quality").value),
-        storage_path: $("timelapse-path").value,
-      }),
-    });
-    await refreshTimelapse();
-  } catch (e) {
-    $("timelapse-status").textContent = e.message;
-  } finally {
-    b.disabled = false;
-  }
-};
-refreshTimelapse();
+// Motion detection configuration and events
 async function refreshMotion() {
   try {
     const d = await request("/api/motion"),
@@ -1031,38 +894,7 @@ async function refreshMotion() {
     $("motion-status").textContent = "Motion status unavailable: " + e.message;
   }
 }
-$("refresh-motion").onclick = refreshMotion;
-$("save-motion").onclick = async () => {
-  const b = $("save-motion");
-  b.disabled = true;
-  try {
-    await request("/api/motion", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        enabled: $("motion-enabled").checked,
-        sensitivity: Number($("motion-sensitivity").value),
-        minimum_changed_percent: Number($("motion-min-change").value),
-        sample_interval_seconds: Number($("motion-sample").value),
-        confirm_samples: Number($("motion-confirm").value),
-        min_event_interval_seconds: Number($("motion-cooldown").value),
-        quiet_hours_enabled: $("motion-quiet-enabled").checked,
-        quiet_hours_start: $("motion-quiet-start").value,
-        quiet_hours_end: $("motion-quiet-end").value,
-        retention_days: Number($("motion-retention").value),
-        max_storage_mb: Number($("motion-storage").value),
-        min_free_mb: Number($("motion-free").value),
-      }),
-    });
-    await refreshMotion();
-  } catch (e) {
-    $("motion-status").textContent = e.message;
-  } finally {
-    b.disabled = false;
-  }
-};
-refreshMotion();
-setInterval(refreshMotion, 15000);
+// Ambient light sensor configuration and status
 async function refreshLightSensor() {
   try {
     const d = await request("/api/light-sensor"),
@@ -1082,30 +914,8 @@ async function refreshLightSensor() {
       "Light sensor status unavailable: " + e.message;
   }
 }
-$("refresh-light-sensor").onclick = refreshLightSensor;
-$("save-light-sensor").onclick = async () => {
-  const b = $("save-light-sensor");
-  b.disabled = true;
-  try {
-    await request("/api/light-sensor", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ENABLED: $("light-sensor-enabled").checked,
-        BRIGHT_THRESHOLD_LUX: Number($("light-bright-threshold").value),
-        DARK_THRESHOLD_LUX: Number($("light-dark-threshold").value),
-      }),
-    });
-    await refreshLightSensor();
-  } catch (e) {
-    $("light-sensor-status").textContent = e.message;
-  } finally {
-    b.disabled = false;
-  }
-};
-refreshLightSensor();
-setInterval(refreshLightSensor, 10000);
 
+// Diagnostics and support bundle
 async function refreshDiagnostics() {
   try {
     const d = await request("/api/diagnostics");
@@ -1136,33 +946,7 @@ async function refreshDiagnostics() {
       "Diagnostics unavailable: " + e.message;
   }
 }
-$("refresh-diagnostics").onclick = refreshDiagnostics;
-refreshDiagnostics();
-$("download-support-bundle").onclick = async () => {
-  const b = $("download-support-bundle");
-  b.disabled = true;
-  try {
-    let r = await fetch("/api/support-bundle");
-    if (r.status === 401) {
-      await login();
-      r = await fetch("/api/support-bundle");
-    }
-    if (!r.ok) throw Error("Support bundle request failed (" + r.status + ")");
-    const blob = await r.blob(),
-      url = URL.createObjectURL(blob),
-      a = document.createElement("a");
-    a.href = url;
-    a.download = "petcam-support.tar.gz";
-    document.body.append(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  } catch (e) {
-    $("diagnostic-summary").textContent = "Support bundle failed: " + e.message;
-  } finally {
-    b.disabled = false;
-  }
-};
+// Health monitor status
 async function refreshHealth() {
   try {
     const h = await request("/api/health");
@@ -1179,21 +963,7 @@ async function refreshHealth() {
     $("health-reason").textContent = e.message;
   }
 }
-$("refresh-health").onclick = refreshHealth;
-refresh();
-refreshLiveStatus();
-setInterval(refreshLiveStatus, 5000);
-refreshSystemInfo();
-refreshHealth();
-setInterval(refreshHealth, 30000);
-const autoCheck = $("auto-check");
-autoCheck.checked = localStorage.getItem("petcam-auto-update-check") === "true";
-autoCheck.onchange = () =>
-  localStorage.setItem("petcam-auto-update-check", String(autoCheck.checked));
-let updateAvailable = false,
-  updateBusy = false;
-let updatePollTimer = null,
-  updatePollInFlight = false;
+// Signed application update workflow
 function scheduleUpdatePoll(delay = 2000) {
   if (updatePollTimer) clearTimeout(updatePollTimer);
   updatePollTimer = setTimeout(updateStatus, delay);
@@ -1308,7 +1078,6 @@ async function checkUpdates() {
     b.disabled = false;
   }
 }
-$("check-updates").onclick = checkUpdates;
 async function installUpdate() {
   if (!updateAvailable || updateBusy) return;
   $("update-confirmation").hidden = true;
@@ -1334,29 +1103,285 @@ async function installUpdate() {
     scheduleUpdatePoll(500);
   }
 }
-$("install-update").onclick = () => {
-  if (!updateAvailable || updateBusy) return;
-  $("update-confirmation").hidden = false;
-  $("confirm-update-install").focus();
-};
-$("cancel-update-install").onclick = () => {
-  $("update-confirmation").hidden = true;
-  $("install-update").focus();
-};
-$("confirm-update-install").onclick = installUpdate;
-if (autoCheck.checked) checkUpdates();
-updateStatus();
-(async () => {
-  try {
-    const response = await fetch("/api/setup/status", { cache: "no-store" });
-    const state = await response.json();
-    if (!response.ok)
-      throw Error(state.error || "Unable to check setup status");
-    if (!state.configured) {
-      document.body.classList.add("setup-required");
-      $("first-run").hidden = false;
+
+// Event wiring and application startup
+function initializeDashboard() {
+  $("first-run-form").onsubmit = async (event) => {
+    event.preventDefault();
+    const password = $("setup-password").value,
+      confirmation = $("setup-password-confirm").value,
+      message = $("setup-message"),
+      button = $("setup-submit");
+    if (password !== confirmation) {
+      message.textContent = "The passwords do not match.";
+      return;
     }
-  } catch (error) {
-    $("setup-message").textContent = error.message;
+    button.disabled = true;
+    message.textContent = "Creating administrator account…";
+    try {
+      const response = await fetch("/api/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password, password_confirmation: confirmation }),
+      });
+      const data = await response.json();
+      if (!response.ok) throw Error(data.error || "Initial setup failed");
+      message.textContent = "Administrator account created. Opening PetCam…";
+      location.reload();
+    } catch (error) {
+      message.textContent = error.message;
+      button.disabled = false;
+    }
+  };
+  for (const button of tabButtons) {
+    button.addEventListener("click", () => activateTab(button.dataset.tab));
+    button.addEventListener("keydown", (event) => {
+      const index = tabButtons.indexOf(button);
+      let next = null;
+      if (event.key === "ArrowRight") next = (index + 1) % tabButtons.length;
+      else if (event.key === "ArrowLeft")
+        next = (index - 1 + tabButtons.length) % tabButtons.length;
+      else if (event.key === "Home") next = 0;
+      else if (event.key === "End") next = tabButtons.length - 1;
+      if (next !== null) {
+        event.preventDefault();
+        activateTab(tabButtons[next].dataset.tab, true);
+      }
+    });
   }
-})();
+  activateTab("camera");
+  refreshRTMP();
+
+  $("save-rtmp").onclick = saveRTMP;
+  $("refresh-rtmp").onclick = refreshRTMP;
+  $("refresh-statistics").onclick = refreshStatistics;
+  $("apply-camera-controls").onclick = applyCameraControlChanges;
+  $("refresh-camera-controls").onclick = refreshCameraControls;
+  $("advanced-camera-open").onclick = () => {
+    advancedDialog.showModal();
+    refreshCameraControls();
+    if (advancedPollHandle) clearInterval(advancedPollHandle);
+    advancedPollHandle = setInterval(() => {
+      if (pendingCameraControlChanges.size === 0) refreshCameraControls();
+    }, 60000);
+  };
+  $("advanced-camera-close").onclick = () => advancedDialog.close();
+  advancedDialog.addEventListener("close", () => {
+    if (advancedPollHandle) {
+      clearInterval(advancedPollHandle);
+      advancedPollHandle = null;
+    }
+    if (advancedApplyHandle) {
+      clearTimeout(advancedApplyHandle);
+      advancedApplyHandle = null;
+    }
+  });
+  $("refresh").onclick = refresh;
+  $("camera").onchange = () => {
+    fillModes();
+    syncOutputModeControls();
+  };
+  $("apply").onclick = async () => {
+    const c = inventory[+$("camera").value],
+      m = $("mode").value;
+    if (!c || !m) return;
+    const mode = JSON.parse(m),
+      override = confirmPerformanceOverride(c, mode);
+    if (exceedsPerformanceBudget(c, mode) && !override) return;
+    $("apply").disabled = true;
+    $("message").textContent = "Applying camera settings…";
+    try {
+      await request("/api/select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          kind: c.kind,
+          camera_id: c.id,
+          device: c.device,
+          physical_path: c.physical_path,
+          device_path: c.device_path,
+          camera: c.camera,
+          mode,
+          allow_performance_override: override,
+        }),
+      });
+      await refresh();
+      await refreshRTMP();
+      $("message").textContent =
+        mode.format === "H264"
+          ? "H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled."
+          : "Camera settings saved. The live preview has been reconnected.";
+    } catch (e) {
+      $("message").textContent = e.message;
+    } finally {
+      $("apply").disabled = false;
+    }
+  };
+  $("logout").onclick = async () => {
+    try {
+      await request("/api/logout", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      csrfToken = null;
+      location.reload();
+    } catch (e) {
+      alert(e.message);
+    }
+  };
+  $("refresh-timelapse").onclick = refreshTimelapse;
+  $("save-timelapse").onclick = async () => {
+    const b = $("save-timelapse");
+    b.disabled = true;
+    try {
+      await request("/api/timelapse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: $("timelapse-enabled").checked,
+          interval_seconds: Number($("timelapse-interval").value),
+          schedule_start: $("timelapse-start").value,
+          schedule_end: $("timelapse-end").value,
+          retention_days: Number($("timelapse-retention").value),
+          max_storage_mb: Number($("timelapse-storage").value),
+          min_free_mb: Number($("timelapse-free").value),
+          max_width: Number($("timelapse-width").value),
+          jpeg_quality: Number($("timelapse-quality").value),
+          storage_path: $("timelapse-path").value,
+        }),
+      });
+      await refreshTimelapse();
+    } catch (e) {
+      $("timelapse-status").textContent = e.message;
+    } finally {
+      b.disabled = false;
+    }
+  };
+  refreshTimelapse();
+  $("refresh-motion").onclick = refreshMotion;
+  $("save-motion").onclick = async () => {
+    const b = $("save-motion");
+    b.disabled = true;
+    try {
+      await request("/api/motion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: $("motion-enabled").checked,
+          sensitivity: Number($("motion-sensitivity").value),
+          minimum_changed_percent: Number($("motion-min-change").value),
+          sample_interval_seconds: Number($("motion-sample").value),
+          confirm_samples: Number($("motion-confirm").value),
+          min_event_interval_seconds: Number($("motion-cooldown").value),
+          quiet_hours_enabled: $("motion-quiet-enabled").checked,
+          quiet_hours_start: $("motion-quiet-start").value,
+          quiet_hours_end: $("motion-quiet-end").value,
+          retention_days: Number($("motion-retention").value),
+          max_storage_mb: Number($("motion-storage").value),
+          min_free_mb: Number($("motion-free").value),
+        }),
+      });
+      await refreshMotion();
+    } catch (e) {
+      $("motion-status").textContent = e.message;
+    } finally {
+      b.disabled = false;
+    }
+  };
+  refreshMotion();
+  setInterval(refreshMotion, 15000);
+  $("refresh-light-sensor").onclick = refreshLightSensor;
+  $("save-light-sensor").onclick = async () => {
+    const b = $("save-light-sensor");
+    b.disabled = true;
+    try {
+      await request("/api/light-sensor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ENABLED: $("light-sensor-enabled").checked,
+          BRIGHT_THRESHOLD_LUX: Number($("light-bright-threshold").value),
+          DARK_THRESHOLD_LUX: Number($("light-dark-threshold").value),
+        }),
+      });
+      await refreshLightSensor();
+    } catch (e) {
+      $("light-sensor-status").textContent = e.message;
+    } finally {
+      b.disabled = false;
+    }
+  };
+  refreshLightSensor();
+  setInterval(refreshLightSensor, 10000);
+
+  $("refresh-diagnostics").onclick = refreshDiagnostics;
+  refreshDiagnostics();
+  $("download-support-bundle").onclick = async () => {
+    const b = $("download-support-bundle");
+    b.disabled = true;
+    try {
+      let r = await fetch("/api/support-bundle");
+      if (r.status === 401) {
+        await login();
+        r = await fetch("/api/support-bundle");
+      }
+      if (!r.ok)
+        throw Error("Support bundle request failed (" + r.status + ")");
+      const blob = await r.blob(),
+        url = URL.createObjectURL(blob),
+        a = document.createElement("a");
+      a.href = url;
+      a.download = "petcam-support.tar.gz";
+      document.body.append(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      $("diagnostic-summary").textContent =
+        "Support bundle failed: " + e.message;
+    } finally {
+      b.disabled = false;
+    }
+  };
+  $("refresh-health").onclick = refreshHealth;
+  refresh();
+  refreshLiveStatus();
+  setInterval(refreshLiveStatus, 5000);
+  refreshSystemInfo();
+  refreshHealth();
+  setInterval(refreshHealth, 30000);
+  autoCheck.checked =
+    localStorage.getItem("petcam-auto-update-check") === "true";
+  autoCheck.onchange = () =>
+    localStorage.setItem("petcam-auto-update-check", String(autoCheck.checked));
+  $("check-updates").onclick = checkUpdates;
+  $("install-update").onclick = () => {
+    if (!updateAvailable || updateBusy) return;
+    $("update-confirmation").hidden = false;
+    $("confirm-update-install").focus();
+  };
+  $("cancel-update-install").onclick = () => {
+    $("update-confirmation").hidden = true;
+    $("install-update").focus();
+  };
+  $("confirm-update-install").onclick = installUpdate;
+  if (autoCheck.checked) checkUpdates();
+  updateStatus();
+  (async () => {
+    try {
+      const response = await fetch("/api/setup/status", { cache: "no-store" });
+      const state = await response.json();
+      if (!response.ok)
+        throw Error(state.error || "Unable to check setup status");
+      if (!state.configured) {
+        document.body.classList.add("setup-required");
+        $("first-run").hidden = false;
+      }
+    } catch (error) {
+      $("setup-message").textContent = error.message;
+    }
+  })();
+}
+
+initializeDashboard();

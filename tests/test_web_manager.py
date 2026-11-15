@@ -158,7 +158,9 @@ class WebManagerTests(unittest.TestCase):
         script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
         self.assertIn('id="status">Connecting to PetCam camera...', source)
         self.assertIn('<script src="/browser-source.js" defer></script>', source)
-        self.assertIn('image.onerror = () =>', script)
+        self.assertIn('image.addEventListener("load", handleStreamLoad)', script)
+        self.assertIn('image.addEventListener("error", handleStreamError)', script)
+        self.assertIn("window.setTimeout(retryStream, RETRY_DELAY_MS)", script)
         self.assertIn('image.src = "/stream?retry=" + Date.now()', script)
 
     def test_dashboard_javascript_is_external_and_served_without_authentication(self):
