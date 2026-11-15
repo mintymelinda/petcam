@@ -274,25 +274,25 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('$("confirm-update-install").onclick=installUpdate', MODULE.PAGE)
         self.assertNotIn('confirm("Install the signed PetCam application update now?"', MODULE.PAGE)
 
-    def test_update_check_uses_fixed_privileged_command(self):
+    def test_update_check_runs_directly_as_root(self):
         completed = mock.Mock(returncode=0, stdout='{"update_available": false}', stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
             self.assertFalse(MODULE.update_check()["update_available"])
-        self.assertEqual(run.call_args.args[0], ["sudo", "-n", "/usr/local/bin/petcam-update", "check"])
+        self.assertEqual(run.call_args.args[0], ["/usr/local/bin/petcam-update", "check"])
 
-    def test_set_rtmp_service_uses_noninteractive_scoped_helper(self):
+    def test_rtmp_service_actions_use_direct_systemctl_commands(self):
         completed = mock.Mock(returncode=0, stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
             MODULE.set_rtmp_service("restart")
         self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart",
+            "/usr/bin/systemctl", "restart", "petcam-rtmp.service",
         ])
+        with self.assertRaises(ValueError):
+            MODULE.rtmp_service_command("arbitrary-command")
 
-    def test_web_manager_privileged_systemctl_calls_are_noninteractive(self):
+    def test_web_manager_has_no_sudo_privilege_handoffs(self):
         source = Path(SPEC.origin).read_text(encoding="utf-8")
-        self.assertNotIn('["sudo", "/usr/bin/systemctl"', source)
-        self.assertNotIn('["sudo", "/usr/local/sbin/petcam-rtmp-service"', source)
-        self.assertIn('["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]', source)
+        self.assertNotIn('"sudo"', source)
 
     def test_update_status_reports_active_state_and_recent_logs(self):
         outputs = [
@@ -347,7 +347,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(apply.call_args.args[0]["FORMAT"], "H264")
         save_rtmp.assert_called_once_with({"enabled": True})
         self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "enable"
+            "/usr/bin/systemctl", "enable", "--now", "petcam-rtmp.service"
         ])
 
     def test_h264_selection_is_rejected_when_mjpeg_consumers_are_enabled(self):
