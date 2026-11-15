@@ -427,7 +427,7 @@ def _config_lock_path(path: Path | str = CONFIG_PATH) -> Path:
 def ensure_config_lock(path: Path | str = CONFIG_PATH) -> Path:
     lock_path = _config_lock_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    with lock_path.open("a+") as lock_file:
+    lock_path.touch(exist_ok=True)
     return lock_path
 
 
