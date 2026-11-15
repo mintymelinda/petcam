@@ -25,10 +25,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Install temporary JavaScript AST tooling
-        run: npm install --no-save --package-lock=false recast@0.23.11 @babel/parser@7.28.5
-      - name: Organize dashboard declarations, functions, and initialization
-        run: node .github/scripts/organize-dashboard.cjs
       - name: Format JavaScript with pinned Prettier
         run: npx --yes prettier@3.6.2 --write src/petcam/static/dashboard.js src/petcam/static/browser-source.js
       - name: Verify Prettier formatting
