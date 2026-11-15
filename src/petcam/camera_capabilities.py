@@ -11,9 +11,6 @@ FPS_RANGE_RE = re.compile(r"Interval: (?:Stepwise|Continuous) ([\d.]+)s - ([\d.]
 NATIVE_JPEG_FORMATS = {"MJPG", "MJPEG", "JPEG"}
 NATIVE_H264_FORMATS = {"H264"}
 USTREAMER_FORMATS = NATIVE_JPEG_FORMATS | {"YUYV", "YVYU", "UYVY", "YUV420", "YVU420", "RGB565", "RGB24", "GREY"}
-NATIVE_JPEG_FORMATS = {"MJPG", "MJPEG", "JPEG"}
-NATIVE_H264_FORMATS = {"H264"}
-USTREAMER_FORMATS = NATIVE_JPEG_FORMATS | {"YUYV", "YVYU", "UYVY", "YUV420", "YVU420", "RGB565", "RGB24", "GREY"}
 
 def _camera_slug(value):
     return re.sub(r"[^a-z0-9-]+", "-", value.lower()).strip("-") or "camera"
