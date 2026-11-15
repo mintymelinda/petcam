@@ -33,7 +33,6 @@ TLS_CERT = Path("/etc/petcam/web-manager.crt")
 TLS_KEY = Path("/etc/petcam/web-manager.key")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
 RTMP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
-UPDATE_STATE_FILE = Path("/var/lib/petcam/update/status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
 _STREAM_METRICS_LOCK = threading.Lock()
@@ -92,7 +91,7 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 .dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem}.dialog-heading h2{margin:.2rem 0}
 .camera-actions{display:flex;justify-content:space-between;align-items:center;margin:1rem 0}.camera-actions-right{display:flex;gap:.5rem}
 .advanced-dialog{max-width:min(760px,calc(100% - 2rem));max-height:85vh;overflow:auto}.advanced-dialog section{margin:.75rem 0}
-.release-notes{white-space:pre-wrap;line-height:1.5;background:#1a1d22;border-radius:8px;padding:.85rem;max-height:18rem;overflow:auto}
+
 @media(max-width:600px){.camera-select-grid{grid-template-columns:1fr}.tab-nav{gap:.2rem}.tab-nav button{font-size:.85rem;padding:.5rem}}</style>
 <body><h1>PetCam <small>Camera</small></h1>
 <section id="first-run" hidden><h2>Welcome to PetCam</h2><p>Create the administrator password for this camera. You can do this from your browser; SSH is not required.</p><form id="first-run-form"><label for="setup-password">Administrator password (12–1024 characters)</label><input id="setup-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required><label for="setup-password-confirm">Confirm password</label><input id="setup-password-confirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required><p id="setup-message" role="status" aria-live="polite"></p><button id="setup-submit" type="submit">Create administrator password</button></form></section>
@@ -144,13 +143,7 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 <p class="muted">Motion samples reuse the active camera MJPEG stream. Frames are reduced to 160×120 grayscale for comparison; no second camera process or continuous video recording is used. The worker runs with a strict CPU and memory limit. Disabled by default.</p>
 <div class="row"><button id="save-motion">Save motion settings</button></div>
 <h3>Recent motion events</h3><div id="motion-events" class="muted">No motion events recorded.</div></section></div><div id="panel-system" class="tab-panel" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
-<section id="system-info"><h2>System Info</h2><p id="installed-version" role="status">Checking installed PetCam version…</p><div class="row"><button id="check-updates">Check for updates</button><button id="install-update" hidden disabled>Install</button><span id="update-state" class="muted">Not checked</span></div><p id="update-message" class="muted" role="status">Check for signed PetCam application releases.</p><h3>Release notes</h3><div id="release-notes" class="release-notes">No release notes loaded yet.</div><section id="updates"><div class="row" style="justify-content:space-between;align-items:center"><h3>Update details</h3></div>
-
-
-<div id="update-confirmation" hidden aria-labelledby="update-confirmation-title"><p id="update-confirmation-title"><strong>Install this signed update?</strong></p><p class="muted">The camera stream and web interface will briefly restart while PetCam installs the verified application release.</p><div class="row"><button id="cancel-update-install" type="button">Cancel</button><button id="confirm-update-install" type="button">Install update</button></div></div>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="auto-check" type="checkbox"> Check automatically when opening this page</label>
-<details><summary>Update details and diagnostics</summary><p id="update-details" class="muted">No update information yet.</p><pre id="update-logs" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre></details>
-</section></section>
+<section id="system-info"><h2>System Info</h2><p id="installed-version" role="status">Loading installed PetCam version…</p></section>
 <section id="rtmp-output"><h2>OBS Output</h2>
 <p class="muted">This exposes the camera to OBS without transcoding. PetCam does not publish to Twitch or YouTube. Add the RTSP address as an OBS Media Source. The HTTP Browser Source is available while capture is in MJPEG mode; native H.264 capture is selected for RTSP only when timelapse and motion detection are disabled.</p>
 <label style="display:flex;gap:.5rem;align-items:center"><input id="rtmp-enabled" type="checkbox"> Enable OBS RTSP feed</label>
@@ -865,79 +858,6 @@ def proxy_stream(handler, port):
         unregister_stream_client(client_id)
 
 
-def update_check():
-    result = subprocess.run(["/usr/local/bin/petcam-update", "check"],
-                            capture_output=True, text=True, timeout=45, check=False)
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Update check failed")
-    return json.loads(result.stdout)
-
-
-def update_status():
-    result = subprocess.run(
-        ["/usr/bin/systemctl", "show", "petcam-update.service",
-         "--property=ActiveState", "--property=Result", "--property=ExecMainStatus", "--value"],
-        capture_output=True, text=True, timeout=5, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to read update service status")
-    values = result.stdout.splitlines()
-    values += ["unknown"] * (3 - len(values))
-    active = values[0] in ("active", "activating", "deactivating")
-    try:
-        state = json.loads(UPDATE_STATE_FILE.read_text(encoding="utf-8"))
-        if not isinstance(state, dict):
-            state = {}
-    except (OSError, ValueError):
-        state = {}
-    stage = str(state.get("stage") or ("starting" if active else "idle"))
-    if active and stage in ("complete", "failed", "idle"):
-        stage = "starting"
-    if not active and stage not in ("complete", "failed", "idle"):
-        stage = "failed"
-        state["message"] = (
-            "The updater stopped before reporting completion. Check the installer log; "
-            "the previous release may have been restored."
-        )
-    logs = subprocess.run(
-        ["/usr/bin/journalctl", "-u", "petcam-update.service",
-         "-n", "20", "--no-pager", "-o", "cat"],
-        capture_output=True, text=True, timeout=5, check=False,
-    )
-    return {
-        "active": active,
-        "stage": stage,
-        "message": str(state.get("message") or ""),
-        "updated_at": state.get("updated_at"),
-        "started_at": state.get("started_at"),
-        "finished_at": state.get("finished_at"),
-        "target_version": state.get("target_version"),
-        "installed_version": state.get("installed_version"),
-        "previous_version": state.get("previous_version"),
-        "rollback": state.get("rollback"),
-        "warning": state.get("warning"),
-        "result": "success" if stage == "complete" else ("failed" if stage == "failed" else values[1]),
-        "exit_code": values[2],
-        "logs": logs.stdout[-8000:] if logs.returncode == 0 else "",
-        "log_warning": logs.stderr.strip() if logs.returncode else "",
-    }
-
-
-def start_update():
-    status = subprocess.run(
-        ["/usr/bin/systemctl", "is-active", "--quiet", "petcam-update.service"],
-        capture_output=True, text=True, timeout=5, check=False,
-    )
-    if status.returncode == 0:
-        raise RuntimeError("An update is already running. Reconnect to its progress instead of starting it again.")
-    result = subprocess.run(
-        ["/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"],
-        capture_output=True, text=True, timeout=10, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to start update service")
-
-
 def _origin_ok(handler):
     origin = urlparse(handler.headers.get("Origin", ""))
     return origin.scheme == "https" and origin.netloc.lower() == handler.headers.get("Host", "").lower()
@@ -1101,18 +1021,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, health)
             except (OSError, ValueError):
                 self.send_json(200, {"state": "not_checked", "reason": "The periodic health monitor has not reported yet.", "recovery_count": 0})
-            return
-        if path == "/api/update/check":
-            try:
-                self.send_json(200, update_check())
-            except Exception as error:
-                self.send_json(503, {"error": str(error)})
-            return
-        if path == "/api/update/status":
-            try:
-                self.send_json(200, update_status())
-            except Exception as error:
-                self.send_json(503, {"error": str(error)})
             return
         if path == "/api/camera-controls":
             try:
@@ -1278,10 +1186,6 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_json(200, {"ok": True}, {
                     "Set-Cookie": "petcam_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
                 })
-                return
-            if path == "/api/update/install":
-                start_update()
-                self.send_json(202, {"ok": True, "status": "started"})
                 return
             if path == "/api/select":
                 save_selection(data)

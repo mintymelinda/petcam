@@ -103,8 +103,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="apply-camera-controls" type="button" hidden disabled', PAGE_AND_JS)
         self.assertIn('grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr))', PAGE_AND_JS)
         self.assertIn('id="system-info"', PAGE_AND_JS)
-        self.assertIn('id="release-notes"', PAGE_AND_JS)
-        self.assertIn('id="install-update" hidden disabled', PAGE_AND_JS)
+        self.assertNotIn("Software updates", PAGE_AND_JS)
+        self.assertNotIn("/api/update/", PAGE_AND_JS)
         self.assertIn('OBS Feed FPS (RTSP)', PAGE_AND_JS)
         self.assertIn("rtmp.enabled", PAGE_AND_JS)
         self.assertIn("rtmp.state", PAGE_AND_JS)
@@ -322,20 +322,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(request.response[0], 409)
         initialize.assert_not_called()
 
-    def test_update_install_uses_in_page_confirmation_not_native_dialogs(self):
-        self.assertIn('id="update-confirmation" hidden', PAGE_AND_JS)
-        self.assertIn('id="cancel-update-install"', PAGE_AND_JS)
-        self.assertIn('id="confirm-update-install"', PAGE_AND_JS)
-        self.assertIn('$("update-confirmation").hidden = false;', PAGE_AND_JS)
-        self.assertIn('$("confirm-update-install").onclick = installUpdate;', PAGE_AND_JS)
-        self.assertNotIn('confirm("Install the signed PetCam application update now?"', PAGE_AND_JS)
-
-    def test_update_check_runs_directly_as_root(self):
-        completed = mock.Mock(returncode=0, stdout='{"update_available": false}', stderr="")
-        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
-            self.assertFalse(MODULE.update_check()["update_available"])
-        self.assertEqual(run.call_args.args[0], ["/usr/local/bin/petcam-update", "check"])
-
     def test_rtmp_service_actions_use_direct_systemctl_commands(self):
         completed = mock.Mock(returncode=0, stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
@@ -349,17 +335,6 @@ class WebManagerTests(unittest.TestCase):
     def test_web_manager_has_no_sudo_privilege_handoffs(self):
         source = Path(SPEC.origin).read_text(encoding="utf-8")
         self.assertNotIn('"sudo"', source)
-
-    def test_update_status_reports_active_state_and_recent_logs(self):
-        outputs = [
-            mock.Mock(returncode=0, stdout="active\nsuccess\n0\n", stderr=""),
-            mock.Mock(returncode=0, stdout="Downloading release\n", stderr=""),
-        ]
-        with mock.patch.object(MODULE.subprocess, "run", side_effect=outputs):
-            status = MODULE.update_status()
-        self.assertTrue(status["active"])
-        self.assertEqual(status["result"], "success")
-        self.assertIn("Downloading release", status["logs"])
 
     def test_camera_inventory_uses_shared_discovery_and_exposes_h264_modes(self):
         usb_devices = [{

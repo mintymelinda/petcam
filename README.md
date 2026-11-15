@@ -41,7 +41,6 @@ GitHub Actions runs the application test and compilation checks. It does not bui
 - [Optional RTMP output](docs/rtmp-output.md)
 - [Motion detection](docs/motion-detection.md)
 - [Timelapse capture](docs/timelapse.md)
-- [Application update engine](docs/update-engine.md)
 
 
 ## Runtime privileges
