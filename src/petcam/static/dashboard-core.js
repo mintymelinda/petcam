@@ -9,6 +9,5 @@ const pendingCameraControlChanges = new Map();
 let advancedPollHandle = null,
   advancedApplyHandle = null;
 const advancedDialog = $("advanced-camera-dialog");
-// Authentication and API requests
-async functi
+
 
