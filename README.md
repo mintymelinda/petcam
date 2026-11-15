@@ -10,7 +10,6 @@ This repository owns the application source and its runtime deployment assets. [
 src/petcam/       Python application
 deploy/           Runtime configuration, systemd units, and privileged helpers
 tests/            Application tests
-tools/            Application release tooling
 docs/             Feature and operations documentation
 assets/           Project assets
 VERSION           Application version
