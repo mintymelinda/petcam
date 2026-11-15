@@ -1,5 +1,4 @@
 import http.client
-import importlib.util
 import json
 import ssl
 import subprocess
@@ -11,14 +10,8 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-LIB = Path("src/petcam")
-import sys
-sys.path.insert(0, str(LIB))
-import web_auth
-
-SPEC = importlib.util.spec_from_file_location("petcam_web_manager_auth_tests", LIB / "web_manager.py")
-MANAGER = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MANAGER)
+from petcam import web_auth
+from petcam import web_manager as MANAGER
 
 
 class WebManagerRouteAuthenticationTests(unittest.TestCase):
