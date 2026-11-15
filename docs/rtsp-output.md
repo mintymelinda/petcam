@@ -34,9 +34,9 @@ Useful SSH checks:
 
 ```bash
 sudo systemctl status petcam-stream.service
-sudo systemctl status petcam-RTSP.service
-sudo journalctl -u petcam-RTSP.service -n 100 --no-pager
-sudo /usr/bin/python3 /opt/petcam/current/lib/RTSP_output.py --check
+sudo systemctl status petcam-rtsp.service
+sudo journalctl -u petcam-rtsp.service -n 100 --no-pager
+sudo /usr/bin/python3 /opt/petcam/current/lib/rtsp_output.py --check
 ```
 
 The feed is video-only. Add microphones and other audio sources in OBS.

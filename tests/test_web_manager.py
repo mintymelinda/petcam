@@ -25,11 +25,11 @@ class WebManagerTests(unittest.TestCase):
         save = lambda value: saved.append(dict(value)) or dict(value)
         commands = [
             (["systemctl", "restart", "petcam-stream.service"], 45, "capture restart failed"),
-            (["systemctl", "restart", "petcam-RTSP.service"], 30, "publisher restart failed"),
+            (["systemctl", "restart", "petcam-rtsp.service"], 30, "publisher restart failed"),
         ]
         rollback_commands = [
             (["systemctl", "restart", "petcam-stream.service"], 45, "capture rollback failed"),
-            (["systemctl", "restart", "petcam-RTSP.service"], 30, "publisher rollback failed"),
+            (["systemctl", "restart", "petcam-rtsp.service"], 30, "publisher rollback failed"),
         ]
         results = [
             mock.Mock(returncode=0, stderr=""),
@@ -106,19 +106,19 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn("Software updates", PAGE_AND_JS)
         self.assertNotIn("/api/update/", PAGE_AND_JS)
         self.assertIn('OBS Feed FPS (RTSP)', PAGE_AND_JS)
-        self.assertIn("RTSP.enabled", PAGE_AND_JS)
-        self.assertIn("RTSP.state", PAGE_AND_JS)
-        self.assertIn('id="RTSP-output"', PAGE_AND_JS)
+        self.assertIn("rtsp.enabled", PAGE_AND_JS)
+        self.assertIn("rtsp.state", PAGE_AND_JS)
+        self.assertIn('id="rtsp-output"', PAGE_AND_JS)
         self.assertIn("OBS Media Source URL", PAGE_AND_JS)
         self.assertIn('"GREY"', PAGE_AND_JS)
         self.assertIn('"H264"', PAGE_AND_JS)
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
-        self.assertNotIn("RTSP://", PAGE_AND_JS)
+        self.assertNotIn("rtsp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
-        self.assertNotIn("RTSP-server-url", PAGE_AND_JS)
-        self.assertNotIn("RTSP-stream-key", PAGE_AND_JS)
+        self.assertNotIn("rtsp-server-url", PAGE_AND_JS)
+        self.assertNotIn("rtsp-stream-key", PAGE_AND_JS)
         self.assertIn('id="obs-rtsp-url"', PAGE_AND_JS)
         self.assertIn('id="obs-rtsp-url" type="text"', PAGE_AND_JS)
         self.assertIn('MJPEG delivered FPS', PAGE_AND_JS)
@@ -223,25 +223,25 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(request.errors[0][0], 503)
         self.assertIn("unavailable", request.errors[0][1].lower())
 
-    def test_RTSP_status_treats_systemd_timeout_as_stopped(self):
-        with mock.patch.object(MODULE, "load_RTSP_config", return_value={"enabled": False}), \
+    def test_rtsp_status_treats_systemd_timeout_as_stopped(self):
+        with mock.patch.object(MODULE, "load_rtsp_config", return_value={"enabled": False}), \
                 mock.patch.object(
                     MODULE.subprocess, "run", side_effect=MODULE.subprocess.TimeoutExpired("systemctl", 1),
                 ):
-            status = MODULE.RTSP_status_snapshot()
+            status = MODULE.rtsp_status_snapshot()
         self.assertFalse(status["active"])
         self.assertEqual(status["state"], "stopped")
 
-    def test_RTSP_status_reports_measured_fps_from_private_runtime_state(self):
+    def test_rtsp_status_reports_measured_fps_from_private_runtime_state(self):
         with tempfile.TemporaryDirectory() as directory:
-            status_file = Path(directory) / "RTSP-status.json"
+            status_file = Path(directory) / "rtsp-status.json"
             status_file.write_text(json.dumps({
                 "state": "publishing", "active": True, "fps": 29.8, "updated_at": MODULE.time.time()
             }))
             with mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file), \
-                    mock.patch.object(MODULE, "load_RTSP_config", return_value={"enabled": True}), \
+                    mock.patch.object(MODULE, "load_rtsp_config", return_value={"enabled": True}), \
                     mock.patch.object(MODULE.subprocess, "run", return_value=mock.Mock(returncode=0)):
-                status = MODULE.RTSP_status_snapshot()
+                status = MODULE.rtsp_status_snapshot()
         self.assertTrue(status["active"])
         self.assertEqual(status["state"], "publishing")
         self.assertEqual(status["fps"], 29.8)
@@ -322,15 +322,15 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(request.response[0], 409)
         initialize.assert_not_called()
 
-    def test_RTSP_service_actions_use_direct_systemctl_commands(self):
+    def test_rtsp_service_actions_use_direct_systemctl_commands(self):
         completed = mock.Mock(returncode=0, stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
-            MODULE.set_RTSP_service("restart")
+            MODULE.set_rtsp_service("restart")
         self.assertEqual(run.call_args.args[0], [
-            "/usr/bin/systemctl", "restart", "petcam-RTSP.service",
+            "/usr/bin/systemctl", "restart", "petcam-rtsp.service",
         ])
         with self.assertRaises(ValueError):
-            MODULE.RTSP_service_command("arbitrary-command")
+            MODULE.rtsp_service_command("arbitrary-command")
 
     def test_web_manager_has_no_sudo_privilege_handoffs(self):
         source = Path(SPEC.origin).read_text(encoding="utf-8")
@@ -352,7 +352,7 @@ class WebManagerTests(unittest.TestCase):
         discover_csi.assert_called_once_with()
         self.assertEqual({mode["format"] for mode in cameras[0]["modes"]}, {"MJPG", "H264"})
 
-    def test_h264_selection_forces_RTSP_and_starts_rtsp_service(self):
+    def test_h264_selection_forces_rtsp_and_starts_rtsp_service(self):
         camera = {
             "kind": "usb", "id": "usb-kiyo", "device": "/dev/video0",
             "physical_path": "/sys/devices/usb1/1-1",
@@ -362,8 +362,8 @@ class WebManagerTests(unittest.TestCase):
                            "RESOLUTION": "1280x720", "FPS": "30"}
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
                 mock.patch.object(MODULE, "parse_config", return_value=previous_camera), \
-                mock.patch.object(MODULE, "load_RTSP_config", side_effect=[{"enabled": False}, {"enabled": True}]), \
-                mock.patch.object(MODULE, "save_RTSP_config") as save_RTSP, \
+                mock.patch.object(MODULE, "load_rtsp_config", side_effect=[{"enabled": False}, {"enabled": True}]), \
+                mock.patch.object(MODULE, "save_rtsp_config") as save_rtsp, \
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "check_gstreamer_runtime"), \
@@ -376,9 +376,9 @@ class WebManagerTests(unittest.TestCase):
                 "mode": {"format": "H264", "width": 1920, "height": 1080, "fps": 30},
             })
         self.assertEqual(apply.call_args.args[0]["FORMAT"], "H264")
-        save_RTSP.assert_called_once_with({"enabled": True})
+        save_rtsp.assert_called_once_with({"enabled": True})
         self.assertEqual(run.call_args.args[0], [
-            "/usr/bin/systemctl", "enable", "--now", "petcam-RTSP.service"
+            "/usr/bin/systemctl", "enable", "--now", "petcam-rtsp.service"
         ])
 
     def test_h264_selection_is_rejected_when_mjpeg_consumers_are_enabled(self):
@@ -388,7 +388,7 @@ class WebManagerTests(unittest.TestCase):
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
                 mock.patch.object(MODULE, "parse_config", return_value=MODULE.parse_config()), \
-                mock.patch.object(MODULE, "load_RTSP_config", return_value={"enabled": False}), \
+                mock.patch.object(MODULE, "load_rtsp_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": True}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE.Path, "is_file", return_value=True), \
@@ -607,14 +607,14 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn("dashboard-preview", PAGE_AND_JS)
         self.assertIn("MJPEG delivered FPS", PAGE_AND_JS)
         self.assertIn("OBS Feed FPS (RTSP)", PAGE_AND_JS)
-        self.assertIn("RTSP.enabled", PAGE_AND_JS)
-        self.assertIn("RTSP.state", PAGE_AND_JS)
-        self.assertIn('id="RTSP-output"', PAGE_AND_JS)
+        self.assertIn("rtsp.enabled", PAGE_AND_JS)
+        self.assertIn("rtsp.state", PAGE_AND_JS)
+        self.assertIn('id="rtsp-output"', PAGE_AND_JS)
         self.assertIn('id="obs-rtsp-url"', PAGE_AND_JS)
         self.assertIn('id="obs-rtsp-url" type="text"', PAGE_AND_JS)
         self.assertIn('http://__PETCAM_HOST__:8080/', PAGE_AND_JS)
         self.assertNotIn('id="live-preview"', PAGE_AND_JS)
-        self.assertNotIn('RTSP-encoder', PAGE_AND_JS)
+        self.assertNotIn('rtsp-encoder', PAGE_AND_JS)
         self.assertIn("saved camera settings are selected", PAGE_AND_JS)
 
     def test_browser_source_is_rejected_when_h264_capture_is_active(self):

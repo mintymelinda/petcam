@@ -40,12 +40,12 @@ class HealthMonitorTests(unittest.TestCase):
         self.config_guard_patch.stop()
         self.directory.cleanup()
 
-    def test_RTSP_restart_uses_installed_scoped_helper(self):
+    def test_rtsp_restart_uses_installed_scoped_helper(self):
         completed = mock.Mock(returncode=0, stderr="")
         with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
-            self.assertEqual(MODULE.restart_service("petcam-RTSP.service"), (True, ""))
+            self.assertEqual(MODULE.restart_service("petcam-rtsp.service"), (True, ""))
         self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-RTSP-service", "restart",
+            "sudo", "-n", "/usr/local/sbin/petcam-rtsp-service", "restart",
         ])
 
     def test_restart_service_rejects_unknown_service_names(self):
@@ -99,8 +99,8 @@ class HealthMonitorTests(unittest.TestCase):
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "petcam-RTSP.service")
-        restart.assert_called_once_with("petcam-RTSP.service")
+        self.assertEqual(report["recovery_target"], "petcam-rtsp.service")
+        restart.assert_called_once_with("petcam-rtsp.service")
 
     def test_health_recovery_pauses_during_config_transaction(self):
         with mock.patch.object(MODULE, "config_transaction_guard", return_value=contextlib.nullcontext(False)), \

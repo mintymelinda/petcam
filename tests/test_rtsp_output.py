@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_rtsp_output",
-    "src/petcam/RTSP_output.py",
+    "src/petcam/rtsp_output.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -109,12 +109,12 @@ class OBSOutputTests(unittest.TestCase):
 
     def test_disabled_output_exits_cleanly_without_starting_server(self):
         with tempfile.TemporaryDirectory() as directory:
-            status_path = Path(directory) / "RTSP-status.json"
+            status_path = Path(directory) / "rtsp-status.json"
             with patch.object(MODULE, "load_config", return_value={"enabled": False}):
                 with patch.object(MODULE, "STATUS_PATH", status_path):
                     with patch.object(MODULE, "native_h264_available") as detect:
                         with patch.object(MODULE, "_load_gstreamer") as load:
-                            with patch("sys.argv", ["RTSP_output.py"]):
+                            with patch("sys.argv", ["rtsp_output.py"]):
                                 self.assertIsNone(MODULE.main())
             detect.assert_not_called()
             load.assert_not_called()
