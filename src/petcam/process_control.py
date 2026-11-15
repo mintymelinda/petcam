@@ -8,7 +8,7 @@ from collections.abc import Callable
 from typing import Any
 
 SYSTEMCTL = "/usr/bin/systemctl"
-_PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\\Z")
+_PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*")
 
 
 def systemctl_command(*arguments: str, sudo: bool = False) -> list[str]:
