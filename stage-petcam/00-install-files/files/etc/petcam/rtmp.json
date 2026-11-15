@@ -1,0 +1,8 @@
+{
+  "enabled": false,
+  "encoder": "libx264",
+  "width": 640,
+  "height": 360,
+  "fps": 15,
+  "bitrate_kbps": 750
+}
