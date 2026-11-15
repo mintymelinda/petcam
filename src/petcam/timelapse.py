@@ -100,7 +100,6 @@ def save_config(values, path=CONFIG):
         stream.write("\n")
         stream.flush()
         os.fsync(stream.fileno())
-    os.chmod(temporary, 0o640)
     os.replace(temporary, path)
     return config
 
