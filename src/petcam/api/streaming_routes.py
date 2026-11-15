@@ -6,7 +6,7 @@ from urllib.parse import urlparse
 def handle_get(handler, services):
     path = urlparse(handler.path).path
     if path == "/browser-source.js":
-        services.serve_static_asset(self, "browser-source.js")
+        services.serve_static_asset(handler, "browser-source.js")
         return
     try:
         if services.parse_config(services.CONFIG).get("FORMAT") == "H264":
@@ -15,7 +15,7 @@ def handle_get(handler, services):
     except Exception:
         pass
     if path == "/":
-        body = (STATIC_DIR / "browser-source.html").read_bytes()
+        body = (services.STATIC_DIR / "browser-source.html").read_bytes()
         handler.send_response(200)
         handler.send_header("Content-Type", "text/html; charset=utf-8")
         handler.send_header("Content-Length", str(len(body)))
@@ -27,7 +27,7 @@ def handle_get(handler, services):
         handler.send_error(404)
         return
     try:
-        services.proxy_stream(self, int(services.parse_config(services.CONFIG)["PORT"]))
+        services.proxy_stream(handler, int(services.parse_config(services.CONFIG)["PORT"]))
     except Exception:
         handler.send_error(503)
 
