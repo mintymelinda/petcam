@@ -696,7 +696,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("estimated_pixels_per_second", PAGE_AND_JS)
         self.assertIn("exceeds_performance_budget", PAGE_AND_JS)
         self.assertIn("performance_budget_pixels_per_second", PAGE_AND_JS)
-        self.assertIn("capture_modes", MODULE.build_capture_modes.__doc__)
+        self.assertIn("server-approved capture-mode catalog", MODULE.build_capture_modes.__doc__)
         self.assertIn("pixels/second", PAGE_AND_JS)
         self.assertNotIn("aggregate pixels/second", PAGE_AND_JS)
         self.assertNotIn("primary_estimated_pixels_per_second", PAGE_AND_JS)
