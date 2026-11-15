@@ -37,7 +37,7 @@ GitHub Actions runs the application test and compilation checks. It does not bui
 ## Documentation
 
 - [Home Assistant MQTT integration](docs/home-assistant.md)
-- [Optional RTMP output](docs/rtmp-output.md)
+- [Optional RTSP output](docs/RTSP-output.md)
 - [Motion detection](docs/motion-detection.md)
 - [Timelapse capture](docs/timelapse.md)
 
