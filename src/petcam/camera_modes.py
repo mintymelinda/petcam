@@ -32,6 +32,7 @@ PIXEL_BUDGETS = {
     "unknown": 1280 * 720 * 30,
 }
 
+
 def select_csi_mode(cameras, tier, requested_camera=None, resolution="auto", fps="auto", requested_device_path=None):
     if requested_device_path:
         cameras = [camera for camera in cameras if camera.get("device_path") == requested_device_path]
