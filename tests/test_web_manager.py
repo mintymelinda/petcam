@@ -110,8 +110,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("rtmp.state", PAGE_AND_JS)
         self.assertIn('id="rtmp-output"', PAGE_AND_JS)
         self.assertIn("OBS Media Source URL", PAGE_AND_JS)
-        self.assertIn('"GREY"', PAGE_AND_JS)
-        self.assertIn('"H264"', PAGE_AND_JS)
+        self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
+        self.assertIn("H264", str(MODULE.camera_inventory.__code__.co_consts))
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
@@ -693,8 +693,10 @@ class WebManagerTests(unittest.TestCase):
 
     def test_camera_performance_warning_uses_single_capture_budget(self):
         self.assertIn("projectedPixelRate", PAGE_AND_JS)
-        self.assertIn("hardware_budget_pixels_per_second", PAGE_AND_JS)
-        self.assertIn("exceedsPerformanceBudget", PAGE_AND_JS)
+        self.assertIn("estimated_pixels_per_second", PAGE_AND_JS)
+        self.assertIn("exceeds_performance_budget", PAGE_AND_JS)
+        self.assertIn("performance_budget_pixels_per_second", PAGE_AND_JS)
+        self.assertIn("capture_modes", MODULE.build_capture_modes.__doc__)
         self.assertIn("pixels/second", PAGE_AND_JS)
         self.assertNotIn("aggregate pixels/second", PAGE_AND_JS)
         self.assertNotIn("primary_estimated_pixels_per_second", PAGE_AND_JS)
