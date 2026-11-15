@@ -12,6 +12,7 @@ POLICY_MODULES = {
     "camera_capabilities.py",
     "camera_modes.py",
     "camera_selection.py",
+    "camera_capture_policy.py",
     "motion_policy.py",
 }
 FORBIDDEN_POLICY_IMPORTS = {
