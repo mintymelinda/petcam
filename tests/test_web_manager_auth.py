@@ -13,6 +13,8 @@ from unittest import mock
 from petcam import web_auth
 from petcam import web_manager as MANAGER
 
+LIB = Path("src/petcam")
+
 
 class WebManagerRouteAuthenticationTests(unittest.TestCase):
     @classmethod
