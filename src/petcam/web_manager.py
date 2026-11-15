@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-from .api import management_routes, streaming_routes
 if __package__:
+    from .api import management_routes, streaming_routes
     from .config import apply_config, ensure_config_lock, parse_config
     from .camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from .camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
@@ -30,6 +30,8 @@ if __package__:
     from . import camera_controls, feature_services, service_transactions, stream_metrics, system_metrics
     from . import camera_configuration, capture_status, rtsp_status, stream_proxy
 else:  # Support the installed standalone web-manager entry point.
+    import api.management_routes as management_routes
+    import api.streaming_routes as streaming_routes
     from config import apply_config, ensure_config_lock, parse_config
     from camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
