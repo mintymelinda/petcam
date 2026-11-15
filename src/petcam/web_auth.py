@@ -64,11 +64,11 @@ def initialize_password(password):
     payload = json.dumps(data) + "\n"
     with _lock:
         try:
-            descriptor = os.open(AUTH_FILE, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o666)
+            output = AUTH_FILE.open("x", encoding="utf-8")
         except FileExistsError as error:
             raise ValueError("PetCam administrator setup has already been completed.") from error
         try:
-            with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+            with output:
                 output.write(payload)
                 output.flush()
                 os.fsync(output.fileno())
