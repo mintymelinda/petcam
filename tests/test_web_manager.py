@@ -1011,7 +1011,7 @@ class CaptureModeCatalogTests(unittest.TestCase):
             ],
         }
 
-        modes = MODULE.build_capture_modes(camera, 30_000_000)
+        modes = MODULE.build_capture_modes(camera, 20_000_000)
 
         self.assertEqual(len(modes), 3)
         self.assertEqual(
@@ -1022,7 +1022,7 @@ class CaptureModeCatalogTests(unittest.TestCase):
         self.assertTrue(modes[1]["exceeds_performance_budget"])
         self.assertFalse(modes[2]["exceeds_performance_budget"])
         self.assertEqual(modes[1]["estimated_pixels_per_second"], 27_648_000)
-        self.assertEqual(modes[1]["performance_budget_pixels_per_second"], 30_000_000)
+        self.assertEqual(modes[1]["performance_budget_pixels_per_second"], 20_000_000)
 
     def test_capture_mode_catalog_uses_csi_fps_range_and_preserves_fractional_rates(self):
         camera = {
