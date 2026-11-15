@@ -1,4 +1,3 @@
-import importlib.util
 import io
 import json
 import tempfile
@@ -6,12 +5,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-SPEC = importlib.util.spec_from_file_location(
-    "petcam_web_manager",
-    "src/petcam/web_manager.py",
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import web_manager as MODULE
 
 DASHBOARD_JS = Path("src/petcam/static/dashboard.js").read_text(encoding="utf-8")
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
