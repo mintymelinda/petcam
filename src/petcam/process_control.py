@@ -11,16 +11,16 @@ SYSTEMCTL = "/usr/bin/systemctl"
 _PROFILE_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\\Z")
 
 
-def systemctl_command(*arguments: str) -> list[str]:
+def systemctl_command(*arguments: str, sudo: bool = False) -> list[str]:
     """Build an absolute-path systemctl invocation without a shell."""
     if not arguments or any(not isinstance(value, str) or not value for value in arguments):
         raise ValueError("systemctl arguments must be non-empty strings")
-    return [SYSTEMCTL, *arguments]
+    return (["sudo", "-n"] if sudo else []) + [SYSTEMCTL, *arguments]
 
 
-def run_systemctl(*arguments: str, runner: Callable[..., Any] = subprocess.run, **options: Any) -> Any:
+def run_systemctl(*arguments: str, runner: Callable[..., Any] = subprocess.run, sudo: bool = False, **options: Any) -> Any:
     """Run systemctl through an injectable process runner."""
-    return runner(systemctl_command(*arguments), **options)
+    return runner(systemctl_command(*arguments, sudo=sudo), **options)
 
 
 def stream_instance_unit(profile_id: str) -> str:
