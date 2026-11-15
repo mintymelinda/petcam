@@ -1,12 +1,9 @@
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("petcam_camera", "src/petcam/camera.py")
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import camera as MODULE
 
 
 CSI_SAMPLE = """Available cameras
