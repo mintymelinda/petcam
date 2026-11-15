@@ -2,16 +2,17 @@
 
 PetCam is the application source for a Raspberry Pi camera streaming and management system. It supports USB UVC webcams and Raspberry Pi CSI cameras, exposes camera streams for OBS, and provides an authenticated web manager.
 
-This repository contains the runtime application, deployment assets required by the application, tests, and feature documentation. Raspberry Pi OS image generation and publishing are maintained separately in [petcam-os](https://github.com/mintymelinda/petcam-os).
+This repository contains the runtime application, its runtime configuration and service definitions, tests, and feature documentation. Raspberry Pi OS image generation and publishing are maintained separately in [petcam-os](https://github.com/mintymelinda/petcam-os).
 
-## Project layout
+## Repository contents
 
-- `petcam/` — runtime Python application modules.
-- `deploy/` — runtime configuration, systemd units, and service helpers.
-- `tests/` — application unit tests.
-- `docs/` — feature and operations documentation.
-- `assets/` — application assets.
-- `VERSION` — application release version.
+- Runtime Python application modules: `stage-petcam/00-install-files/files/usr/local/lib/petcam/`
+- Runtime configuration, systemd units, and service helpers: `stage-petcam/00-install-files/files/`
+- Unit tests: `tests/`
+- Feature and operations documentation: `docs/`
+- Application version: `VERSION`
+
+The source layout is retained so existing tests and runtime packaging references remain valid. Image-generation workflows, pi-gen stages, image assembly scripts, and image publication tooling are not part of this repository.
 
 ## Development
 
@@ -22,7 +23,7 @@ python -m pip install pytest
 python -m pytest -q
 ```
 
-The GitHub Actions workflow runs the test suite and Python compilation checks. No Raspberry Pi image build, pi-gen, Docker image assembly, or image publishing occurs in this repository.
+GitHub Actions runs unit tests and Python compilation checks. This repository does not build Raspberry Pi OS images, run pi-gen, assemble Docker images, or publish OS images.
 
 ## Documentation
 
