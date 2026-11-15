@@ -1,23 +1,14 @@
-import importlib.util
 import json
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
-import sys
 from unittest import mock
 from io import BytesIO
 
 from PIL import Image
 
-sys.path.insert(0, str(Path("stage-petcam/00-install-files/files/usr/local/lib/petcam").resolve()))
-
-SPEC = importlib.util.spec_from_file_location(
-    "petcam_motion",
-    "src/petcam/motion_detection.py",
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import motion_detection as MODULE
 
 
 def jpeg(color, size=(320, 240), patch=None):

@@ -1,20 +1,12 @@
-import importlib.util
 import io
 import json
-import sys
 import tarfile
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-MODULE_PATH = Path(
-    "src/petcam/network_diagnostics.py"
-)
-sys.path.insert(0, str(MODULE_PATH.parent))
-SPEC = importlib.util.spec_from_file_location("petcam_network_diagnostics", MODULE_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import network_diagnostics as MODULE
 
 
 class NetworkDiagnosticsTests(unittest.TestCase):

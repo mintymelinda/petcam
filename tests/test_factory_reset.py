@@ -1,15 +1,9 @@
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-SPEC = importlib.util.spec_from_file_location(
-    "petcam_factory_reset",
-    "src/petcam/factory_reset.py",
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import factory_reset as MODULE
 
 
 class FactoryResetTests(unittest.TestCase):

@@ -1,19 +1,11 @@
 import contextlib
-import importlib.util
-import sys
 import tempfile
-import config as CONFIG_MODULE
+from petcam import config as CONFIG_MODULE
 import unittest
 from pathlib import Path
 from unittest import mock
 
-MODULE_PATH = Path(
-    "src/petcam/health_monitor.py"
-)
-sys.path.insert(0, str(MODULE_PATH.parent))
-SPEC = importlib.util.spec_from_file_location("petcam_health_monitor", MODULE_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import health_monitor as MODULE
 
 
 class HealthMonitorTests(unittest.TestCase):

@@ -12,9 +12,12 @@ import time
 import urllib.request
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import parse_config
-from network_diagnostics import collect_diagnostics
+if __package__:
+    from .config import parse_config
+    from .network_diagnostics import collect_diagnostics
+else:  # Support the installed standalone worker entry point.
+    from config import parse_config
+    from network_diagnostics import collect_diagnostics
 
 MODE_RE = re.compile(r"Size: Discrete (\d+)x(\d+)")
 FORMAT_RE = re.compile(r"\[\d+\]: '([^']+)'")

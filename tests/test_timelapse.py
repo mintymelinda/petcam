@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import tempfile
 import unittest
@@ -6,12 +5,7 @@ from unittest import mock
 from datetime import datetime, timezone
 from pathlib import Path
 
-SPEC = importlib.util.spec_from_file_location(
-    "petcam_timelapse",
-    "src/petcam/timelapse.py",
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import timelapse as MODULE
 
 
 class TimelapseTests(unittest.TestCase):

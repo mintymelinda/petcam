@@ -1,5 +1,4 @@
 import contextlib
-import importlib.util
 import io
 import json
 import tempfile
@@ -8,12 +7,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-MODULE_PATH = Path(
-    "src/petcam/config.py"
-)
-SPEC = importlib.util.spec_from_file_location("petcam_config", MODULE_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import config as MODULE
 
 
 class ConfigValidationTests(unittest.TestCase):

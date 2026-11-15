@@ -1,12 +1,8 @@
-import importlib.util
 import tempfile
 import unittest
 from pathlib import Path
 
-MODULE_PATH=Path("src/petcam/light_sensor.py")
-SPEC=importlib.util.spec_from_file_location("petcam_light_sensor",MODULE_PATH)
-MODULE=importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import light_sensor as MODULE
 
 class LightSensorTests(unittest.TestCase):
     def test_bright_dark_thresholds_and_hysteresis(self):
