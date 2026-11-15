@@ -11,11 +11,6 @@ const pendingCameraControlChanges = new Map();
 let advancedPollHandle = null,
   advancedApplyHandle = null;
 const advancedDialog = $("advanced-camera-dialog");
-const autoCheck = $("auto-check");
-let updateAvailable = false,
-  updateBusy = false;
-let updatePollTimer = null,
-  updatePollInFlight = false;
 // Authentication and API requests
 async function login() {
   if (loginPromise) return loginPromise;
@@ -963,147 +958,6 @@ async function refreshHealth() {
     $("health-reason").textContent = e.message;
   }
 }
-// Signed application update workflow
-function scheduleUpdatePoll(delay = 2000) {
-  if (updatePollTimer) clearTimeout(updatePollTimer);
-  updatePollTimer = setTimeout(updateStatus, delay);
-}
-async function updateStatus() {
-  if (updatePollInFlight) return;
-  updatePollInFlight = true;
-  try {
-    const s = await request("/api/update/status"),
-      wasBusy = updateBusy;
-    updateBusy = !!s.active;
-    const labels = {
-      starting: "Starting",
-      checking: "Checking release",
-      downloading: "Downloading",
-      staging: "Staging files",
-      installing: "Installing",
-      restarting: "Restarting services",
-      authenticating: "Verifying signed release",
-      verifying: "Verifying installation",
-      complete: "Complete",
-      failed: "Failed",
-      idle: "Idle",
-    };
-    $("update-state").textContent =
-      (labels[s.stage] || s.stage || "Unknown") + (s.active ? "…" : "");
-    const detail = s.message || "No update has been run yet.";
-    const stamp = s.updated_at
-      ? new Date(s.updated_at * 1000).toLocaleTimeString()
-      : "";
-    $("update-message").textContent =
-      detail +
-      (stamp ? " · Updated " + stamp : "") +
-      (s.warning ? " · Warning: " + s.warning : "");
-    $("update-logs").textContent =
-      s.logs || s.log_warning || "No installer output is available.";
-    if (s.active) {
-      $("install-update").disabled = true;
-      $("check-updates").disabled = true;
-      scheduleUpdatePoll(2000);
-    } else {
-      $("check-updates").disabled = false;
-      $("install-update").hidden = !updateAvailable;
-      $("install-update").disabled = !updateAvailable;
-      if (wasBusy) {
-        updateBusy = false;
-        await refreshSystemInfo();
-        if (s.stage === "complete") await checkUpdates();
-      }
-    }
-  } catch (e) {
-    $("update-state").textContent = updateBusy
-      ? "Reconnecting…"
-      : "Status unavailable";
-    $("update-message").textContent = updateBusy
-      ? "The manager connection was interrupted. The installer may still be running; reconnecting automatically."
-      : "Unable to read installer status: " + e.message;
-    if (updateBusy) scheduleUpdatePoll(2500);
-  } finally {
-    updatePollInFlight = false;
-  }
-}
-async function checkUpdates() {
-  const b = $("check-updates");
-  updateAvailable = false;
-  $("install-update").hidden = true;
-  b.disabled = true;
-  $("update-message").textContent = "Checking signed release metadata…";
-  try {
-    const d = await request("/api/update/check");
-    updateAvailable = d.update_available;
-    $("install-update").hidden = !updateAvailable;
-    if (d.status === "no-complete-release") {
-      $("update-state").textContent = "No complete release";
-      $("update-message").textContent =
-        "No complete signed PetCam release is currently available. Incomplete releases are skipped automatically; try again later.";
-    } else {
-      $("update-state").textContent = updateAvailable
-        ? "Update available"
-        : "Up to date";
-      $("update-message").textContent = updateAvailable
-        ? "A verified application release is available. Review the notes before installing."
-        : "This device is running the latest published PetCam application.";
-    }
-    $("release-notes").textContent =
-      (d.releases || []).find((r) => r.update_available)?.release_notes ||
-      (d.releases || [])[0]?.release_notes ||
-      "No release notes provided by the latest verified release.";
-    const releaseList = (d.releases || [])
-      .map(
-        (r) =>
-          r.version +
-          " · " +
-          Math.ceil(r.archive_size / 1048576) +
-          " MiB" +
-          (r.update_available ? " · update" : " · installed/current") +
-          (r.release_notes ? "\n" + r.release_notes : ""),
-      )
-      .join("\n\n");
-    $("update-details").textContent =
-      "Installed: " +
-      (d.installed_version || "unknown") +
-      " · Newest valid: " +
-      (d.available_version || "none") +
-      "\n\nRecent verified releases\n" +
-      (releaseList || "No complete signed releases found.");
-    $("install-update").disabled = !updateAvailable || updateBusy;
-  } catch (e) {
-    $("update-state").textContent = "Check failed";
-    $("update-message").textContent = e.message;
-  } finally {
-    b.disabled = false;
-  }
-}
-async function installUpdate() {
-  if (!updateAvailable || updateBusy) return;
-  $("update-confirmation").hidden = true;
-  $("install-update").disabled = true;
-  $("check-updates").disabled = true;
-  updateBusy = true;
-  $("update-message").textContent = "Starting verified update…";
-  try {
-    await request("/api/update/install", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: "{}",
-    });
-    $("update-state").textContent = "Starting…";
-    $("update-message").textContent =
-      "The update has been accepted. Progress is saved on the device; this page will reconnect automatically if the manager restarts.";
-    scheduleUpdatePoll(500);
-  } catch (e) {
-    $("update-message").textContent =
-      "The start request did not complete: " +
-      e.message +
-      " Checking whether the updater started…";
-    scheduleUpdatePoll(500);
-  }
-}
-
 // Event wiring and application startup
 function initializeDashboard() {
   $("first-run-form").onsubmit = async (event) => {
@@ -1351,23 +1205,6 @@ function initializeDashboard() {
   refreshSystemInfo();
   refreshHealth();
   setInterval(refreshHealth, 30000);
-  autoCheck.checked =
-    localStorage.getItem("petcam-auto-update-check") === "true";
-  autoCheck.onchange = () =>
-    localStorage.setItem("petcam-auto-update-check", String(autoCheck.checked));
-  $("check-updates").onclick = checkUpdates;
-  $("install-update").onclick = () => {
-    if (!updateAvailable || updateBusy) return;
-    $("update-confirmation").hidden = false;
-    $("confirm-update-install").focus();
-  };
-  $("cancel-update-install").onclick = () => {
-    $("update-confirmation").hidden = true;
-    $("install-update").focus();
-  };
-  $("confirm-update-install").onclick = installUpdate;
-  if (autoCheck.checked) checkUpdates();
-  updateStatus();
   (async () => {
     try {
       const response = await fetch("/api/setup/status", { cache: "no-store" });
