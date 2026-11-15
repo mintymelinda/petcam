@@ -1001,6 +1001,48 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('input.type = "number";', PAGE_AND_JS)
         self.assertIn('document.createElement("select")', PAGE_AND_JS)
 
+class CaptureModeCatalogTests(unittest.TestCase):
+    def test_capture_mode_catalog_flattens_fps_and_computes_budget_on_server(self):
+        camera = {
+            "kind": "usb",
+            "modes": [
+                {"format": "MJPG", "width": 1280, "height": 720, "fps": [15, 30]},
+                {"format": "H264", "width": 1920, "height": 1080, "fps": [30]},
+            ],
+        }
+
+        modes = MODULE.build_capture_modes(camera, 30_000_000)
+
+        self.assertEqual(len(modes), 3)
+        self.assertEqual(
+            [(mode["width"], mode["height"], mode["fps"]) for mode in modes],
+            [(1280, 720, 15), (1280, 720, 30), (1920, 1080, 30)],
+        )
+        self.assertFalse(modes[0]["exceeds_performance_budget"])
+        self.assertTrue(modes[1]["exceeds_performance_budget"])
+        self.assertFalse(modes[2]["exceeds_performance_budget"])
+        self.assertEqual(modes[1]["estimated_pixels_per_second"], 27_648_000)
+        self.assertEqual(modes[1]["performance_budget_pixels_per_second"], 30_000_000)
+
+    def test_capture_mode_catalog_uses_csi_fps_range_and_preserves_fractional_rates(self):
+        camera = {
+            "kind": "csi",
+            "modes": [
+                {
+                    "width": 1640,
+                    "height": 1232,
+                    "fps": [20.0, 29.97],
+                    "fps_range": {"max": 30},
+                },
+            ],
+        }
+
+        modes = MODULE.build_capture_modes(camera, 100_000_000)
+
+        self.assertEqual([mode["fps"] for mode in modes], [20.0, 29.97])
+        self.assertTrue(all(not mode["exceeds_performance_budget"] for mode in modes))
+
+
 class CameraIdentityTests(unittest.TestCase):
     def test_usb_camera_identity_prefers_physical_path(self):
         camera = {"kind": "usb", "device": "/dev/video4", "physical_path": "/sys/devices/usb1/1-1"}
