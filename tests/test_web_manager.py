@@ -154,10 +154,10 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["capture_mode"], "native_h264_csi")
 
     def test_browser_source_shows_camera_connection_status_and_retries(self):
-        source = Path("src/petcam/web_manager.py").read_text()
+        page = Path("src/petcam/static/browser-source.html").read_text(encoding="utf-8")
         script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
-        self.assertIn('id="status">Connecting to PetCam camera...', source)
-        self.assertIn('<script src="/browser-source.js" defer></script>', source)
+        self.assertIn('id="status">Connecting to PetCam camera...', page)
+        self.assertIn('<script src="/browser-source.js" defer></script>', page)
         self.assertIn('image.addEventListener("load", handleStreamLoad)', script)
         self.assertIn('image.addEventListener("error", handleStreamError)', script)
         self.assertIn("window.setTimeout(retryStream, RETRY_DELAY_MS)", script)

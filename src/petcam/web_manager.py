@@ -1,10 +1,8 @@
 #!/usr/bin/env python3
-import http.client
 """Small, dependency-free PetCam camera management HTTP interface."""
 import copy
 import json
 import os
-import re
 import ssl
 import socket
 import subprocess
@@ -12,7 +10,6 @@ import threading
 import time
 import hmac
 import sys
-import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -28,6 +25,14 @@ from motion_detection import load_config as load_motion_config, save_config as s
 from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
 from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
 from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+import camera_controls
+import service_transactions
+import stream_metrics
+import system_metrics
+import camera_configuration
+import capture_status
+import rtsp_status
+import stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
@@ -36,11 +41,6 @@ HEALTH_FILE = Path("/var/lib/petcam/health.json")
 RTMP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
-_STREAM_METRICS_LOCK = threading.Lock()
-_STREAM_METRICS = {}
-_STREAM_CLIENT_SEQUENCE = 0
-_SYSTEM_METRICS_LOCK = threading.Lock()
-_SYSTEM_CPU_SAMPLE = None
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSETS = {
     "dashboard.js": "application/javascript; charset=utf-8",
@@ -75,94 +75,7 @@ def device_mdns_hostname():
     return hostname if "." in hostname else f"{hostname}.local"
 
 
-PAGE = r"""<!doctype html>
-<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PetCam</title>
-<style>
-:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#17191d;color:#eee}body.setup-required>section:not(#first-run),body.setup-required>#manager-tabs,body.setup-required>#tab-panels,body.setup-required>footer{display:none}#first-run[hidden]{display:none}
-body{max-width:1120px;margin:2rem auto;padding:0 1rem}h1{font-size:1.5rem}section{background:#22262c;border:1px solid #383e47;border-radius:10px;padding:1rem;margin:1rem 0}
-button,select,input{font:inherit;padding:.55rem .7rem;border-radius:6px;border:1px solid #59616d;background:#303741;color:inherit}
-button{cursor:pointer}button:disabled{opacity:.5}label{display:block;margin:.7rem 0 .25rem}select{width:100%}
-video,img{display:block;width:100%;max-height:55vh;object-fit:contain;background:#090a0b;border-radius:6px}.motion-event{display:flex;gap:.75rem;align-items:center;margin:.6rem 0}.motion-event img{width:160px;max-height:110px;object-fit:cover}
-small,.muted{color:#aeb7c2}#message{min-height:1.5em;color:#b9d8ff}.row{display:flex;gap:.5rem;flex-wrap:wrap}
-dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;color:inherit;border:1px solid #59616d;border-radius:10px;padding:1.25rem}dialog::backdrop{background:#000b}dialog form{display:grid;gap:.5rem}dialog input{width:100%;box-sizing:border-box}#login-password{-webkit-text-security:disc!important}#login-message{min-height:1.4em;color:#ffb4a9}
-.tab-nav{display:flex;gap:.4rem;overflow-x:auto;padding:.35rem;background:#22262c;border:1px solid #383e47;border-radius:10px;position:sticky;top:.5rem;z-index:5;scrollbar-width:thin}.tab-nav button{flex:0 0 auto;border-color:transparent;background:transparent;color:#aeb7c2;font-weight:600}.tab-nav button[aria-selected="true"]{background:#3b4654;border-color:#68788c;color:#fff}.tab-panel{display:none}.tab-panel.active{display:block}.tab-panel[hidden]{display:none}.tab-panel>section:first-child{margin-top:1rem}.stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:.5rem}@media(max-width:560px){body{margin:1rem auto;padding:0 .75rem}.tab-nav{position:sticky;top:0}.tab-nav button{padding:.55rem .65rem;font-size:.9rem}}.tab-nav .sign-out{margin-left:auto;background:#303741;border-color:#59616d;color:#eee}
-.camera-select-grid{display:grid;grid-template-columns:2fr 1fr;gap:1rem;align-items:end}.camera-select-grid label{margin-top:0}
-.dialog-heading{display:flex;justify-content:space-between;align-items:center;gap:1rem}.dialog-heading h2{margin:.2rem 0}
-.camera-actions{display:flex;justify-content:space-between;align-items:center;margin:1rem 0}.camera-actions-right{display:flex;gap:.5rem}
-.advanced-dialog{max-width:min(760px,calc(100% - 2rem));max-height:85vh;overflow:auto}.advanced-dialog section{margin:.75rem 0}
-
-@media(max-width:600px){.camera-select-grid{grid-template-columns:1fr}.tab-nav{gap:.2rem}.tab-nav button{font-size:.85rem;padding:.5rem}}</style>
-<body><h1>PetCam <small>Camera</small></h1>
-<section id="first-run" hidden><h2>Welcome to PetCam</h2><p>Create the administrator password for this camera. You can do this from your browser; SSH is not required.</p><form id="first-run-form"><label for="setup-password">Administrator password (12–1024 characters)</label><input id="setup-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required><label for="setup-password-confirm">Confirm password</label><input id="setup-password-confirm" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required><p id="setup-message" role="status" aria-live="polite"></p><button id="setup-submit" type="submit">Create administrator password</button></form></section>
-<dialog id="login-dialog" aria-labelledby="login-title"><form id="login-form"><h2 id="login-title">Sign in to PetCam</h2><label for="login-password">Administrator password</label><input id="login-password" type="password" autocomplete="current-password" required><p id="login-message" role="alert" aria-live="polite"></p><button id="login-submit" type="submit">Sign in</button></form></dialog>
-<nav id="manager-tabs" class="tab-nav" role="tablist" aria-label="PetCam sections">
-<button id="tab-camera" type="button" role="tab" aria-controls="panel-camera" aria-selected="true" tabindex="0" data-tab="camera">Camera</button>
-<button id="tab-timelapse" type="button" role="tab" aria-controls="panel-timelapse" aria-selected="false" tabindex="-1" data-tab="timelapse">Time-Lapse</button>
-<button id="tab-motion" type="button" role="tab" aria-controls="panel-motion" aria-selected="false" tabindex="-1" data-tab="motion">Motion Detection</button>
-<button id="tab-system" type="button" role="tab" aria-controls="panel-system" aria-selected="false" tabindex="-1" data-tab="system">System</button>
-<button id="logout" type="button" class="sign-out">Sign out</button>
-</nav>
-<main id="tab-panels">
-<div id="panel-camera" class="tab-panel active" role="tabpanel" aria-labelledby="tab-camera" tabindex="0">
-<section><div class="camera-select-grid"><div><label for="camera">Camera</label><select id="camera"></select></div><div><label for="mode">Capture mode</label><select id="mode"></select></div></div><p id="message" role="status" class="muted">Discovering cameras…</p><p class="muted">Only advertised camera modes are offered.</p></section>
-<section><h2>Capture status</h2><p id="capture-rate" class="muted">Checking actual capture rate…</p><p id="capture-status-freshness" class="muted">Capture status refreshes every 5 seconds.</p><p id="browser-feed-primary" class="muted">Browser Source: <a data-browser-feed-link href="http://__PETCAM_HOST__:8080/" target="_blank" rel="noopener">http://__PETCAM_HOST__:8080/</a></p></section>
-<div class="camera-actions"><button id="advanced-camera-open" type="button">Advanced</button><div class="camera-actions-right"><button id="apply">Apply</button><button id="refresh" type="button" title="Refresh cameras">Refresh</button></div></div>
-<dialog id="advanced-camera-dialog" class="advanced-dialog"><div class="dialog-heading"><h2>Advanced camera controls</h2><button id="advanced-camera-close" type="button">Close</button></div><p class="muted">Edits apply automatically. Controls are refreshed every 60 seconds while this dialog is open.</p><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Available controls</h2><div class="row" style="gap:.5rem"><button id="refresh-camera-controls" type="button">Refresh</button></div></div>
-<p id="camera-controls-status" class="muted" role="status">Controls for the active camera will appear here.</p>
-<p class="muted">Controls are discovered from the connected camera. Some settings may be unavailable while automatic modes are active. Dynamic framerate can reduce the actual captured FPS when enabled.</p>
-<div id="camera-controls-list" class="muted">No camera controls loaded.</div><button id="apply-camera-controls" type="button" hidden disabled>Apply</button></section></dialog>
-</div><div id="panel-timelapse" class="tab-panel" role="tabpanel" aria-labelledby="tab-timelapse" tabindex="0" hidden><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Timelapse</h2><button id="refresh-timelapse">Refresh status</button></div>
-<p id="timelapse-status" role="status">Loading timelapse status…</p>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="timelapse-enabled" type="checkbox"> Enable periodic captures</label>
-<label for="timelapse-interval">Capture interval (seconds)</label><input id="timelapse-interval" type="number" min="60" max="86400" value="300">
-<label for="timelapse-start">Daily schedule start (local time)</label><input id="timelapse-start" type="time" value="00:00">
-<label for="timelapse-end">Daily schedule end (local time)</label><input id="timelapse-end" type="time" value="23:59">
-<label for="timelapse-retention">Retention (days)</label><input id="timelapse-retention" type="number" min="1" max="3650" value="30">
-<label for="timelapse-storage">Maximum storage (MiB)</label><input id="timelapse-storage" type="number" min="64" max="102400" value="2048">
-<label for="timelapse-free">Minimum free disk space (MiB)</label><input id="timelapse-free" type="number" min="64" max="102400" value="256">
-<label for="timelapse-width">Maximum image width (0 = live resolution)</label><input id="timelapse-width" type="number" min="0" max="4096" value="0">
-<label for="timelapse-quality">JPEG quality (0 = preserve source unless resizing; 1–95 = re-encode)</label><input id="timelapse-quality" type="number" min="0" max="95" value="85">
-<label for="timelapse-path">Storage directory</label><input id="timelapse-path" type="text" value="/var/lib/petcam/timelapse/frames">
-<p class="muted">Use a local folder under /var/lib/petcam, or mount an SMB/NFS share at /mnt/petcam-network and choose a folder beneath it. Network shares must be mounted by Linux first; see the Timelapse storage instructions. Captures pause if the network mount is not mounted rather than falling back to the SD card.</p>
-<p class="muted">Frames reuse the active MJPEG stream, so timelapse does not open another camera process. Optional resizing/re-encoding is performed only after a frame is received.</p>
-<div class="row"><button id="save-timelapse">Save timelapse settings</button></div></section></div><div id="panel-motion" class="tab-panel" role="tabpanel" aria-labelledby="tab-motion" tabindex="0" hidden><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Motion detection</h2><button id="refresh-motion">Refresh status</button></div>
-<p id="motion-status" role="status">Loading motion status…</p>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="motion-enabled" type="checkbox"> Enable motion snapshots</label>
-<label for="motion-sensitivity">Sensitivity (higher detects smaller changes)</label><input id="motion-sensitivity" type="range" min="1" max="100" value="50">
-<label for="motion-min-change">Minimum changed pixels (%)</label><input id="motion-min-change" type="number" min="0.1" max="20" step="0.1" value="2.5">
-<label for="motion-sample">Sampling interval (seconds)</label><input id="motion-sample" type="number" min="1" max="30" value="2">
-<label for="motion-confirm">Consecutive samples to confirm motion</label><input id="motion-confirm" type="number" min="1" max="5" value="2">
-<label for="motion-cooldown">Minimum time between events (seconds)</label><input id="motion-cooldown" type="number" min="5" max="86400" value="60">
-<label style="display:flex;gap:.5rem;align-items:center"><input id="motion-quiet-enabled" type="checkbox"> Suppress snapshots during quiet hours</label>
-<label for="motion-quiet-start">Quiet hours start (local time)</label><input id="motion-quiet-start" type="time" value="22:00">
-<label for="motion-quiet-end">Quiet hours end (local time)</label><input id="motion-quiet-end" type="time" value="07:00">
-<label for="motion-retention">Event snapshot retention (days)</label><input id="motion-retention" type="number" min="1" max="3650" value="14">
-<label for="motion-storage">Maximum event storage (MiB)</label><input id="motion-storage" type="number" min="64" max="102400" value="512">
-<label for="motion-free">Minimum free disk space (MiB)</label><input id="motion-free" type="number" min="64" max="102400" value="256">
-<p class="muted">Motion samples reuse the active camera MJPEG stream. Frames are reduced to 160×120 grayscale for comparison; no second camera process or continuous video recording is used. The worker runs with a strict CPU and memory limit. Disabled by default.</p>
-<div class="row"><button id="save-motion">Save motion settings</button></div>
-<h3>Recent motion events</h3><div id="motion-events" class="muted">No motion events recorded.</div></section></div><div id="panel-system" class="tab-panel" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
-<section id="system-info"><h2>System Info</h2><p id="installed-version" role="status">Loading installed PetCam version…</p></section>
-<section id="rtmp-output"><h2>OBS Output</h2>
-<p class="muted">This exposes the camera to OBS without transcoding. PetCam does not publish to Twitch or YouTube. Add the RTSP address as an OBS Media Source. The HTTP Browser Source is available while capture is in MJPEG mode; native H.264 capture is selected for RTSP only when timelapse and motion detection are disabled.</p>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="rtmp-enabled" type="checkbox"> Enable OBS RTSP feed</label>
-<label for="obs-rtsp-url">OBS Media Source URL</label><input id="obs-rtsp-url" type="text" value="rtsp://__PETCAM_HOST__:8554/petcam">
-<p id="browser-feed-rtmp" class="muted">HTTP Browser Source: <a data-browser-feed-link href="http://__PETCAM_HOST__:8080/" target="_blank" rel="noopener">http://__PETCAM_HOST__:8080/</a></p>
-<p id="h264-mode-note" class="muted" hidden>H.264 capture disables the HTTP Browser Source and forces OBS RTSP output on. Timelapse and motion detection must be disabled before applying H.264.</p>
-<p id="rtmp-status" class="muted" role="status">Checking OBS feed…</p>
-<div class="row"><button id="save-rtmp" type="button">Save OBS output settings</button><button id="refresh-rtmp" type="button">Refresh status</button></div>
-</section>
-<section><h2>Stream Health</h2><div id="system-health-grid" class="stats-grid"><p class="muted">Waiting for telemetry…</p></div><p id="statistics-updated" class="muted" role="status">Collecting system statistics…</p><div id="frame-statistics" hidden></div><div id="viewer-statistics" hidden></div><div id="network-statistics" hidden></div><button id="refresh-statistics" type="button">Refresh</button></section>
-<section><div class="row" style="justify-content:space-between;align-items:center"><h2>Stream health</h2><button id="refresh-health">Refresh</button></div><p id="health-state" role="status">Checking stream health…</p><p id="health-reason" class="muted"></p><small id="health-details" class="muted"></small></section><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Network and OBS diagnostics</h2><button id="refresh-diagnostics">Run checks</button></div><p id="diagnostic-summary" role="status">Diagnostics have not been run yet.</p><p id="diagnostic-details" class="muted"></p><div class="row"><button id="download-support-bundle">Download redacted support bundle</button></div></section><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Ambient light sensor</h2><button id="refresh-light-sensor" type="button">Refresh status</button></div>
-<p id="light-sensor-status" role="status">Loading light sensor status…</p>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="light-sensor-enabled" type="checkbox"> Enable TSL2591 light sensor</label>
-<label for="light-bright-threshold">Bright threshold (lux)</label><input id="light-bright-threshold" type="number" min="0.01" max="100000" step="0.1" value="100">
-<label for="light-dark-threshold">Dark threshold (lux)</label><input id="light-dark-threshold" type="number" min="0" max="99999" step="0.1" value="30">
-<p class="muted">Connect over I²C using SDA, SCL, 3.3V and GND. Bright is reached at or above its threshold; dark is reached at or below its threshold. Between thresholds, the previous state is retained to prevent flicker.</p>
-<div class="row"><button id="save-light-sensor" type="button">Save light sensor settings</button></div></section></div></main>
-<footer style="text-align:center;padding:1rem 0 2rem"><small>Enjoying PetCam? <a href="https://www.paypal.me/kimmynightmare" target="_blank" rel="noopener noreferrer" style="color:#b9d8ff">Support development with PayPal</a></small></footer>
-<script src="/static/dashboard.js" defer></script></body></html>"""
+PAGE = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
 
 
 def build_capture_modes(camera, performance_budget):
@@ -216,161 +129,13 @@ def active_camera_config():
 
 
 def live_capture_status():
-    """Read capture metrics directly from the active stream backend.
-
-    The general-purpose petcam-status command also performs hardware discovery,
-    diagnostics, and a throughput sample. Running that command for a UI refresh
-    can exceed the manager's timeout on slower Pis, hiding otherwise available
-    capture-rate data. These two local endpoints expose only the live metrics.
-    """
-    try:
-        config = parse_config(CONFIG)
-        port = int(config["PORT"])
-    except Exception:
-        config = {}
-        port = 8081
-
-    # Native H.264 has no MJPEG HTTP backend. Report the actual runtime mode.
-    try:
-        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
-        pid = int(marker.get("pid", 0))
-        if marker.get("native_h264") is True and pid > 1:
-            os.kill(pid, 0)
-            result = {"active_capture_format": "H264", "active_resolution": marker.get("resolution") or config.get("RESOLUTION"),
-                      "configured_fps": marker.get("fps") or config.get("FPS"),
-                      "capture_mode": "native_h264_csi" if marker.get("backend") == "csi" else "native_h264",
-                      "hardware_encoder": marker.get("encoder")}
-            try:
-                status = json.loads(Path("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
-                if status.get("source") in ("native_h264", "native_h264_csi"):
-                    result["latest_captured_fps"] = status.get("fps")
-                    result["rtsp_output_ready"] = status.get("active") is True and status.get("state") == "publishing"
-            except (OSError, ValueError, TypeError):
-                pass
-            return result
-    except (OSError, ValueError, TypeError, ProcessLookupError):
-        pass
-
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/state", timeout=2) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        state = payload.get("result") if isinstance(payload, dict) else None
-        if isinstance(state, dict):
-            source = state.get("source") or {}
-            resolution = source.get("resolution") or {}
-            result = {
-                "latest_captured_fps": source.get("captured_fps"),
-                "active_resolution": (
-                    f"{resolution['width']}x{resolution['height']}"
-                    if resolution.get("width") and resolution.get("height") else None
-                ),
-                "active_capture_format": (
-                    "MJPEG" if (state.get("encoder") or {}).get("type") == "HW" else None
-                ),
-            }
-            if config.get("FPS") is not None:
-                result["configured_fps"] = config["FPS"]
-            return result
-    except (OSError, urllib.error.URLError, subprocess.TimeoutExpired, ValueError, TypeError, KeyError, AttributeError):
-        pass
-
-    try:
-        with urllib.request.urlopen(f"http://127.0.0.1:{port}/status", timeout=2) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        if isinstance(payload, dict) and payload.get("backend") == "csi":
-            result = {
-                "latest_captured_fps": payload.get("captured_fps_average"),
-                "active_resolution": config.get("RESOLUTION"),
-                "active_capture_format": "MJPEG",
-            }
-            if config.get("FPS") is not None:
-                result["configured_fps"] = config["FPS"]
-            for key in ("frames_received", "last_frame_age_seconds", "capture_process_running"):
-                if key in payload:
-                    result[key] = payload[key]
-            if payload.get("error"):
-                result["capture_error"] = payload["error"]
-            return result
-    except (OSError, urllib.error.URLError, subprocess.TimeoutExpired, ValueError, TypeError):
-        pass
-    return {}
-
-
-
-V4L2_CONTROL_LINE = re.compile(
-    r"^\s*(?P<name>[a-zA-Z0-9_]+)\s+0x[0-9a-fA-F]+\s+"
-    r"\((?P<type>[^)]+)\)\s*:\s*(?P<metadata>.*)$"
-)
-V4L2_MENU_LINE = re.compile(r"^\s*(?P<value>-?\d+)\s*:\s*(?P<label>.+?)\s*$")
-
+    return capture_status.live_status(
+        CONFIG, parse_config, urlopen=urllib.request.urlopen, kill=os.kill, path_factory=Path,
+    )
 
 def parse_v4l2_controls(output):
-    """Parse v4l2-ctl control metadata without assuming a particular camera model."""
-    controls = []
-    current = None
-    for raw_line in output.splitlines():
-        match = V4L2_CONTROL_LINE.match(raw_line)
-        if match:
-            metadata = match.group("metadata")
-            values = {}
-            for key in ("min", "max", "step", "default", "value"):
-                value_match = re.search(rf"(?:^|\s){key}=(-?\d+)", metadata)
-                if value_match:
-                    values[key] = int(value_match.group(1))
-            flags_match = re.search(r"(?:^|\s)flags=(.+)$", metadata)
-            flags = [flag.strip() for flag in flags_match.group(1).split(",")] if flags_match else []
-            control_type = match.group("type").lower()
-            supported = control_type in ("bool", "int", "menu", "intmenu")
-            current = {
-                "name": match.group("name"),
-                "type": control_type,
-                "min": values.get("min"),
-                "max": values.get("max"),
-                "step": max(1, values.get("step", 1)),
-                "default": values.get("default"),
-                "value": values.get("value"),
-                "flags": flags,
-                "menu": [],
-                "supported": supported,
-                "writable": supported and not any(flag in flags for flag in ("inactive", "read-only", "grabbed")),
-            }
-            controls.append(current)
-            continue
-        if current:
-            menu_match = V4L2_MENU_LINE.match(raw_line)
-            if menu_match:
-                current["menu"].append({
-                    "value": int(menu_match.group("value")),
-                    "label": menu_match.group("label"),
-                })
-    for control in controls:
-        control_type = control["type"]
-        menu_values = {option["value"] for option in control["menu"]}
-
-        def is_valid(value):
-            if value is None:
-                return False
-            if control_type == "bool":
-                return value in (0, 1)
-            if control_type in ("menu", "intmenu"):
-                return value in menu_values
-            if control_type == "int":
-                minimum = control["min"]
-                maximum = control["max"]
-                step = control["step"]
-                return (
-                    (minimum is None or value >= minimum)
-                    and (maximum is None or value <= maximum)
-                    and (minimum is None or (value - minimum) % step == 0)
-                )
-            return True
-
-        if not is_valid(control["value"]):
-            control["value"] = None
-        if not is_valid(control["default"]):
-            control["default"] = None
-    return controls
-
+    """Compatibility adapter for the camera-control service."""
+    return camera_controls.parse_controls(output)
 
 def active_usb_camera():
     """Resolve the configured primary USB camera through current discovery, never a client path."""
@@ -390,100 +155,29 @@ def active_usb_camera():
 
 
 def read_camera_controls(camera=None):
+    """Read controls through the dedicated camera-control service."""
     camera = camera or active_usb_camera()
-    if not camera:
-        return {
-            "supported": False,
-            "message": "Camera controls are available for the active USB camera. Select and apply a USB camera first.",
-            "controls": [],
-        }
-    device = camera.get("device", "")
-    if not device.startswith(("/dev/video", "/dev/v4l/by-id/", "/dev/v4l/by-path/")):
-        raise ValueError("The active camera has an invalid V4L2 device path.")
-    result = subprocess.run(
-        ["/usr/bin/v4l2-ctl", "--device", device, "--list-ctrls-menus"],
-        capture_output=True, text=True, timeout=10, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to read camera controls")
-    return {
-        "supported": True,
-        "device": device,
-        "label": camera.get("label", "Active USB camera"),
-        "controls": parse_v4l2_controls(result.stdout),
-    }
+    return camera_controls.read_controls(camera, subprocess.run)
 
 
 def set_camera_control(data):
-    name = data.get("name")
-    value = data.get("value")
-    if not isinstance(name, str) or not re.fullmatch(r"[a-zA-Z0-9_]+", name):
-        raise ValueError("Invalid camera control name.")
-    camera = active_usb_camera()
-    if not camera:
-        raise ValueError("There is no active USB camera.")
-    current = read_camera_controls(camera)
-    control = next((item for item in current["controls"] if item["name"] == name), None)
-    if not control:
-        raise ValueError("That control is not supported by the active camera.")
-    if not control["writable"]:
-        raise ValueError("That camera control is currently inactive or read-only.")
-    if control["type"] == "bool":
-        if isinstance(value, bool):
-            value = int(value)
-        if not isinstance(value, int) or value not in (0, 1):
-            raise ValueError("Boolean camera controls must be true or false.")
-    else:
-        if isinstance(value, bool) or not isinstance(value, int):
-            raise ValueError("Camera control values must be integers.")
-        if control["min"] is not None and value < control["min"]:
-            raise ValueError("Camera control value is below the supported minimum.")
-        if control["max"] is not None and value > control["max"]:
-            raise ValueError("Camera control value is above the supported maximum.")
-        if control["min"] is not None and (value - control["min"]) % control["step"]:
-            raise ValueError("Camera control value does not match the supported step.")
-        if control["type"] in ("menu", "intmenu") and value not in {
-            option["value"] for option in control["menu"]
-        }:
-            raise ValueError("Camera control value is not an advertised menu option.")
-    result = subprocess.run(
-        ["/usr/bin/v4l2-ctl", "--device", camera["device"], f"--set-ctrl={name}={value}"],
-        capture_output=True, text=True, timeout=10, check=False,
+    """Apply a validated control through the dedicated camera-control service."""
+    return camera_controls.set_control(
+        data,
+        active_usb_camera(),
+        read_camera_controls,
+        subprocess.run,
     )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to update camera control")
-    return read_camera_controls(camera)
 
 def _run_service_commands(commands):
-    for command, timeout, failure_message in commands:
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=timeout, check=False,
-        )
-        if result.returncode:
-            raise RuntimeError(result.stderr.strip() or failure_message)
+    return service_transactions.run_service_commands(commands, subprocess.run)
 
 
 def apply_service_config_transaction(save, previous, candidate, commands, rollback_commands):
-    """Persist a feature config only when its dependent services transition successfully."""
-    updated = save(candidate)
-    try:
-        _run_service_commands(commands)
-    except Exception as apply_error:
-        try:
-            save(previous)
-        except Exception as restore_error:
-            raise RuntimeError(
-                f"Applying the new settings failed ({apply_error}); restoring the previous settings also failed ({restore_error})."
-            ) from apply_error
-        try:
-            _run_service_commands(rollback_commands)
-        except Exception as rollback_error:
-            raise RuntimeError(
-                f"New settings failed ({apply_error}); previous settings were restored, but service recovery failed ({rollback_error})."
-            ) from apply_error
-        raise
-    return updated
-
+    """Compatibility adapter for the service-configuration transaction."""
+    return service_transactions.apply_config_transaction(
+        save, previous, candidate, commands, rollback_commands, subprocess.run,
+    )
 
 def rtmp_service_command(action):
     commands = {
@@ -507,343 +201,61 @@ def set_rtmp_service(action):
 
 
 def save_selection(data):
-    kind = data.get("kind")
-    mode = data.get("mode") or {}
-    mode_format = str(mode.get("format") or "auto").upper()
-    width, height, fps = mode.get("width"), mode.get("height"), mode.get("fps")
-    if mode_format == "H264" and kind != "usb":
-        raise ValueError("Native H.264 capture is available only for USB cameras.")
-    if kind not in ("usb", "csi") or not isinstance(width, int) or not isinstance(height, int):
-        raise ValueError("Invalid camera selection")
-    if not (1 <= width <= 10000 and 1 <= height <= 10000 and isinstance(fps, (int, float)) and 0 < fps <= 240):
-        raise ValueError("Invalid capture mode")
-
-    discovered = camera_inventory()
-    camera_id = data.get("camera_id")
-    if camera_id:
-        match = next((item for item in discovered if item["kind"] == kind and item["id"] == camera_id), None)
-    elif kind == "usb":
-        physical_path = data.get("physical_path", "")
-        device = data.get("device", "")
-        match = next((
-            item for item in discovered
-            if item["kind"] == "usb" and (
-                item.get("physical_path") == physical_path if physical_path else item["device"] == device
-            )
-        ), None)
-    else:
-        device_path = data.get("device_path", "")
-        camera = data.get("camera")
-        match = next((
-            item for item in discovered
-            if item["kind"] == "csi" and (
-                item.get("device_path") == device_path if device_path else item["camera"] == camera
-            )
-        ), None)
-    if not match:
-        raise ValueError("Selected camera is no longer available.")
-
-    if kind == "usb":
-        if not float(fps).is_integer():
-            raise ValueError("USB camera FPS must be a whole number")
-        if not any(
-            item["width"] == width and item["height"] == height
-            and item["format"] == mode.get("format")
-            and mode_supports_fps(item, float(fps))
-            for item in match["modes"]
-        ):
-            raise ValueError("That USB mode is no longer advertised by the camera")
-        device = match["device"]
-        physical_path = match.get("physical_path", "")
-        values = {
-            "SOURCE": "usb",
-            "DEVICE": device if device.startswith("/dev/v4l/by-id/") or not physical_path else "",
-            "USB_PHYSICAL_PATH": physical_path,
-            "CSI_DEVICE_PATH": "",
-            "CAMERA": "auto",
-            "FORMAT": mode_format,
-            "RESOLUTION": f"{width}x{height}",
-            "FPS": str(int(fps)),
-        }
-    else:
-        if not any(
-            item["width"] == width and item["height"] == height and abs(item["fps"] - fps) < 0.1
-            for item in match["modes"]
-        ):
-            raise ValueError("That CSI mode is no longer advertised by the camera")
-        device_path = match.get("device_path", "")
-        values = {
-            "SOURCE": "csi",
-            "DEVICE": "",
-            "USB_PHYSICAL_PATH": "",
-            "CSI_DEVICE_PATH": device_path,
-            "CAMERA": "auto" if device_path else str(match["camera"]),
-            "FORMAT": "auto",
-            "RESOLUTION": f"{width}x{height}",
-            "FPS": str(fps),
-        }
-    estimated_pixels_per_second = width * height * float(fps)
-    pixel_budget = PIXEL_BUDGETS[model_tier(read_model())]
-    if values["FORMAT"] != "H264" and estimated_pixels_per_second > pixel_budget and data.get("allow_performance_override") is not True:
-        raise ValueError(
-            "This capture mode exceeds the estimated performance budget for this device. "
-            "Confirm the warning to use it anyway, or choose a lower resolution or FPS."
-        )
-    requested_h264 = values["FORMAT"] == "H264"
-    previous_camera = parse_config(CONFIG)
-    previous_rtmp = load_rtmp_config()
-    rtmp_was_active = False
-    if requested_h264 or previous_rtmp["enabled"]:
-        rtmp_was_active = subprocess.run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-            check=False, timeout=5,
-        ).returncode == 0
-
-    if requested_h264:
-        if load_timelapse_config().get("enabled") or load_motion_config().get("enabled"):
-            raise ValueError("Disable timelapse and motion detection before selecting H.264; both require the MJPEG capture feed.")
-        try:
-            check_gstreamer_runtime()
-        except ValueError as error:
-            raise RuntimeError(str(error)) from error
-
-    camera_applied = False
-    try:
-        if requested_h264 or previous_camera.get("FORMAT") == "H264":
-            if rtmp_was_active:
-                set_rtmp_service("disable")
-        if requested_h264:
-            save_rtmp_config({**previous_rtmp, "enabled": True})
-        updated = apply_config(values)
-        camera_applied = True
-        current_rtmp = load_rtmp_config()
-        if current_rtmp["enabled"]:
-            set_rtmp_service("enable" if requested_h264 or previous_camera.get("FORMAT") == "H264" or not rtmp_was_active else "restart")
-        elif rtmp_was_active:
-            set_rtmp_service("disable")
-        return updated
-    except Exception:
-        if requested_h264:
-            save_rtmp_config(previous_rtmp)
-        if camera_applied:
-            try:
-                if previous_camera.get("FORMAT") == "H264":
-                    set_rtmp_service("disable")
-                apply_config(previous_camera)
-                if previous_rtmp["enabled"]:
-                    set_rtmp_service("enable")
-                elif rtmp_was_active:
-                    set_rtmp_service("disable")
-            except Exception as rollback_error:
-                raise RuntimeError(f"Camera selection failed and restoring the previous camera/output settings also failed: {rollback_error}")
-        elif rtmp_was_active and previous_rtmp["enabled"]:
-            set_rtmp_service("enable")
-        raise
+    """Delegate camera selection validation and application to its service."""
+    return camera_configuration.save_selection(
+        data,
+        discover_cameras=camera_inventory,
+        mode_supports_fps=mode_supports_fps,
+        pixel_budgets=PIXEL_BUDGETS,
+        model_tier=model_tier,
+        read_model=read_model,
+        config_path=CONFIG,
+        parse_config=parse_config,
+        load_rtmp_config=load_rtmp_config,
+        save_rtmp_config=save_rtmp_config,
+        load_timelapse_config=load_timelapse_config,
+        load_motion_config=load_motion_config,
+        check_gstreamer_runtime=check_gstreamer_runtime,
+        run=subprocess.run,
+        set_rtmp_service=set_rtmp_service,
+        apply_config=apply_config,
+    )
 
 
 def register_stream_client(source):
-    """Track one downstream MJPEG client without retaining its network address."""
-    global _STREAM_CLIENT_SEQUENCE
-    with _STREAM_METRICS_LOCK:
-        _STREAM_CLIENT_SEQUENCE += 1
-        client_id = str(_STREAM_CLIENT_SEQUENCE)
-        now = time.monotonic()
-        _STREAM_METRICS[client_id] = {
-            "source": source,
-            "started_monotonic": now,
-            "window_started_monotonic": now,
-            "window_frames": 0,
-            "window_bytes": 0,
-            "frames": 0,
-            "bytes": 0,
-            "inter_frame_count": 0,
-            "inter_frame_total_seconds": 0.0,
-            "max_frame_gap_seconds": 0.0,
-            "last_frame_at": None,
-            "last_frame_monotonic": None,
-        }
-    return client_id
+    return stream_metrics.register_client(source)
 
 
 def unregister_stream_client(client_id):
-    with _STREAM_METRICS_LOCK:
-        _STREAM_METRICS.pop(client_id, None)
+    return stream_metrics.unregister_client(client_id)
 
 
 def record_stream_chunk(client_id, chunk, parser_state):
-    """Count JPEG marker pairs using bytes.find; never decode or copy image data."""
-    data = (b"\xff" if parser_state["previous_byte"] == 0xFF else b"") + chunk
-    cursor = 0
-    frames = 0
-    last_frame_at = None
-    while True:
-        start = data.find(b"\xff\xd8", cursor)
-        end = data.find(b"\xff\xd9", cursor)
-        if start < 0 and end < 0:
-            break
-        if start >= 0 and (end < 0 or start < end):
-            parser_state["in_jpeg"] = True
-            cursor = start + 2
-        else:
-            if parser_state["in_jpeg"]:
-                frames += 1
-                parser_state["last_frame_monotonic"] = time.monotonic()
-                last_frame_at = time.time()
-            parser_state["in_jpeg"] = False
-            cursor = end + 2
-    if chunk:
-        parser_state["previous_byte"] = chunk[-1]
-    with _STREAM_METRICS_LOCK:
-        metrics = _STREAM_METRICS.get(client_id)
-        if metrics is not None:
-            metrics["bytes"] += len(chunk)
-            metrics["window_bytes"] += len(chunk)
-            metrics["frames"] += frames
-            metrics["window_frames"] += frames
-            if last_frame_at is not None:
-                previous = metrics["last_frame_monotonic"]
-                current = parser_state["last_frame_monotonic"]
-                if previous is not None:
-                    gap = max(0.0, current - previous)
-                    metrics["inter_frame_count"] += 1
-                    metrics["inter_frame_total_seconds"] += gap
-                    metrics["max_frame_gap_seconds"] = max(metrics["max_frame_gap_seconds"], gap)
-                metrics["last_frame_at"] = last_frame_at
-                metrics["last_frame_monotonic"] = current
+    return stream_metrics.record_chunk(client_id, chunk, parser_state)
 
 
 def stream_metrics_snapshot():
-    """Return bounded per-client throughput and frame-timing telemetry."""
-    now = time.monotonic()
-    with _STREAM_METRICS_LOCK:
-        clients = []
-        for client_id, metrics in _STREAM_METRICS.items():
-            elapsed = max(0.001, now - metrics["started_monotonic"])
-            window_elapsed = max(0.001, now - metrics["window_started_monotonic"])
-            last_frame = metrics["last_frame_monotonic"]
-            clients.append({
-                "client_id": client_id,
-                "source": metrics["source"],
-                "frames": metrics["frames"],
-                "bytes": metrics["bytes"],
-                "average_fps": round(metrics["frames"] / elapsed, 2),
-                "window_fps": round(metrics["window_frames"] / window_elapsed, 2),
-                "window_mbps": round(metrics["window_bytes"] * 8 / window_elapsed / 1_000_000, 3),
-                "average_frame_interval_ms": (
-                    round(metrics["inter_frame_total_seconds"] * 1000 / metrics["inter_frame_count"], 2)
-                    if metrics["inter_frame_count"] else None
-                ),
-                "max_frame_gap_ms": round(metrics["max_frame_gap_seconds"] * 1000, 2),
-                "last_frame_age_seconds": (
-                    round(max(0.0, now - last_frame), 2) if last_frame is not None else None
-                ),
-            })
-            metrics["window_started_monotonic"] = now
-            metrics["window_frames"] = 0
-            metrics["window_bytes"] = 0
-    return {"active_clients": len(clients), "clients": clients}
-
+    return stream_metrics.snapshot()
 
 
 def system_resource_metrics():
-    """Return low-cost CPU and memory usage from Linux procfs."""
-    global _SYSTEM_CPU_SAMPLE
-    cpu_percent = None
-    try:
-        with open("/proc/stat", encoding="ascii") as source:
-            fields = source.readline().split()[1:]
-        values = [int(value) for value in fields]
-        total = sum(values)
-        idle = values[3] + (values[4] if len(values) > 4 else 0)
-        now = time.monotonic()
-        with _SYSTEM_METRICS_LOCK:
-            previous = _SYSTEM_CPU_SAMPLE
-            _SYSTEM_CPU_SAMPLE = (total, idle, now)
-        if previous:
-            total_delta = total - previous[0]
-            idle_delta = idle - previous[1]
-            if total_delta > 0:
-                cpu_percent = round(max(0.0, min(100.0, (total_delta - idle_delta) * 100.0 / total_delta)), 1)
-    except (OSError, ValueError, IndexError):
-        pass
-    memory = {}
-    try:
-        with open("/proc/meminfo", encoding="ascii") as source:
-            for line in source:
-                key, value = line.split(":", 1)
-                if key in ("MemTotal", "MemAvailable"):
-                    memory[key] = int(value.split()[0])
-        total_kib = memory.get("MemTotal")
-        available_kib = memory.get("MemAvailable")
-        if total_kib is not None and available_kib is not None:
-            total_mb = round(total_kib / 1024)
-            used_mb = round(max(0, total_kib - available_kib) / 1024)
-        else:
-            total_mb = used_mb = None
-    except (OSError, ValueError, IndexError):
-        total_mb = used_mb = None
-    return {"cpu_percent": cpu_percent, "memory_used_mb": used_mb, "memory_total_mb": total_mb}
+    return system_metrics.resource_metrics()
+
 
 def installed_version():
-    """Read the VERSION file belonging to the active, resolved application release."""
-    version_file = Path(__file__).resolve().parent.parent / "VERSION"
-    try:
-        version = version_file.read_text(encoding="utf-8").strip()
-        return version or None
-    except OSError:
-        return None
-
+    return system_metrics.installed_version(__file__)
 
 def proxy_stream(handler, port):
-    """Proxy MJPEG, returning a useful HTTP error if capture is not ready yet."""
-    query = parse_qs(urlparse(handler.path).query)
-    source = ("obs_media_source" if query.get("client") == ["obs-media-source"] else "browser_source")
-    if parse_config(CONFIG).get("FORMAT") == "H264":
-        handler.send_error(503, "HTTP MJPEG streaming is disabled while H.264 capture is selected. Use the OBS RTSP Media Source.")
-        return
-    client_id = register_stream_client(source)
-    parser_state = {
-        "previous_byte": None,
-        "in_jpeg": False,
-        "last_frame_monotonic": None,
-    }
-    headers_sent = False
-    retry_delay = 0.1
-    try:
-        while True:
-            streamed_data = False
-            try:
-                with urllib.request.urlopen(f"http://127.0.0.1:{port}/stream", timeout=5) as upstream:
-                    if not headers_sent:
-                        handler.send_response(upstream.status)
-                        handler.send_header(
-                            "Content-Type",
-                            upstream.headers.get("Content-Type", "multipart/x-mixed-replace"),
-                        )
-                        handler.send_header("Cache-Control", "no-store")
-                        handler.end_headers()
-                        headers_sent = True
-                    read_chunk = getattr(upstream, "read1", upstream.read)
-                    while chunk := read_chunk(65536):
-                        # Forward original bytes unchanged; metrics only scan JPEG markers.
-                        handler.wfile.write(chunk)
-                        record_stream_chunk(client_id, chunk, parser_state)
-                        streamed_data = True
-                if streamed_data:
-                    retry_delay = 0.1
-                else:
-                    retry_delay = min(2.0, retry_delay * 1.7)
-            except (BrokenPipeError, ConnectionResetError, ConnectionAbortedError):
-                return
-            except (OSError, urllib.error.URLError, TimeoutError, http.client.HTTPException):
-                if not headers_sent:
-                    handler.send_error(503, "Camera MJPEG stream is unavailable")
-                    return
-                retry_delay = min(2.0, retry_delay * 1.7)
-            time.sleep(retry_delay)
-    finally:
-        unregister_stream_client(client_id)
-
+    return stream_proxy.proxy(
+        handler,
+        port,
+        parse_config=lambda: parse_config(CONFIG),
+        register_client=register_stream_client,
+        unregister_client=unregister_stream_client,
+        record_chunk=record_stream_chunk,
+        urlopen=urllib.request.urlopen,
+        sleep=time.sleep,
+    )
 
 def _origin_ok(handler):
     origin = urlparse(handler.headers.get("Origin", ""))
@@ -1201,7 +613,7 @@ class StreamHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
         if path == "/":
-            body = b'<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>PetCam Browser Source</title><style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden}#status{position:absolute;inset:0;display:grid;place-items:center;color:#ddd;font:16px sans-serif;text-align:center;padding:1rem;box-sizing:border-box}img{position:relative;display:block;width:100%;height:100%;object-fit:contain}img:not([data-ready]){opacity:0}</style><div id="status">Connecting to PetCam camera...</div><img id="stream" src="/stream" alt="PetCam camera stream"><script src="/browser-source.js" defer></script></html>'
+            body = (STATIC_DIR / "browser-source.html").read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -1222,35 +634,9 @@ class StreamHandler(BaseHTTPRequestHandler):
 
 
 def rtmp_status_snapshot():
-    config = load_rtmp_config()
-    try:
-        active_service = subprocess.run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-            check=False, timeout=1,
-        ).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        # A delayed systemd response must not turn the entire status API into
-        # HTTP 500 or block every dashboard refresh.
-        active_service = False
-    status = {}
-    try:
-        status = json.loads(RTMP_STATUS_FILE.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        pass
-    updated_at = status.get("updated_at")
-    fresh = isinstance(updated_at, (int, float)) and time.time() - updated_at <= 10
-    state = status.get("state", "starting") if active_service else "stopped"
-    if active_service and updated_at is not None and not fresh:
-        state = "stalled"
-    return {
-        "enabled": config["enabled"],
-        "active": active_service and state == "publishing",
-        "state": state,
-        "fps": status.get("fps") if fresh else None,
-        "updated_at": updated_at,
-        "source": status.get("source") if fresh else None,
-    }
-
+    return rtsp_status.snapshot(
+        load_rtmp_config, RTMP_STATUS_FILE, run=subprocess.run, clock=time.time,
+    )
 
 def health_monitor_loop():
     from health_monitor import check_health
