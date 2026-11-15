@@ -95,7 +95,8 @@ class WebManagerRouteAuthenticationTests(unittest.TestCase):
         page = MANAGER.PAGE + (LIB / "static/dashboard.js").read_text(encoding="utf-8")
         self.assertIn('id="login-password" type="password"', page)
         self.assertIn("#login-password{-webkit-text-security:disc!important}", page)
-        self.assertIn('password.setAttribute("type","password");password.type="password"', page)
+        self.assertIn('password.setAttribute("type", "password");', page)
+        self.assertIn('password.type = "password";', page)
 
     def test_dashboard_script_is_public_static_content(self):
         status, headers, payload = self.request("GET", "/static/dashboard.js")
