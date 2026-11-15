@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 def handle_get(handler, services):
     path = urlparse(handler.path).path
     if path == "/static/dashboard.js":
-        services.serve_static_asset(self, "dashboard.js")
+        services.serve_static_asset(handler, "dashboard.js")
         return
     if path == "/api/setup/status":
         handler.send_json(200, {"configured": services.is_configured()})
@@ -133,7 +133,7 @@ def handle_get(handler, services):
         return
     if path == "/stream":
         try:
-            services.proxy_stream(self, int(services.parse_config(services.CONFIG)["PORT"]))
+            services.proxy_stream(handler, int(services.parse_config(services.CONFIG)["PORT"]))
         except Exception as error:
             handler.send_json(503, {"error": str(error)})
         return
@@ -147,11 +147,11 @@ def handle_post(handler, services):
         if services.is_configured():
             handler.send_json(409, {"error": "PetCam administrator setup has already been completed."})
             return
-        if not services._origin_ok(self):
+        if not services._origin_ok(handler):
             handler.send_json(403, {"error": "Request origin is not allowed"})
             return
         try:
-            data = services._body(self, 4096)
+            data = services._body(handler, 4096)
             if data.get("password") != data.get("password_confirmation"):
                 handler.send_json(400, {"error": "The passwords do not match."})
                 return
@@ -167,11 +167,11 @@ def handle_post(handler, services):
             handler.send_json(400, {"error": str(error)})
         return
     if path == "/api/login":
-        if not services._origin_ok(self):
+        if not services._origin_ok(handler):
             handler.send_json(403, {"error": "Request origin is not allowed"})
             return
         try:
-            data = services._body(self, 4096)
+            data = services._body(handler, 4096)
             peer = handler.client_address[0]
             now = time.time()
             with services._login_lock:
@@ -198,7 +198,7 @@ def handle_post(handler, services):
     if not handler._require_csrf():
         return
     try:
-        data = services._body(self)
+        data = services._body(handler)
         if path == "/api/camera-controls":
             handler.send_json(200, services.set_camera_control(data))
             return
@@ -281,7 +281,7 @@ def handle_post(handler, services):
             handler.send_json(200, {"ok": True, "config": services.public_rtmp_config(updated), "status": services.rtmp_status_snapshot()})
             return
         if path == "/api/logout":
-            services.invalidate_session(services._cookie(self))
+            services.invalidate_session(services._cookie(handler))
             handler.send_json(200, {"ok": True}, {
                 "Set-Cookie": "petcam_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
             })
