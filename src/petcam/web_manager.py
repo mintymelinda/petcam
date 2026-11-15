@@ -14,25 +14,38 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-from config import apply_config, ensure_config_lock, parse_config
-from camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
-from camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
-from network_diagnostics import collect_diagnostics, create_support_bundle
-from wifi_metrics import collect_network_performance
-from timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
-from motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
-from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
-from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
-from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
-import camera_controls
-import service_transactions
-import stream_metrics
-import system_metrics
-import camera_configuration
-import capture_status
-import rtsp_status
-import stream_proxy
+if __package__:
+    from .config import apply_config, ensure_config_lock, parse_config
+    from .camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
+    from .camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
+    from .network_diagnostics import collect_diagnostics, create_support_bundle
+    from .wifi_metrics import collect_network_performance
+    from .timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
+    from .motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
+    from .light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
+    from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
+    from .web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+    from . import camera_controls, service_transactions, stream_metrics, system_metrics
+    from . import camera_configuration, capture_status, rtsp_status, stream_proxy
+else:  # Support the installed standalone web-manager entry point.
+    from config import apply_config, ensure_config_lock, parse_config
+    from camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
+    from camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
+    from network_diagnostics import collect_diagnostics, create_support_bundle
+    from wifi_metrics import collect_network_performance
+    from timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
+    from motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
+    from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
+    from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
+    from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+    import camera_controls
+    import service_transactions
+    import stream_metrics
+    import system_metrics
+    import camera_configuration
+    import capture_status
+    import rtsp_status
+    import stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
@@ -639,7 +652,10 @@ def rtmp_status_snapshot():
     )
 
 def health_monitor_loop():
-    from health_monitor import check_health
+    if __package__:
+        from .health_monitor import check_health
+    else:
+        from health_monitor import check_health
     last_summary = None
     while True:
         started = time.monotonic()
