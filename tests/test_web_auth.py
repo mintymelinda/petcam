@@ -1,16 +1,9 @@
-import importlib.util
-import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 
-AUTH_MODULE_PATH = Path(
-    "src/petcam/web_auth.py"
-)
-SPEC = importlib.util.spec_from_file_location("petcam_web_auth", AUTH_MODULE_PATH)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import web_auth as MODULE
 
 
 class WebAuthenticationTests(unittest.TestCase):
