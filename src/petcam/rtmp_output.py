@@ -38,13 +38,7 @@ def _write_config(config, path):
     target.parent.mkdir(parents=True, exist_ok=True)
     temporary = target.with_name(target.name + ".tmp")
     temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o640)
-    try:
-        import grp
-        import pwd
-        os.chown(temporary, pwd.getpwnam("petcam").pw_uid, grp.getgrnam("petcam").gr_gid)
-    except (KeyError, PermissionError):
-        pass
+    os.chmod(temporary, 0o600)
     os.replace(temporary, target)
 
 

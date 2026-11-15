@@ -202,12 +202,7 @@ def _atomic_write(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(content)
-    os.chmod(temporary, 0o640)
-    try:
-        import grp
-        os.chown(temporary, -1, grp.getgrnam("petcam").gr_gid)
-    except (ImportError, KeyError, PermissionError):
-        pass
+    os.chmod(temporary, 0o600)
     os.replace(temporary, path)
 
 
@@ -355,8 +350,6 @@ def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -
 
 def restart_capture() -> None:
     command = ["/usr/bin/systemctl", "restart", "petcam-stream.service"]
-    if os.geteuid() != 0:
-        command = ["sudo", "-n", *command]
     result = subprocess.run(
         command, capture_output=True, text=True, timeout=30, check=False,
     )
@@ -369,9 +362,7 @@ def restart_capture() -> None:
     except (OSError, ValueError):
         output_config = {"enabled": False}
     if output_config.get("enabled") is True:
-        output_command = ["/usr/local/sbin/petcam-rtmp-service", "restart"]
-        if os.geteuid() != 0:
-            output_command = ["sudo", "-n", *output_command]
+        output_command = ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"]
         output = subprocess.run(output_command, capture_output=True, text=True, timeout=30, check=False)
         if output.returncode:
             raise ConfigApplyError(output.stderr.strip() or "Unable to start the GStreamer RTSP server.")
@@ -438,12 +429,7 @@ def ensure_config_lock(path: Path | str = CONFIG_PATH) -> Path:
     lock_path = _config_lock_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock_file:
-        os.chmod(lock_path, 0o660)
-        try:
-            import grp
-            os.chown(lock_path, -1, grp.getgrnam("petcam").gr_gid)
-        except (ImportError, KeyError, PermissionError):
-            pass
+        os.chmod(lock_path, 0o600)
     return lock_path
 
 

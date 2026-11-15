@@ -661,9 +661,21 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
     return updated
 
 
+def rtmp_service_command(action):
+    commands = {
+        "enable": ["/usr/bin/systemctl", "enable", "--now", "petcam-rtmp.service"],
+        "disable": ["/usr/bin/systemctl", "disable", "--now", "petcam-rtmp.service"],
+        "restart": ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+    }
+    try:
+        return commands[action]
+    except KeyError as error:
+        raise ValueError(f"Unsupported OBS RTSP output action: {action}") from error
+
+
 def set_rtmp_service(action):
     result = subprocess.run(
-        ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", action],
+        rtmp_service_command(action),
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
@@ -1010,7 +1022,7 @@ def proxy_stream(handler, port):
 
 
 def update_check():
-    result = subprocess.run(["sudo", "-n", "/usr/local/bin/petcam-update", "check"],
+    result = subprocess.run(["/usr/local/bin/petcam-update", "check"],
                             capture_output=True, text=True, timeout=45, check=False)
     if result.returncode:
         raise RuntimeError(result.stderr.strip() or "Update check failed")
@@ -1044,7 +1056,7 @@ def update_status():
             "the previous release may have been restored."
         )
     logs = subprocess.run(
-        ["sudo", "-n", "/usr/bin/journalctl", "-u", "petcam-update.service",
+        ["/usr/bin/journalctl", "-u", "petcam-update.service",
          "-n", "20", "--no-pager", "-o", "cat"],
         capture_output=True, text=True, timeout=5, check=False,
     )
@@ -1075,7 +1087,7 @@ def start_update():
     if status.returncode == 0:
         raise RuntimeError("An update is already running. Reconnect to its progress instead of starting it again.")
     result = subprocess.run(
-        ["sudo", "-n", "/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"],
+        ["/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"],
         capture_output=True, text=True, timeout=10, check=False,
     )
     if result.returncode:
@@ -1341,12 +1353,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise RuntimeError("Switch the camera back to MJPEG before enabling timelapse; timelapse requires MJPEG frames.")
                 current = load_timelapse_config()
                 commands = [
-                    (["sudo", "-n", "/usr/bin/systemctl", "restart", "petcam-stream.service"],
+                    (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart camera after changing timelapse settings."),
                 ]
                 if load_rtmp_config()["enabled"]:
                     commands.append((
-                        ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"],
+                        ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
                         30, "Unable to restart OBS output after changing MJPEG consumer settings.",
                     ))
                 updated = apply_service_config_transaction(
@@ -1360,12 +1372,12 @@ class Handler(BaseHTTPRequestHandler):
                     raise RuntimeError("Switch the camera back to MJPEG before enabling motion detection; motion detection requires MJPEG frames.")
                 current = load_motion_config()
                 commands = [
-                    (["sudo", "-n", "/usr/bin/systemctl", "restart", "petcam-stream.service"],
+                    (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart camera after changing motion settings."),
                 ]
                 if load_rtmp_config()["enabled"]:
                     commands.append((
-                        ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"],
+                        ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
                         30, "Unable to restart OBS output after changing MJPEG consumer settings.",
                     ))
                 updated = apply_service_config_transaction(
@@ -1398,15 +1410,15 @@ class Handler(BaseHTTPRequestHandler):
                     ("restart" if was_active else "enable") if current["enabled"] else "disable"
                 )
                 commands = [
-                    (["sudo", "-n", "/usr/bin/systemctl", "restart", "petcam-stream.service"],
+                    (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart the camera with the saved OBS output settings."),
-                    (["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", action],
+                    (rtmp_service_command(action),
                      30, "Unable to update OBS output service state."),
                 ]
                 rollback_commands = [
-                    (["sudo", "-n", "/usr/bin/systemctl", "restart", "petcam-stream.service"],
+                    (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart the camera with the restored OBS output settings."),
-                    (["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", previous_action],
+                    (rtmp_service_command(previous_action),
                      30, "Unable to restore OBS output service state."),
                 ]
                 updated = apply_service_config_transaction(
