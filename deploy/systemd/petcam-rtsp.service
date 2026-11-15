@@ -3,11 +3,11 @@ Description=PetCam OBS RTSP video publisher
 Documentation=https://github.com/mintymelinda/petcam-os
 After=network-online.target petcam-stream.service
 Wants=network-online.target petcam-stream.service
-ConditionPathExists=/etc/petcam/rtmp.json
+ConditionPathExists=/etc/petcam/RTSP.json
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/petcam/current/lib/rtmp_output.py
+ExecStart=/usr/bin/python3 /opt/petcam/current/lib/RTSP_output.py
 Restart=on-failure
 RestartSec=5
 Nice=10
