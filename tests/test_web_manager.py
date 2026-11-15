@@ -187,7 +187,7 @@ class WebManagerTests(unittest.TestCase):
                 expected = Path("src/petcam/static", name).read_text(encoding="utf-8")
                 self.assertEqual(request.wfile.getvalue().decode(), expected)
 
-        self.assertNotRegex(MODULE.PAGE, r"<script(?:\\s[^>]*)?>\\s*[^<]")
+        self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
 
     def test_browser_source_javascript_is_served_on_stream_port(self):
         script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
