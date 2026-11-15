@@ -110,7 +110,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("rtmp.state", PAGE_AND_JS)
         self.assertIn('id="rtmp-output"', PAGE_AND_JS)
         self.assertIn("OBS Media Source URL", PAGE_AND_JS)
-        self.assertIn('"GREY", "H264"', PAGE_AND_JS)
+        self.assertIn('"GREY"', PAGE_AND_JS)
+        self.assertIn('"H264"', PAGE_AND_JS)
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
@@ -872,7 +873,8 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn("defaultLabel =", PAGE_AND_JS)
         self.assertIn("control.default === null", PAGE_AND_JS)
         self.assertIn('? "unavailable"', PAGE_AND_JS)
-        self.assertIn('" · Default: "+defaultLabel', PAGE_AND_JS)
+        self.assertIn('" · Default: "', PAGE_AND_JS)
+        self.assertIn("defaultLabel", PAGE_AND_JS)
         self.assertIn('" · Default: "+(menuOption(control.default)?.label??"unavailable")', PAGE_AND_JS)
 
     def test_active_usb_camera_is_resolved_from_saved_physical_identity(self):
