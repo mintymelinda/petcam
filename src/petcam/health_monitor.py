@@ -17,8 +17,10 @@ from typing import Any
 
 if __package__:
     from .config import config_transaction_guard, parse_config
+    from . import process_control
 else:  # Support the installed standalone worker entry point.
     from config import config_transaction_guard, parse_config
+    import process_control
 
 STATE_FILE = Path("/var/lib/petcam/health.json")
 BACKEND_STREAM_URL = "http://127.0.0.1:8081/stream"
@@ -61,12 +63,10 @@ def save_state(state: dict[str, Any]) -> None:
 
 def service_snapshot(service: str) -> dict[str, Any]:
     try:
-        result = subprocess.run(
-            [
-                "/usr/bin/systemctl", "show", service,
-                "--property=ActiveState", "--property=ActiveEnterTimestampMonotonic",
-            ],
-            capture_output=True, text=True, timeout=5, check=False,
+        result = process_control.run_systemctl(
+            "show", service,
+            "--property=ActiveState", "--property=ActiveEnterTimestampMonotonic",
+            runner=subprocess.run, capture_output=True, text=True, timeout=5, check=False,
         )
         if result.returncode:
             return {"state": "unknown", "active_age": None}
@@ -145,12 +145,14 @@ def restart_service(service: str) -> tuple[bool, str]:
         if service == "petcam-rtmp.service":
             command = ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]
         elif service == "petcam-stream.service":
-            command = ["sudo", "-n", "/usr/bin/systemctl", "restart", service]
+            result = process_control.run_systemctl(
+                "restart", service, runner=subprocess.run, sudo=True,
+                capture_output=True, text=True, timeout=30, check=False,
+            )
         else:
             return False, f"Refusing to restart unsupported PetCam service: {service}"
-        result = subprocess.run(
-            command, capture_output=True, text=True, timeout=30, check=False,
-        )
+        if service == "petcam-rtmp.service":
+            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
         if result.returncode:
             return False, result.stderr.strip() or f"systemctl restart {service} failed"
         return True, ""
