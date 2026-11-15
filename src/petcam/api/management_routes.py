@@ -8,8 +8,8 @@ from urllib.parse import urlparse
 
 def handle_get(handler, services):
     path = urlparse(handler.path).path
-    if path == "/static/dashboard.js":
-        services.serve_static_asset(handler, "dashboard.js")
+    if path.startswith("/static/"):
+        services.serve_static_asset(handler, path.removeprefix("/static/"))
         return
     if path == "/api/setup/status":
         handler.send_json(200, {"configured": services.is_configured()})
