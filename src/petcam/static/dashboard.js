@@ -2,7 +2,7 @@ const $ = (id) => document.getElementById(id);
 let inventory = [],
   activeConfig = null,
   captureStatus = {},
-  rtmpSettings = { enabled: false };
+  RTSPSettings = { enabled: false };
 let csrfToken = null;
 let loginPromise = null;
 
@@ -156,9 +156,9 @@ function h264ModeSelectedOrActive() {
 }
 function syncOutputModeControls() {
   const forced = h264ModeSelectedOrActive();
-  $("rtmp-enabled").checked = forced || !!rtmpSettings.enabled;
-  $("rtmp-enabled").disabled = forced;
-  $("save-rtmp").disabled = forced;
+  $("RTSP-enabled").checked = forced || !!RTSPSettings.enabled;
+  $("RTSP-enabled").disabled = forced;
+  $("save-RTSP").disabled = forced;
   document.querySelectorAll("[data-browser-feed-link]").forEach((link) => {
     link.closest("p").hidden = forced;
   });
@@ -335,10 +335,10 @@ async function refreshSystemInfo() {
   }
 }
 
-async function refreshRTMP() {
+async function refreshRTSP() {
   try {
-    const data = await request("/api/rtmp");
-    rtmpSettings = data.config || { enabled: false };
+    const data = await request("/api/RTSP");
+    RTSPSettings = data.config || { enabled: false };
     syncOutputModeControls();
     let sourceLabel = "";
     if (
@@ -358,22 +358,22 @@ async function refreshRTMP() {
       if (sourceLabel) statusText += " (" + sourceLabel + ")";
       statusText += ".";
     }
-    $("rtmp-status").textContent = statusText;
+    $("RTSP-status").textContent = statusText;
   } catch (error) {
-    $("rtmp-status").textContent =
+    $("RTSP-status").textContent =
       "OBS feed status unavailable: " + error.message;
   }
 }
-async function saveRTMP() {
+async function saveRTSP() {
   if (h264ModeSelectedOrActive()) {
     syncOutputModeControls();
     return;
   }
-  const data = { enabled: $("rtmp-enabled").checked };
-  $("save-rtmp").disabled = true;
-  $("rtmp-status").textContent = "Saving OBS output settings…";
+  const data = { enabled: $("RTSP-enabled").checked };
+  $("save-RTSP").disabled = true;
+  $("RTSP-status").textContent = "Saving OBS output settings…";
   try {
-    const result = await request("/api/rtmp", {
+    const result = await request("/api/RTSP", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
@@ -390,12 +390,12 @@ async function saveRTMP() {
       if (sourceLabel) statusText += " (" + sourceLabel + ")";
       statusText += ".";
     }
-    $("rtmp-status").textContent = statusText;
+    $("RTSP-status").textContent = statusText;
   } catch (error) {
-    $("rtmp-status").textContent =
+    $("RTSP-status").textContent =
       "Unable to save OBS output settings: " + error.message;
   } finally {
-    $("save-rtmp").disabled = false;
+    $("save-RTSP").disabled = false;
   }
 }
 // System statistics
@@ -437,7 +437,7 @@ async function refreshStatistics(data = null) {
           )
         : null,
       signal = wifi.signal_dbm,
-      rtmp = d.rtmp_output_status || {};
+      RTSP = d.RTSP_output_status || {};
     const bars = !wifi.connected
       ? 0
       : signal === null || signal === undefined
@@ -457,15 +457,15 @@ async function refreshStatistics(data = null) {
       ["Camera FPS", fps ? Number(fps).toFixed(1) : "Not reported"],
       [
         "OBS Feed FPS (RTSP)",
-        rtmp.active &&
-        rtmp.fps !== null &&
-        rtmp.fps !== undefined &&
-        Number.isFinite(Number(rtmp.fps))
-          ? Number(rtmp.fps).toFixed(1)
-          : rtmp.enabled
-            ? rtmp.state === "stalled"
+        RTSP.active &&
+        RTSP.fps !== null &&
+        RTSP.fps !== undefined &&
+        Number.isFinite(Number(RTSP.fps))
+          ? Number(RTSP.fps).toFixed(1)
+          : RTSP.enabled
+            ? RTSP.state === "stalled"
               ? "No recent output telemetry"
-              : rtmp.state
+              : RTSP.state
             : "Disabled",
       ],
       [
@@ -508,7 +508,7 @@ async function refreshStatistics(data = null) {
       "Updated " +
       new Date(d.capture_status_updated_at * 1000).toLocaleTimeString() +
       " · OBS feed: " +
-      (rtmp.enabled ? rtmp.state || "starting" : "disabled") +
+      (RTSP.enabled ? RTSP.state || "starting" : "disabled") +
       "; MJPEG delivery is measured separately.";
   } catch (error) {
     $("statistics-updated").textContent =
@@ -1004,10 +1004,10 @@ function initializeDashboard() {
     });
   }
   activateTab("camera");
-  refreshRTMP();
+  refreshRTSP();
 
-  $("save-rtmp").onclick = saveRTMP;
-  $("refresh-rtmp").onclick = refreshRTMP;
+  $("save-RTSP").onclick = saveRTSP;
+  $("refresh-RTSP").onclick = refreshRTSP;
   $("refresh-statistics").onclick = refreshStatistics;
   $("apply-camera-controls").onclick = applyCameraControlChanges;
   $("refresh-camera-controls").onclick = refreshCameraControls;
@@ -1060,7 +1060,7 @@ function initializeDashboard() {
         }),
       });
       await refresh();
-      await refreshRTMP();
+      await refreshRTSP();
       $("message").textContent =
         mode.format === "H264"
           ? "H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled."

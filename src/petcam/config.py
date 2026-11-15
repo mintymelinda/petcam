@@ -357,11 +357,11 @@ def restart_capture() -> None:
 
     # The RTSP server opens V4L2 after petcam-stream publishes the selected mode.
     try:
-        output_config = json.loads(Path("/etc/petcam/rtmp.json").read_text(encoding="utf-8"))
+        output_config = json.loads(Path("/etc/petcam/RTSP.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         output_config = {"enabled": False}
     if output_config.get("enabled") is True:
-        output_command = ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"]
+        output_command = ["/usr/bin/systemctl", "restart", "petcam-RTSP.service"]
         output = subprocess.run(output_command, capture_output=True, text=True, timeout=30, check=False)
         if output.returncode:
             raise ConfigApplyError(output.stderr.strip() or "Unable to start the GStreamer RTSP server.")

@@ -25,14 +25,14 @@ from wifi_metrics import collect_network_performance
 from timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
 from motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
 from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
-from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
+from RTSP_output import load_config as load_RTSP_config, save_config as save_RTSP_config, public_config as public_RTSP_config, check_gstreamer_runtime
 from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
 TLS_KEY = Path("/etc/petcam/web-manager.key")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
-RTMP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
+RTSP_STATUS_FILE = Path("/run/petcam/RTSP-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
 _STREAM_METRICS_LOCK = threading.Lock()
@@ -144,14 +144,14 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 <div class="row"><button id="save-motion">Save motion settings</button></div>
 <h3>Recent motion events</h3><div id="motion-events" class="muted">No motion events recorded.</div></section></div><div id="panel-system" class="tab-panel" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
 <section id="system-info"><h2>System Info</h2><p id="installed-version" role="status">Loading installed PetCam version…</p></section>
-<section id="rtmp-output"><h2>OBS Output</h2>
+<section id="RTSP-output"><h2>OBS Output</h2>
 <p class="muted">This exposes the camera to OBS without transcoding. PetCam does not publish to Twitch or YouTube. Add the RTSP address as an OBS Media Source. The HTTP Browser Source is available while capture is in MJPEG mode; native H.264 capture is selected for RTSP only when timelapse and motion detection are disabled.</p>
-<label style="display:flex;gap:.5rem;align-items:center"><input id="rtmp-enabled" type="checkbox"> Enable OBS RTSP feed</label>
+<label style="display:flex;gap:.5rem;align-items:center"><input id="RTSP-enabled" type="checkbox"> Enable OBS RTSP feed</label>
 <label for="obs-rtsp-url">OBS Media Source URL</label><input id="obs-rtsp-url" type="text" value="rtsp://__PETCAM_HOST__:8554/petcam">
-<p id="browser-feed-rtmp" class="muted">HTTP Browser Source: <a data-browser-feed-link href="http://__PETCAM_HOST__:8080/" target="_blank" rel="noopener">http://__PETCAM_HOST__:8080/</a></p>
+<p id="browser-feed-RTSP" class="muted">HTTP Browser Source: <a data-browser-feed-link href="http://__PETCAM_HOST__:8080/" target="_blank" rel="noopener">http://__PETCAM_HOST__:8080/</a></p>
 <p id="h264-mode-note" class="muted" hidden>H.264 capture disables the HTTP Browser Source and forces OBS RTSP output on. Timelapse and motion detection must be disabled before applying H.264.</p>
-<p id="rtmp-status" class="muted" role="status">Checking OBS feed…</p>
-<div class="row"><button id="save-rtmp" type="button">Save OBS output settings</button><button id="refresh-rtmp" type="button">Refresh status</button></div>
+<p id="RTSP-status" class="muted" role="status">Checking OBS feed…</p>
+<div class="row"><button id="save-RTSP" type="button">Save OBS output settings</button><button id="refresh-RTSP" type="button">Refresh status</button></div>
 </section>
 <section><h2>Stream Health</h2><div id="system-health-grid" class="stats-grid"><p class="muted">Waiting for telemetry…</p></div><p id="statistics-updated" class="muted" role="status">Collecting system statistics…</p><div id="frame-statistics" hidden></div><div id="viewer-statistics" hidden></div><div id="network-statistics" hidden></div><button id="refresh-statistics" type="button">Refresh</button></section>
 <section><div class="row" style="justify-content:space-between;align-items:center"><h2>Stream health</h2><button id="refresh-health">Refresh</button></div><p id="health-state" role="status">Checking stream health…</p><p id="health-reason" class="muted"></p><small id="health-details" class="muted"></small></section><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Network and OBS diagnostics</h2><button id="refresh-diagnostics">Run checks</button></div><p id="diagnostic-summary" role="status">Diagnostics have not been run yet.</p><p id="diagnostic-details" class="muted"></p><div class="row"><button id="download-support-bundle">Download redacted support bundle</button></div></section><section><div class="row" style="justify-content:space-between;align-items:center"><h2>Ambient light sensor</h2><button id="refresh-light-sensor" type="button">Refresh status</button></div>
@@ -254,7 +254,7 @@ def live_capture_status():
                       "capture_mode": "native_h264_csi" if marker.get("backend") == "csi" else "native_h264",
                       "hardware_encoder": marker.get("encoder")}
             try:
-                status = json.loads(Path("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
+                status = json.loads(Path("/run/petcam/RTSP-status.json").read_text(encoding="utf-8"))
                 if status.get("source") in ("native_h264", "native_h264_csi"):
                     result["latest_captured_fps"] = status.get("fps")
                     result["rtsp_output_ready"] = status.get("active") is True and status.get("state") == "publishing"
@@ -498,11 +498,11 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
     return updated
 
 
-def rtmp_service_command(action):
+def RTSP_service_command(action):
     commands = {
-        "enable": ["/usr/bin/systemctl", "enable", "--now", "petcam-rtmp.service"],
-        "disable": ["/usr/bin/systemctl", "disable", "--now", "petcam-rtmp.service"],
-        "restart": ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+        "enable": ["/usr/bin/systemctl", "enable", "--now", "petcam-RTSP.service"],
+        "disable": ["/usr/bin/systemctl", "disable", "--now", "petcam-RTSP.service"],
+        "restart": ["/usr/bin/systemctl", "restart", "petcam-RTSP.service"],
     }
     try:
         return commands[action]
@@ -510,9 +510,9 @@ def rtmp_service_command(action):
         raise ValueError(f"Unsupported OBS RTSP output action: {action}") from error
 
 
-def set_rtmp_service(action):
+def set_RTSP_service(action):
     result = subprocess.run(
-        rtmp_service_command(action),
+        RTSP_service_command(action),
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
@@ -604,11 +604,11 @@ def save_selection(data):
         )
     requested_h264 = values["FORMAT"] == "H264"
     previous_camera = parse_config(CONFIG)
-    previous_rtmp = load_rtmp_config()
-    rtmp_was_active = False
-    if requested_h264 or previous_rtmp["enabled"]:
-        rtmp_was_active = subprocess.run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
+    previous_RTSP = load_RTSP_config()
+    RTSP_was_active = False
+    if requested_h264 or previous_RTSP["enabled"]:
+        RTSP_was_active = subprocess.run(
+            ["systemctl", "is-active", "--quiet", "petcam-RTSP.service"],
             check=False, timeout=5,
         ).returncode == 0
 
@@ -623,34 +623,34 @@ def save_selection(data):
     camera_applied = False
     try:
         if requested_h264 or previous_camera.get("FORMAT") == "H264":
-            if rtmp_was_active:
-                set_rtmp_service("disable")
+            if RTSP_was_active:
+                set_RTSP_service("disable")
         if requested_h264:
-            save_rtmp_config({**previous_rtmp, "enabled": True})
+            save_RTSP_config({**previous_RTSP, "enabled": True})
         updated = apply_config(values)
         camera_applied = True
-        current_rtmp = load_rtmp_config()
-        if current_rtmp["enabled"]:
-            set_rtmp_service("enable" if requested_h264 or previous_camera.get("FORMAT") == "H264" or not rtmp_was_active else "restart")
-        elif rtmp_was_active:
-            set_rtmp_service("disable")
+        current_RTSP = load_RTSP_config()
+        if current_RTSP["enabled"]:
+            set_RTSP_service("enable" if requested_h264 or previous_camera.get("FORMAT") == "H264" or not RTSP_was_active else "restart")
+        elif RTSP_was_active:
+            set_RTSP_service("disable")
         return updated
     except Exception:
         if requested_h264:
-            save_rtmp_config(previous_rtmp)
+            save_RTSP_config(previous_RTSP)
         if camera_applied:
             try:
                 if previous_camera.get("FORMAT") == "H264":
-                    set_rtmp_service("disable")
+                    set_RTSP_service("disable")
                 apply_config(previous_camera)
-                if previous_rtmp["enabled"]:
-                    set_rtmp_service("enable")
-                elif rtmp_was_active:
-                    set_rtmp_service("disable")
+                if previous_RTSP["enabled"]:
+                    set_RTSP_service("enable")
+                elif RTSP_was_active:
+                    set_RTSP_service("disable")
             except Exception as rollback_error:
                 raise RuntimeError(f"Camera selection failed and restoring the previous camera/output settings also failed: {rollback_error}")
-        elif rtmp_was_active and previous_rtmp["enabled"]:
-            set_rtmp_service("enable")
+        elif RTSP_was_active and previous_RTSP["enabled"]:
+            set_RTSP_service("enable")
         raise
 
 
@@ -1001,15 +1001,15 @@ class Handler(BaseHTTPRequestHandler):
                 "stream_metrics": stream_metrics_snapshot(),
                 "network_status": collect_network_performance(),
                 "system_metrics": system_resource_metrics(),
-                "rtmp_output_status": rtmp_status_snapshot(),
+                "RTSP_output_status": RTSP_status_snapshot(),
             })
             return
         if path == "/api/system":
             self.send_json(200, {"installed_version": installed_version()})
             return
-        if path == "/api/rtmp":
+        if path == "/api/RTSP":
             try:
-                self.send_json(200, {"config": public_rtmp_config(load_rtmp_config()), "status": rtmp_status_snapshot()})
+                self.send_json(200, {"config": public_RTSP_config(load_RTSP_config()), "status": RTSP_status_snapshot()})
             except Exception as error:
                 self.send_json(503, {"error": str(error)})
             return
@@ -1111,9 +1111,9 @@ class Handler(BaseHTTPRequestHandler):
                     (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart camera after changing timelapse settings."),
                 ]
-                if load_rtmp_config()["enabled"]:
+                if load_RTSP_config()["enabled"]:
                     commands.append((
-                        ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+                        ["/usr/bin/systemctl", "restart", "petcam-RTSP.service"],
                         30, "Unable to restart OBS output after changing MJPEG consumer settings.",
                     ))
                 updated = apply_service_config_transaction(
@@ -1130,9 +1130,9 @@ class Handler(BaseHTTPRequestHandler):
                     (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart camera after changing motion settings."),
                 ]
-                if load_rtmp_config()["enabled"]:
+                if load_RTSP_config()["enabled"]:
                     commands.append((
-                        ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+                        ["/usr/bin/systemctl", "restart", "petcam-RTSP.service"],
                         30, "Unable to restart OBS output after changing MJPEG consumer settings.",
                     ))
                 updated = apply_service_config_transaction(
@@ -1145,7 +1145,7 @@ class Handler(BaseHTTPRequestHandler):
                 updated = save_light_config(data)
                 self.send_json(200, {"ok": True, "config": updated})
                 return
-            if path == "/api/rtmp":
+            if path == "/api/RTSP":
                 current_camera = parse_config(CONFIG)
                 if current_camera.get("FORMAT") == "H264" and data.get("enabled") is not True:
                     raise RuntimeError("OBS RTSP output is forced on while H.264 capture is selected.")
@@ -1154,9 +1154,9 @@ class Handler(BaseHTTPRequestHandler):
                         check_gstreamer_runtime()
                     except ValueError as error:
                         raise RuntimeError(str(error)) from error
-                current = load_rtmp_config()
+                current = load_RTSP_config()
                 was_active = subprocess.run(
-                    ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
+                    ["systemctl", "is-active", "--quiet", "petcam-RTSP.service"],
                     check=False, timeout=5,
                 ).returncode == 0
                 candidate = {**current, **data}
@@ -1167,19 +1167,19 @@ class Handler(BaseHTTPRequestHandler):
                 commands = [
                     (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart the camera with the saved OBS output settings."),
-                    (rtmp_service_command(action),
+                    (RTSP_service_command(action),
                      30, "Unable to update OBS output service state."),
                 ]
                 rollback_commands = [
                     (["/usr/bin/systemctl", "restart", "petcam-stream.service"],
                      45, "Unable to restart the camera with the restored OBS output settings."),
-                    (rtmp_service_command(previous_action),
+                    (RTSP_service_command(previous_action),
                      30, "Unable to restore OBS output service state."),
                 ]
                 updated = apply_service_config_transaction(
-                    save_rtmp_config, current, candidate, commands, rollback_commands,
+                    save_RTSP_config, current, candidate, commands, rollback_commands,
                 )
-                self.send_json(200, {"ok": True, "config": public_rtmp_config(updated), "status": rtmp_status_snapshot()})
+                self.send_json(200, {"ok": True, "config": public_RTSP_config(updated), "status": RTSP_status_snapshot()})
                 return
             if path == "/api/logout":
                 invalidate_session(_cookie(self))
@@ -1234,11 +1234,11 @@ class StreamHandler(BaseHTTPRequestHandler):
         pass
 
 
-def rtmp_status_snapshot():
-    config = load_rtmp_config()
+def RTSP_status_snapshot():
+    config = load_RTSP_config()
     try:
         active_service = subprocess.run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
+            ["systemctl", "is-active", "--quiet", "petcam-RTSP.service"],
             check=False, timeout=1,
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
@@ -1247,7 +1247,7 @@ def rtmp_status_snapshot():
         active_service = False
     status = {}
     try:
-        status = json.loads(RTMP_STATUS_FILE.read_text(encoding="utf-8"))
+        status = json.loads(RTSP_STATUS_FILE.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         pass
     updated_at = status.get("updated_at")

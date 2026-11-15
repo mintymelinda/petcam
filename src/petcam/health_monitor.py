@@ -21,7 +21,7 @@ STATE_FILE = Path("/var/lib/petcam/health.json")
 BACKEND_STREAM_URL = "http://127.0.0.1:8081/stream"
 PUBLIC_STREAM_URL = "http://127.0.0.1:8080/stream"
 CAMERA_STATUS_FILE = Path("/var/lib/petcam/camera-status.json")
-RTSP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
+RTSP_STATUS_FILE = Path("/run/petcam/RTSP-status.json")
 RTSP_STATUS_MAX_AGE_SECONDS = 45
 
 
@@ -139,8 +139,8 @@ def restart_service(service: str) -> tuple[bool, str]:
             # Exit so the existing Restart=always policy replaces the web manager.
             os.kill(os.getpid(), signal.SIGTERM)
             return True, "Manager process exited for systemd recovery."
-        if service == "petcam-rtmp.service":
-            command = ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]
+        if service == "petcam-RTSP.service":
+            command = ["sudo", "-n", "/usr/local/sbin/petcam-RTSP-service", "restart"]
         elif service == "petcam-stream.service":
             command = ["sudo", "-n", "/usr/bin/systemctl", "restart", service]
         else:
@@ -260,7 +260,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         return _recover(report, previous, "petcam-stream.service", reason, now)
 
     if h264_mode:
-        rtsp = service_snapshot("petcam-rtmp.service")
+        rtsp = service_snapshot("petcam-RTSP.service")
         if rtsp["state"] == "unknown":
             report["state"] = "service_state_unknown"
             report["reason"] = "RTSP publisher service state could not be read; no restart was attempted."
@@ -273,7 +273,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         report["rtsp_output_ready"] = rtsp_ready
         if not rtsp_ready:
             return _recover(
-                report, previous, "petcam-rtmp.service",
+                report, previous, "petcam-RTSP.service",
                 "Native H.264 capture is active but the RTSP publisher is not reporting fresh output.", now,
             )
 

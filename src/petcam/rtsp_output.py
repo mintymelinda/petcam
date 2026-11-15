@@ -13,23 +13,23 @@ import shlex
 import time
 from pathlib import Path
 
-CONFIG_PATH = Path(os.environ.get("PETCAM_RTMP_CONFIG", "/etc/petcam/rtmp.json"))
-STATUS_PATH = Path(os.environ.get("PETCAM_RTMP_STATUS", "/run/petcam/rtmp-status.json"))
+CONFIG_PATH = Path(os.environ.get("PETCAM_RTSP_CONFIG", "/etc/petcam/RTSP.json"))
+STATUS_PATH = Path(os.environ.get("PETCAM_RTSP_STATUS", "/run/petcam/RTSP-status.json"))
 RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 DEFAULTS = {"enabled": False}
 
 
-class RTMPConfigError(ValueError):
+class RTSPConfigError(ValueError):
     """Raised when OBS output settings are invalid."""
 
 
 def validate_config(values):
     if not isinstance(values, dict):
-        raise RTMPConfigError("OBS output settings must be an object.")
+        raise RTSPConfigError("OBS output settings must be an object.")
     config = {**DEFAULTS, **{key: value for key, value in values.items() if key in DEFAULTS}}
     if not isinstance(config["enabled"], bool):
-        raise RTMPConfigError("OBS output enabled must be true or false.")
+        raise RTSPConfigError("OBS output enabled must be true or false.")
     return config
 
 
@@ -47,7 +47,7 @@ def load_config(path=CONFIG_PATH):
     except FileNotFoundError:
         return validate_config({})
     except (OSError, json.JSONDecodeError) as error:
-        raise RTMPConfigError(f"Unable to read OBS output settings: {error}") from error
+        raise RTSPConfigError(f"Unable to read OBS output settings: {error}") from error
     config = validate_config(values)
     if isinstance(values, dict) and any(key not in DEFAULTS for key in values):
         _write_config(config, path)
@@ -94,14 +94,14 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
         resolution = camera_status.get("resolution", "")
         fps = camera_status.get("fps", "")
         if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", str(resolution)):
-            raise RTMPConfigError("Native H.264 resolution is invalid.")
+            raise RTSPConfigError("Native H.264 resolution is invalid.")
         if not re.fullmatch(r"[1-9][0-9]{0,2}", str(fps)):
-            raise RTMPConfigError("Native H.264 frame rate is invalid.")
+            raise RTSPConfigError("Native H.264 frame rate is invalid.")
         width, height = resolution.split("x", 1)
         if camera_status.get("backend") == "csi":
             port = camera_status.get("tcp_port", 8556)
             if not isinstance(port, int) or not 1 <= port <= 65535:
-                raise RTMPConfigError("CSI H.264 bridge port is invalid.")
+                raise RTSPConfigError("CSI H.264 bridge port is invalid.")
             return (
                 f"( tcpclientsrc host=127.0.0.1 port={port} do-timestamp=true ! "
                 "h264parse config-interval=-1 ! "
@@ -109,7 +109,7 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
             )
         device = camera_status.get("device", "")
         if not re.fullmatch(r"/dev/(?:video[0-9]+|v4l/by-id/[A-Za-z0-9._:+_-]+)", device):
-            raise RTMPConfigError("Native H.264 camera device path is invalid.")
+            raise RTSPConfigError("Native H.264 camera device path is invalid.")
         return (
             f"( v4l2src device={shlex.quote(device)} ! "
             f"video/x-h264,width={width},height={height},framerate={fps}/1 ! "
@@ -117,7 +117,7 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
             "rtph264pay name=pay0 pt=96 config-interval=1 )"
         )
     if mjpeg_url != "http://127.0.0.1:8081/stream":
-        raise RTMPConfigError("MJPEG source URL must be the local PetCam stream.")
+        raise RTSPConfigError("MJPEG source URL must be the local PetCam stream.")
     return (
         '( souphttpsrc location="http://127.0.0.1:8081/stream" is-live=true do-timestamp=true ! '
         "multipartdemux ! jpegparse ! rtpjpegpay name=pay0 pt=26 )"
@@ -145,7 +145,7 @@ def check_gstreamer_runtime():
     required = ("v4l2src", "tcpclientsrc", "h264parse", "rtph264pay", "souphttpsrc", "multipartdemux", "jpegparse", "rtpjpegpay")
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:
-        raise RTMPConfigError("Required GStreamer element(s) are missing: " + ", ".join(missing))
+        raise RTSPConfigError("Required GStreamer element(s) are missing: " + ", ".join(missing))
     return True
 
 
@@ -156,7 +156,7 @@ def _load_gstreamer():
         gi.require_version("GstRtspServer", "1.0")
         from gi.repository import GLib, Gst, GstRtspServer
     except (ImportError, ValueError) as error:
-        raise RTMPConfigError(
+        raise RTSPConfigError(
             "GStreamer RTSP Server bindings are missing. Install python3-gi and gir1.2-gst-rtsp-server-1.0."
         ) from error
     Gst.init(None)
@@ -211,7 +211,7 @@ def main():
     factory.connect("media-configure", media_configured)
     mounts.add_factory("/petcam", factory)
     if server.attach(None) == 0:
-        raise RTMPConfigError("GStreamer RTSP server could not attach to the GLib main context.")
+        raise RTSPConfigError("GStreamer RTSP server could not attach to the GLib main context.")
     _write_status("starting", source)
     logging.info("Serving %s directly over RTSP at %s", source, RTSP_URL)
     loop = GLib.MainLoop()
