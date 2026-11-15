@@ -1,9 +1,10 @@
 """PetCam application package."""
 
-from pathlib import Path
+from importlib.metadata import PackageNotFoundError, version
 
-__version__ = (Path(__file__).resolve().parents[2] / "VERSION").read_text(
-    encoding="utf-8"
-).strip()
+try:
+    __version__ = version("petcam")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
 
 __all__ = ["__version__"]
