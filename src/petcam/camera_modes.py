@@ -30,6 +30,7 @@ PIXEL_BUDGETS = {
     "pi4": 1920 * 1080 * 60,
     "pi5": 3840 * 2160 * 30,
     "unknown": 1280 * 720 * 30,
+}
 
 def select_csi_mode(cameras, tier, requested_camera=None, resolution="auto", fps="auto", requested_device_path=None):
     if requested_device_path:
