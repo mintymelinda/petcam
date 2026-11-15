@@ -85,4 +85,7 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 <p class="muted">Connect over I²C using SDA, SCL, 3.3V and GND. Bright is reached at or above its threshold; dark is reached at or below its threshold. Between thresholds, the previous state is retained to prevent flicker.</p>
 <div class="row"><button id="save-light-sensor" type="button">Save light sensor settings</button></div></section></div></main>
 <footer style="text-align:center;padding:1rem 0 2rem"><small>Enjoying PetCam? <a href="https://www.paypal.me/kimmynightmare" target="_blank" rel="noopener noreferrer" style="color:#b9d8ff">Support development with PayPal</a></small></footer>
-<script src="/static/dashboard.js" defer></script></body></html>
+<script src="/static/dashboard-core.js" defer></script>
+  <script src="/static/dashboard-camera.js" defer></script>
+  <script src="/static/dashboard-features.js" defer></script>
+  <script src="/static/dashboard.js" defer></script></body></html>

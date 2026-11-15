@@ -8,7 +8,11 @@ from unittest import mock
 from petcam import web_manager as MODULE
 from petcam.api import management_routes
 
-DASHBOARD_JS = Path("src/petcam/static/dashboard.js").read_text(encoding="utf-8")
+DASHBOARD_SCRIPTS = ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
+DASHBOARD_JS = "\\n".join(
+    Path("src/petcam/static", name).read_text(encoding="utf-8")
+    for name in DASHBOARD_SCRIPTS
+)
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
@@ -158,28 +162,32 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("window.setTimeout(retryStream, RETRY_DELAY_MS)", script)
         self.assertIn('image.src = "/stream?retry=" + Date.now()', script)
 
-    def test_dashboard_javascript_is_external_and_served_without_authentication(self):
-        self.assertIn('<script src="/static/dashboard.js" defer></script>', MODULE.PAGE)
+    def test_dashboard_javascript_modules_are_external_and_served_without_authentication(self):
+        for name in ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js"):
+            with self.subTest(asset=name):
+                self.assertIn(f'<script src="/static/{name}" defer></script>', MODULE.PAGE)
+                class Request:
+                    path = f"/static/{name}"
+                    def __init__(self):
+                        self.headers = {}
+                        self.wfile = io.BytesIO()
+                        self.response_headers = []
+                    def send_response(self, status):
+                        self.status = status
+                    def send_header(self, key, value):
+                        self.response_headers.append((key, value))
+                    def end_headers(self):
+                        pass
+                    def send_error(self, status, message=None):
+                        self.status = status
+                request = Request()
+                MODULE.Handler.do_GET(request)
+                self.assertEqual(request.status, 200)
+                self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
+                expected = Path("src/petcam/static", name).read_text(encoding="utf-8")
+                self.assertEqual(request.wfile.getvalue().decode(), expected)
+
         self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
-        class Request:
-            path = "/static/dashboard.js"
-            def __init__(self):
-                self.headers = {}
-                self.wfile = io.BytesIO()
-                self.response_headers = []
-            def send_response(self, status):
-                self.status = status
-            def send_header(self, name, value):
-                self.response_headers.append((name, value))
-            def end_headers(self):
-                pass
-            def send_error(self, status, message=None):
-                self.status = status
-        request = Request()
-        MODULE.Handler.do_GET(request)
-        self.assertEqual(request.status, 200)
-        self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
-        self.assertEqual(request.wfile.getvalue().decode(), DASHBOARD_JS)
 
     def test_browser_source_javascript_is_served_on_stream_port(self):
         script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
