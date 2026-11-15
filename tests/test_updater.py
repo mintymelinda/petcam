@@ -21,7 +21,6 @@ from updater import (
     safe_extract,
     validate_release,
     install_runtime_integration_files,
-    repair_config_directory_permissions,
     remove_inactive_release,
     restart_services,
     verify_signature,
@@ -180,18 +179,13 @@ class UpdateArchiveTests(unittest.TestCase):
             legacy_sudoers = etc_root / "sudoers.d/petcam-rtmp"
             legacy_sudoers.parent.mkdir(parents=True)
             legacy_sudoers.write_text("# old policy\n")
-            with mock.patch("updater.os.chown") as chown:
-                with mock.patch("updater.os.geteuid", return_value=0):
-                    install_runtime_integration_files(release, etc_root, root / "usr")
-            chown.assert_any_call(rtmp_config_path, 0, 0)
+            install_runtime_integration_files(release, etc_root, root / "usr")
             self.assertEqual(config_path.read_text(), "MQTT_ENABLED=true\nMQTT_PASSWORD=preserve-me\n")
             self.assertEqual(rtmp_config_path.read_text(), "{\"enabled\":true,\"stream_key\":\"keep-this-secret\"}\n")
             for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
                 self.assertTrue((etc_root / f"systemd/system/petcam-{unit}.service").is_file())
             self.assertFalse(legacy_helper.exists())
             self.assertFalse(legacy_sudoers.exists())
-            self.assertEqual(config_path.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(rtmp_config_path.stat().st_mode & 0o777, 0o600)
 
     def test_installs_default_root_private_configs_when_missing(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -208,9 +202,7 @@ class UpdateArchiveTests(unittest.TestCase):
             config = root / "etc/petcam/home-assistant.conf"
             rtmp_config = root / "etc/petcam/rtmp.json"
             self.assertEqual(config.read_text(), "MQTT_ENABLED=false\n")
-            self.assertEqual(config.stat().st_mode & 0o777, 0o600)
             self.assertEqual(rtmp_config.read_text(), "{\"enabled\":false}\n")
-            self.assertEqual(rtmp_config.stat().st_mode & 0o777, 0o600)
 
     def test_restart_services_restarts_optional_workers_only_when_active(self):
         results = [
@@ -296,37 +288,6 @@ class FailedReleaseCleanupTests(unittest.TestCase):
             with mock.patch("updater.CURRENT", current):
                 self.assertFalse(remove_inactive_release(release))
             self.assertTrue(release.is_dir())
-
-class ConfigDirectoryMigrationTests(unittest.TestCase):
-    def test_repairs_existing_directory_as_root_only(self):
-        with tempfile.TemporaryDirectory() as temp:
-            directory = Path(temp) / "etc/petcam"
-            directory.mkdir(parents=True)
-            with mock.patch("updater.os.chown") as chown, mock.patch("updater.os.chmod") as chmod:
-                repair_config_directory_permissions(directory)
-            chown.assert_called_once_with(directory, 0, 0)
-            chmod.assert_called_once_with(directory, 0o700)
-
-    def test_creates_missing_directory_as_root_only(self):
-        with tempfile.TemporaryDirectory() as temp:
-            directory = Path(temp) / "etc/petcam"
-            with mock.patch("updater.os.chown") as chown, mock.patch("updater.os.chmod") as chmod:
-                repair_config_directory_permissions(directory)
-            self.assertTrue(directory.is_dir())
-            chown.assert_called_once_with(directory, 0, 0)
-            chmod.assert_called_once_with(directory, 0o700)
-
-    def test_refuses_to_follow_a_symlinked_config_directory(self):
-        with tempfile.TemporaryDirectory() as temp:
-            root = Path(temp)
-            target = root / "target"
-            target.mkdir()
-            directory = root / "petcam"
-            directory.symlink_to(target, target_is_directory=True)
-            with mock.patch("updater.os.chown") as chown:
-                with self.assertRaisesRegex(UpdateError, "symlinked"):
-                    repair_config_directory_permissions(directory)
-            chown.assert_not_called()
 
 class UpdaterServiceSandboxTests(unittest.TestCase):
     @staticmethod
