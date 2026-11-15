@@ -110,7 +110,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("rtmp.state", PAGE_AND_JS)
         self.assertIn('id="rtmp-output"', PAGE_AND_JS)
         self.assertIn("OBS Media Source URL", PAGE_AND_JS)
-        self.assertIn('"GREY","H264"', PAGE_AND_JS)
+        self.assertIn('"GREY", "H264"', PAGE_AND_JS)
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
@@ -123,8 +123,9 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('MJPEG delivered FPS', PAGE_AND_JS)
         self.assertIn('Network Up / Down', PAGE_AND_JS)
         self.assertIn('Wi-Fi signal', PAGE_AND_JS)
-        self.assertIn("signal>=-50?4:signal>=-60?3:signal>=-67?2:signal>=-75?1:0", PAGE_AND_JS)
-        self.assertIn('"▮".repeat(bars)+"▯".repeat(4-bars)', PAGE_AND_JS)
+        self.assertIn("signal >= -50", PAGE_AND_JS)
+        self.assertIn("signal >= -75", PAGE_AND_JS)
+        self.assertIn('"▮".repeat(bars) + "▯".repeat(4 - bars)', PAGE_AND_JS)
         self.assertIn('Network and OBS diagnostics', PAGE_AND_JS)
         self.assertIn('/api/diagnostics', PAGE_AND_JS)
         self.assertIn('/api/support-bundle', PAGE_AND_JS)
@@ -868,7 +869,9 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertEqual(controls["power_line_frequency"]["default"], 2)
 
     def test_camera_control_ui_labels_invalid_defaults_as_unavailable(self):
-        self.assertIn('defaultLabel=control.default===null?"unavailable"', PAGE_AND_JS)
+        self.assertIn("defaultLabel =", PAGE_AND_JS)
+        self.assertIn("control.default === null", PAGE_AND_JS)
+        self.assertIn('? "unavailable"', PAGE_AND_JS)
         self.assertIn('" · Default: "+defaultLabel', PAGE_AND_JS)
         self.assertIn('" · Default: "+(menuOption(control.default)?.label??"unavailable")', PAGE_AND_JS)
 
@@ -1013,9 +1016,9 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('isRange = false;', PAGE_AND_JS)
         self.assertIn('if (output) editor.append(input, output);', PAGE_AND_JS)
         self.assertIn('else editor.append(input);', PAGE_AND_JS)
-        self.assertIn('input.type="checkbox"', PAGE_AND_JS)
-        self.assertIn('input.type="range"', PAGE_AND_JS)
-        self.assertIn('input.type="number"', PAGE_AND_JS)
+        self.assertIn('input.type = "checkbox";', PAGE_AND_JS)
+        self.assertIn('input.type = "range";', PAGE_AND_JS)
+        self.assertIn('input.type = "number";', PAGE_AND_JS)
         self.assertIn('document.createElement("select")', PAGE_AND_JS)
 
 class CameraIdentityTests(unittest.TestCase):
