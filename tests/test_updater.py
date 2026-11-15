@@ -166,26 +166,26 @@ class UpdateArchiveTests(unittest.TestCase):
             (release / "systemd").mkdir(parents=True)
             (release / "etc/petcam").mkdir(parents=True)
             for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
-                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\\n")
-            (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\\n")
-            (release / "etc/petcam/rtmp.json").write_text("{\\"enabled\\":false}\\n")
+                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\n")
+            (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\n")
+            (release / "etc/petcam/rtmp.json").write_text("{\"enabled\":false}\n")
             config_path = etc_root / "petcam/home-assistant.conf"
             config_path.parent.mkdir(parents=True)
-            config_path.write_text("MQTT_ENABLED=true\\nMQTT_PASSWORD=preserve-me\\n")
+            config_path.write_text("MQTT_ENABLED=true\nMQTT_PASSWORD=preserve-me\n")
             rtmp_config_path = etc_root / "petcam/rtmp.json"
-            rtmp_config_path.write_text("{\\"enabled\\":true,\\"stream_key\\":\\"keep-this-secret\\"}\\n")
+            rtmp_config_path.write_text("{\"enabled\":true,\"stream_key\":\"keep-this-secret\"}\n")
             legacy_helper = root / "usr/local/sbin/petcam-rtmp-service"
             legacy_helper.parent.mkdir(parents=True)
-            legacy_helper.write_text("#!/bin/sh\\nexit 0\\n")
+            legacy_helper.write_text("#!/bin/sh\nexit 0\n")
             legacy_sudoers = etc_root / "sudoers.d/petcam-rtmp"
             legacy_sudoers.parent.mkdir(parents=True)
-            legacy_sudoers.write_text("# old policy\\n")
-            with mock.patch("updater.os.chown") as chown, \\
-                    mock.patch("updater.os.geteuid", return_value=0):
-                install_runtime_integration_files(release, etc_root, root / "usr")
+            legacy_sudoers.write_text("# old policy\n")
+            with mock.patch("updater.os.chown") as chown:
+                with mock.patch("updater.os.geteuid", return_value=0):
+                    install_runtime_integration_files(release, etc_root, root / "usr")
             chown.assert_any_call(rtmp_config_path, 0, 0)
-            self.assertEqual(config_path.read_text(), "MQTT_ENABLED=true\\nMQTT_PASSWORD=preserve-me\\n")
-            self.assertEqual(rtmp_config_path.read_text(), "{\\"enabled\\":true,\\"stream_key\\":\\"keep-this-secret\\"}\\n")
+            self.assertEqual(config_path.read_text(), "MQTT_ENABLED=true\nMQTT_PASSWORD=preserve-me\n")
+            self.assertEqual(rtmp_config_path.read_text(), "{\"enabled\":true,\"stream_key\":\"keep-this-secret\"}\n")
             for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
                 self.assertTrue((etc_root / f"systemd/system/petcam-{unit}.service").is_file())
             self.assertFalse(legacy_helper.exists())
@@ -200,16 +200,16 @@ class UpdateArchiveTests(unittest.TestCase):
             (release / "systemd").mkdir(parents=True)
             (release / "etc/petcam").mkdir(parents=True)
             for unit in ("home-assistant", "timelapse", "motion", "rtmp"):
-                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\\n")
-            (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\\n")
-            (release / "etc/petcam/rtmp.json").write_text("{\\"enabled\\":false}\\n")
+                (release / f"systemd/petcam-{unit}.service").write_text("[Service]\n")
+            (release / "etc/petcam/home-assistant.conf").write_text("MQTT_ENABLED=false\n")
+            (release / "etc/petcam/rtmp.json").write_text("{\"enabled\":false}\n")
             with mock.patch("updater.os.geteuid", return_value=1000):
                 install_runtime_integration_files(release, root / "etc", root / "usr")
             config = root / "etc/petcam/home-assistant.conf"
             rtmp_config = root / "etc/petcam/rtmp.json"
-            self.assertEqual(config.read_text(), "MQTT_ENABLED=false\\n")
+            self.assertEqual(config.read_text(), "MQTT_ENABLED=false\n")
             self.assertEqual(config.stat().st_mode & 0o777, 0o600)
-            self.assertEqual(rtmp_config.read_text(), "{\\"enabled\\":false}\\n")
+            self.assertEqual(rtmp_config.read_text(), "{\"enabled\":false}\n")
             self.assertEqual(rtmp_config.stat().st_mode & 0o777, 0o600)
 
     def test_restart_services_restarts_optional_workers_only_when_active(self):
