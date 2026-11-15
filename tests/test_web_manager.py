@@ -327,7 +327,7 @@ class WebManagerTests(unittest.TestCase):
             MODULE.rtmp_service_command("arbitrary-command")
 
     def test_web_manager_has_no_sudo_privilege_handoffs(self):
-        source = Path(SPEC.origin).read_text(encoding="utf-8")
+        source = Path(MODULE.__file__).read_text(encoding="utf-8")
         self.assertNotIn('"sudo"', source)
 
     def test_camera_inventory_uses_shared_discovery_and_exposes_h264_modes(self):
