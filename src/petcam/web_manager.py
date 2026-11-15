@@ -27,7 +27,7 @@ if __package__:
     from .light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
     from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
     from .web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
-    from . import camera_controls, feature_services, service_transactions, stream_metrics, system_metrics
+    from . import camera_controls, feature_services, service_transactions, stream_metrics, system_metrics, process_control
     from . import camera_configuration, capture_status, rtsp_status, stream_proxy
 else:  # Support the installed standalone web-manager entry point.
     import api.management_routes as management_routes
@@ -47,6 +47,7 @@ else:  # Support the installed standalone web-manager entry point.
     import service_transactions
     import stream_metrics
     import system_metrics
+    import process_control
     import camera_configuration
     import capture_status
     import rtsp_status
@@ -202,9 +203,9 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
 
 def rtmp_service_command(action):
     commands = {
-        "enable": ["/usr/bin/systemctl", "enable", "--now", "petcam-rtmp.service"],
-        "disable": ["/usr/bin/systemctl", "disable", "--now", "petcam-rtmp.service"],
-        "restart": ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+        "enable": process_control.systemctl_command("enable", "--now", "petcam-rtmp.service"),
+        "disable": process_control.systemctl_command("disable", "--now", "petcam-rtmp.service"),
+        "restart": process_control.systemctl_command("restart", "petcam-rtmp.service"),
     }
     try:
         return commands[action]
