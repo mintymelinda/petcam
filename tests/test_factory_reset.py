@@ -46,7 +46,7 @@ class FactoryResetTests(unittest.TestCase):
             self.assertFalse((state / "motion" / "events" / "event.jpg").exists())
             self.assertFalse((state / "health.json").exists())
             self.assertEqual((etc / "web-manager.key").read_text(), "private key")
-            self.assertEqual((etc / "update-signing.pub").read_text(), "public key")
+            self.assertFalse((etc / "update-signing.pub").exists())
 
     def test_reset_requires_root(self):
         with mock.patch.object(MODULE.os, "geteuid", return_value=1000):
