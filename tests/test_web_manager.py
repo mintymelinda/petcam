@@ -111,7 +111,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="rtmp-output"', PAGE_AND_JS)
         self.assertIn("OBS Media Source URL", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/petcam/web_manager.py").read_text())
+        self.assertIn('{"H264"}', Path("src/petcam/camera_service.py").read_text())
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("forces OBS RTSP output on", PAGE_AND_JS)
