@@ -40,6 +40,10 @@ REQUIRED_FILES = (
 # update archives only; do not reintroduce it into the current image release tree.
 COMPATIBILITY_FILES = {
     "lib/camera_profiles.py": b'"""Compatibility marker for pre-v0.2.3 updaters."""\n',
+    # Older field updaters require these archive members during validation.
+    # The new updater never installs them and removes previously installed copies.
+    "bin/petcam-rtmp-service": b'#!/bin/sh\necho "This legacy privilege helper has been removed." >&2\nexit 1\n',
+    "etc/sudoers.d/petcam-rtmp": b"# Retired by the root-run PetCam application migration.\n',
     # Existing field updaters require this archive member even though the
     # current image and release no longer ship or execute MediaMTX.
     "bin/mediamtx": b'#!/bin/sh\necho "MediaMTX was replaced by the GStreamer RTSP server." >&2\nexit 1\n',

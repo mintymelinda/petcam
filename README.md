@@ -42,3 +42,12 @@ GitHub Actions runs the application test and compilation checks. It does not bui
 - [Motion detection](docs/motion-detection.md)
 - [Timelapse capture](docs/timelapse.md)
 - [Application update engine](docs/update-engine.md)
+
+
+## Runtime privileges
+
+PetCam application services run as root. This is intentional for direct access to
+camera devices, system services, GPIO/I²C hardware, storage mounts, and update
+installation. The web manager retains its application authentication and CSRF
+checks; signed-update verification remains enabled. PetCam no longer installs a
+dedicated service account, sudoers policy, or privileged-command wrapper.
