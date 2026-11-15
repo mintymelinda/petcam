@@ -6,7 +6,6 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-import os
 import subprocess
 import tarfile
 from pathlib import Path
@@ -91,7 +90,6 @@ def build_release(release_dir: Path, version: str, archive_url: str,
         for relative, content in COMPATIBILITY_FILES.items():
             info = tarfile.TarInfo(relative)
             info.size = len(content)
-            info.mode = 0o644
             bundle.addfile(info, io.BytesIO(content))
         # Include any future regular application assets while refusing links/special files.
         for path in sorted(release_dir.rglob("*")):
@@ -119,14 +117,12 @@ def build_release(release_dir: Path, version: str, archive_url: str,
         json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\n",
         encoding="utf-8",
     )
-    os.chmod(manifest_path, 0o644)
     subprocess.run(
         ["openssl", "pkeyutl", "-sign", "-inkey", str(private_key),
          "-rawin", "-in", str(manifest_path), "-out", str(signature_path)],
         check=True,
         capture_output=True,
     )
-    os.chmod(signature_path, 0o644)
     return archive, manifest_path, signature_path
 
 
