@@ -179,6 +179,27 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
         self.assertEqual(request.wfile.getvalue().decode(), DASHBOARD_JS)
 
+    def test_browser_source_javascript_is_served_on_stream_port(self):
+        script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
+        class Request:
+            path = "/browser-source.js"
+            def __init__(self):
+                self.wfile = io.BytesIO()
+                self.response_headers = []
+            def send_response(self, status):
+                self.status = status
+            def send_header(self, name, value):
+                self.response_headers.append((name, value))
+            def end_headers(self):
+                pass
+            def send_error(self, status, message=None):
+                self.status = status
+        request = Request()
+        MODULE.StreamHandler.do_GET(request)
+        self.assertEqual(request.status, 200)
+        self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
+        self.assertEqual(request.wfile.getvalue().decode(), script)
+
     def test_stream_proxy_returns_503_when_camera_stream_is_unavailable(self):
         class Request:
             path = "/stream"
