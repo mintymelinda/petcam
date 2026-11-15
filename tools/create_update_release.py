@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build and sign a PetCam application update from an image release tree."""
+"""Build and sign a PetCam application update from a staged runtime release."""
 
 from __future__ import annotations
 
