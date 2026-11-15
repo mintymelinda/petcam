@@ -359,6 +359,7 @@ class ConfigDirectoryMigrationTests(unittest.TestCase):
             getgrnam.assert_not_called()
 
 class UpdaterServiceSandboxTests(unittest.TestCase):
+    @staticmethod
     def manifest(version, archive_url="https://assets/release/archive.tar.gz"):
         return json.dumps({
             "schema_version": 1,
