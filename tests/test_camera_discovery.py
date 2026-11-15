@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from petcam import camera as MODULE
+from petcam import camera_capabilities, camera_modes
 
 
 CSI_SAMPLE = """Available cameras
@@ -35,6 +36,12 @@ SAMPLE = """ioctl: VIDIOC_ENUM_FMT
 
 
 class CameraDiscoveryTests(unittest.TestCase):
+    def test_camera_modules_preserve_the_legacy_import_surface(self):
+        self.assertIs(MODULE.camera_identity, camera_capabilities.camera_identity)
+        self.assertIs(MODULE.parse_modes, camera_capabilities.parse_modes)
+        self.assertIs(MODULE.select_mode, camera_modes.select_mode)
+        self.assertIs(MODULE.PIXEL_BUDGETS, camera_modes.PIXEL_BUDGETS)
+
     def test_parses_formats_resolutions_and_frame_rates(self):
         modes = MODULE.parse_modes(SAMPLE)
         self.assertEqual(len(modes), 3)

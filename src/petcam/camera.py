@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-"""PetCam camera capability discovery and hardware-aware mode selection."""
+"""PetCam hardware discovery and camera worker orchestration."""
 import argparse
-import hashlib
 import json
 import os
 import re
@@ -13,195 +12,52 @@ import urllib.request
 from pathlib import Path
 
 if __package__:
+    from .camera_capabilities import (
+        NATIVE_H264_FORMATS,
+        NATIVE_JPEG_FORMATS,
+        USTREAMER_FORMATS,
+        camera_identity,
+        mode_max_fps,
+        mode_supports_fps,
+        mode_supports_resolution,
+        parse_csi_cameras,
+        parse_modes,
+        ustreamer_format,
+    )
+    from .camera_modes import (
+        PIXEL_BUDGETS,
+        filter_devices_by_format,
+        model_tier,
+        select_csi_mode,
+        select_mode,
+        select_native_h264_mode,
+    )
     from .config import parse_config
     from .network_diagnostics import collect_diagnostics
+
 else:  # Support the installed standalone worker entry point.
+    from camera_capabilities import (
+        NATIVE_H264_FORMATS,
+        NATIVE_JPEG_FORMATS,
+        USTREAMER_FORMATS,
+        camera_identity,
+        mode_max_fps,
+        mode_supports_fps,
+        mode_supports_resolution,
+        parse_csi_cameras,
+        parse_modes,
+        ustreamer_format,
+    )
+    from camera_modes import (
+        PIXEL_BUDGETS,
+        filter_devices_by_format,
+        model_tier,
+        select_csi_mode,
+        select_mode,
+        select_native_h264_mode,
+    )
     from config import parse_config
     from network_diagnostics import collect_diagnostics
-
-MODE_RE = re.compile(r"Size: Discrete (\d+)x(\d+)")
-FORMAT_RE = re.compile(r"\[\d+\]: '([^']+)'")
-FPS_RE = re.compile(r"\(([\d.]+) fps\)")
-SIZE_RANGE_RE = re.compile(r"Size: (?:Stepwise|Continuous) (\d+)x(\d+) - (\d+)x(\d+)(?: with step (\d+)/(\d+))?")
-FPS_RANGE_RE = re.compile(r"Interval: (?:Stepwise|Continuous) ([\d.]+)s - ([\d.]+)s(?: with step ([\d.]+)s)?")
-NATIVE_JPEG_FORMATS = {"MJPG", "MJPEG", "JPEG"}
-NATIVE_H264_FORMATS = {"H264"}
-USTREAMER_FORMATS = NATIVE_JPEG_FORMATS | {"YUYV", "YVYU", "UYVY", "YUV420", "YVU420", "RGB565", "RGB24", "GREY"}
-PIXEL_BUDGETS = {
-    "zero": 1280 * 720 * 30,
-    "pi1": 640 * 480 * 30,
-    "pi2": 1280 * 720 * 30,
-    "zero2": 1920 * 1080 * 30,
-    "pi3": 1920 * 1080 * 30,
-    "pi4": 1920 * 1080 * 60,
-    "pi5": 3840 * 2160 * 30,
-    "unknown": 1280 * 720 * 30,
-}
-
-
-def _camera_slug(value):
-    return re.sub(r"[^a-z0-9-]+", "-", value.lower()).strip("-") or "camera"
-
-
-def camera_identity(camera):
-    """Return a stable identifier for a discovered physical camera."""
-    kind = camera.get("kind")
-    if kind == "usb":
-        device = str(camera.get("device", ""))
-        if not re.fullmatch(r"/dev/(?:video[0-9]+|v4l/by-id/[A-Za-z0-9._:+-]+)", device):
-            raise ValueError("USB camera has no valid device path.")
-        physical_path = str(camera.get("physical_path", ""))
-        stable = device.startswith("/dev/v4l/by-id/") or bool(physical_path)
-        source = device if device.startswith("/dev/v4l/by-id/") else physical_path or device
-        digest = hashlib.sha256(source.encode("utf-8")).hexdigest()[:12]
-        return {
-            "id": f"usb-{digest}",
-            "kind": "usb",
-            "device": device,
-            "physical_path": physical_path,
-            "stable_identity": stable,
-            "label": camera.get("label") or f"USB camera · {device}",
-        }
-    if kind == "csi":
-        sensor = _camera_slug(str(camera.get("sensor", "csi")))
-        index = camera.get("camera")
-        device_path = str(camera.get("device_path", ""))
-        if not isinstance(index, int) or index < 0:
-            raise ValueError("CSI camera index is invalid.")
-        digest = hashlib.sha256(f"{sensor}|{device_path}".encode("utf-8")).hexdigest()[:12]
-        return {
-            "id": f"csi-{digest}" if device_path else f"csi-{sensor}-{index}",
-            "kind": "csi",
-            "camera": index,
-            "sensor": sensor,
-            "device_path": device_path,
-            "stable_identity": bool(device_path),
-            "label": camera.get("label") or f"CSI {sensor} · camera {index}",
-        }
-    raise ValueError("Camera type must be usb or csi.")
-
-
-def parse_modes(output):
-    modes = []
-    current_format = None
-    current_mode = None
-    for raw_line in output.splitlines():
-        line = raw_line.strip()
-        fmt = FORMAT_RE.search(line)
-        if fmt:
-            current_format = fmt.group(1).upper()
-            current_mode = None
-            continue
-        size = MODE_RE.search(line)
-        if size and current_format:
-            current_mode = {
-                "format": current_format,
-                "width": int(size.group(1)),
-                "height": int(size.group(2)),
-                "fps": [],
-            }
-            modes.append(current_mode)
-            continue
-        size_range = SIZE_RANGE_RE.search(line)
-        if size_range and current_format:
-            min_w, min_h, max_w, max_h = map(int, size_range.groups()[:4])
-            step_w, step_h = size_range.groups()[4:]
-            current_mode = {
-                "format": current_format,
-                "width": max_w,
-                "height": max_h,
-                "fps": [],
-                "size_range": {
-                    "min_width": min_w, "min_height": min_h,
-                    "max_width": max_w, "max_height": max_h,
-                    "step_width": int(step_w or 1), "step_height": int(step_h or 1),
-                },
-            }
-            modes.append(current_mode)
-            continue
-        fps = FPS_RE.search(line)
-        if fps and current_mode:
-            value = float(fps.group(1))
-            if value > 0 and value not in current_mode["fps"]:
-                current_mode["fps"].append(value)
-            continue
-        fps_range = FPS_RANGE_RE.search(line)
-        if fps_range and current_mode:
-            min_interval, max_interval = float(fps_range.group(1)), float(fps_range.group(2))
-            if min_interval > 0 and max_interval > 0:
-                current_mode["fps_range"] = {
-                    "min": round(1 / max_interval, 3),
-                    "max": round(1 / min_interval, 3),
-                    "min_interval_seconds": min_interval,
-                    "max_interval_seconds": max_interval,
-                    "interval_step_seconds": float(fps_range.group(3)) if fps_range.group(3) else None,
-                }
-    for mode in modes:
-        mode["fps"].sort(reverse=True)
-    return modes
-
-
-def mode_supports_resolution(mode, width, height):
-    if mode["width"] == width and mode["height"] == height:
-        return True
-    bounds = mode.get("size_range")
-    if not bounds:
-        return False
-    return (
-        bounds["min_width"] <= width <= bounds["max_width"]
-        and bounds["min_height"] <= height <= bounds["max_height"]
-        and (width - bounds["min_width"]) % bounds["step_width"] == 0
-        and (height - bounds["min_height"]) % bounds["step_height"] == 0
-    )
-
-
-def mode_max_fps(mode):
-    return max(mode["fps"], default=mode.get("fps_range", {}).get("max", 30.0))
-
-
-def mode_supports_fps(mode, fps):
-    if any(abs(value - fps) < 0.1 for value in mode["fps"]):
-        return True
-    limits = mode.get("fps_range")
-    if not limits or not limits["min"] <= fps <= limits["max"]:
-        return False
-    interval = 1 / fps
-    step = limits["interval_step_seconds"]
-    if step:
-        steps = (interval - limits["min_interval_seconds"]) / step
-        return abs(steps - round(steps)) < 0.001
-    return limits["min_interval_seconds"] <= interval <= limits["max_interval_seconds"]
-
-CSI_CAMERA_RE = re.compile(r"^\s*(\d+)\s*:\s*(\S+)\s*\[(\d+)x(\d+)\](?:\s+\(([^)]+)\))?")
-CSI_MODE_RE = re.compile(r"(\d+)x(\d+)\s+\[([\d.]+)\s+fps")
-
-
-def parse_csi_cameras(output):
-    cameras = []
-    current = None
-    for line in output.splitlines():
-        camera_match = CSI_CAMERA_RE.search(line)
-        if camera_match:
-            current = {
-                "index": int(camera_match.group(1)),
-                "sensor": camera_match.group(2),
-                "sensor_width": int(camera_match.group(3)),
-                "sensor_height": int(camera_match.group(4)),
-                "device_path": camera_match.group(5) or "",
-                "modes": [],
-            }
-            cameras.append(current)
-            continue
-        mode_match = CSI_MODE_RE.search(line)
-        if mode_match and current:
-            mode = {
-                "width": int(mode_match.group(1)),
-                "height": int(mode_match.group(2)),
-                "fps": float(mode_match.group(3)),
-            }
-            if mode not in current["modes"]:
-                current["modes"].append(mode)
-    return cameras
 
 
 def discover_csi_cameras():
@@ -212,77 +68,6 @@ def discover_csi_cameras():
     if result.returncode:
         return []
     return parse_csi_cameras(result.stdout + "\n" + result.stderr)
-
-
-def select_csi_mode(cameras, tier, requested_camera=None, resolution="auto", fps="auto", requested_device_path=None):
-    if requested_device_path:
-        cameras = [camera for camera in cameras if camera.get("device_path") == requested_device_path]
-    if requested_camera is not None:
-        cameras = [camera for camera in cameras if camera["index"] == requested_camera]
-    candidates = []
-    for camera in cameras:
-        for mode in camera["modes"]:
-            candidates.append((
-                mode["width"] * mode["height"] * mode["fps"],
-                mode["width"] * mode["height"],
-                mode["fps"],
-                camera,
-                mode,
-            ))
-    if not candidates:
-        return None
-    if resolution != "auto":
-        match = re.fullmatch(r"(\d+)x(\d+)", resolution)
-        if not match:
-            raise ValueError("Resolution must be 'auto' or WIDTHxHEIGHT.")
-        width, height = map(int, match.groups())
-        candidates = [item for item in candidates if item[4]["width"] == width and item[4]["height"] == height]
-        if not candidates:
-            raise ValueError(f"CSI resolution {resolution} is not advertised by the selected camera.")
-    if fps != "auto":
-        try:
-            requested_fps = float(fps)
-        except ValueError as error:
-            raise ValueError("FPS must be 'auto' or a positive number.") from error
-        if requested_fps <= 0:
-            raise ValueError("FPS must be 'auto' or a positive number.")
-        candidates = [item for item in candidates if abs(item[4]["fps"] - requested_fps) < 0.1]
-        if not candidates:
-            raise ValueError(f"CSI frame rate {fps} is not advertised for the selected resolution.")
-    budget = PIXEL_BUDGETS[tier]
-    within_budget = [item for item in candidates if item[0] <= budget]
-    chosen = max(within_budget, key=lambda item: (item[1], item[2])) if within_budget else min(candidates, key=lambda item: item[0])
-    camera, mode = chosen[3], chosen[4]
-    return {
-        "camera": camera["index"],
-        "sensor": camera["sensor"],
-        "device_path": camera.get("device_path", ""),
-        "resolution": f'{mode["width"]}x{mode["height"]}',
-        "fps": int(mode["fps"]) if mode["fps"].is_integer() else mode["fps"],
-        "mode_fps": [item["fps"] for item in camera["modes"] if item["width"] == mode["width"] and item["height"] == mode["height"]],
-        "estimated_pixels_per_second": chosen[0],
-        "hardware_budget_pixels_per_second": budget,
-        "performance_warning": chosen[0] > budget,
-    }
-
-
-def model_tier(model):
-    value = model.lower()
-    if "zero 2" in value or "zero 2 w" in value:
-        return "zero2"
-    if "zero" in value:
-        return "zero"
-    if "raspberry pi 1" in value or "raspberry pi model a" in value or "raspberry pi model b" in value:
-        return "pi1"
-    if "raspberry pi 2" in value:
-        return "pi2"
-    if "raspberry pi 5" in value or "raspberry pi 500" in value or "compute module 5" in value:
-        return "pi5"
-    if "raspberry pi 4" in value or "pi 400" in value or "compute module 4" in value:
-        return "pi4"
-    if "raspberry pi 3" in value or "compute module 3" in value:
-        return "pi3"
-    return "unknown"
 
 
 def read_model():
@@ -359,85 +144,6 @@ def detect_hardware_h264_encoder(sysfs_root=Path("/sys/class/video4linux"), dev_
         if result.returncode == 0 and re.search(r"['\"]H264['\"]|H\.264", result.stdout, re.IGNORECASE):
             return {"available": True, "device": str(device), "encoder": name, "format": "H264"}
     return {"available": False, "device": None, "encoder": None, "format": None}
-
-
-def ustreamer_format(pixel_format):
-    """Translate V4L2 native JPEG fourcc values to µStreamer passthrough format."""
-    return "MJPEG" if pixel_format in NATIVE_JPEG_FORMATS else pixel_format
-
-
-def filter_devices_by_format(devices, requested_format):
-    if requested_format == "auto":
-        return devices
-    requested_format = requested_format.upper()
-    return [
-        {**device, "modes": [mode for mode in device["modes"] if mode["format"] == requested_format]}
-        for device in devices
-        if any(mode["format"] == requested_format for mode in device["modes"])
-    ]
-
-
-def select_native_h264_mode(devices, resolution="auto", fps="auto"):
-    """Select only an explicitly advertised V4L2 H.264 capture mode."""
-    candidates = [
-        (device, mode)
-        for device in devices
-        for mode in device["modes"]
-        if mode["format"] in NATIVE_H264_FORMATS
-    ]
-    if resolution != "auto":
-        match = re.fullmatch(r"(\d+)x(\d+)", resolution)
-        if not match:
-            raise ValueError("Resolution must be 'auto' or WIDTHxHEIGHT.")
-        width, height = map(int, match.groups())
-        candidates = [(device, mode) for device, mode in candidates
-                      if mode_supports_resolution(mode, width, height)]
-    if fps != "auto":
-        try:
-            requested_fps = float(fps)
-        except ValueError as error:
-            raise ValueError("FPS must be 'auto' or a positive number.") from error
-        if requested_fps <= 0:
-            raise ValueError("FPS must be 'auto' or a positive number.")
-        candidates = [(device, mode) for device, mode in candidates
-                      if mode_supports_fps(mode, requested_fps)]
-    if not candidates:
-        return None
-    device, mode = max(candidates, key=lambda item: (
-        item[1]["width"] * item[1]["height"] * mode_max_fps(item[1]),
-        item[1]["width"] * item[1]["height"],
-    ))
-    selected_fps = float(fps) if fps != "auto" else float(mode_max_fps(mode))
-    return {
-        "device": device["device"],
-        "resolution": f'{mode["width"]}x{mode["height"]}',
-        "fps": int(selected_fps) if selected_fps.is_integer() else selected_fps,
-        "format": "H264",
-    }
-
-
-def select_mode(devices, tier):
-    candidates = []
-    for device in devices:
-        for mode in device["modes"]:
-            # Select only formats supported by µStreamer; discovery still lists
-            # every advertised fourcc, including formats that cannot be streamed.
-            if mode["format"] not in USTREAMER_FORMATS:
-                continue
-            fmt_rank = 0 if mode["format"] in NATIVE_JPEG_FORMATS else 1
-            max_fps = mode_max_fps(mode)
-            pixels_per_second = mode["width"] * mode["height"] * max_fps
-            candidates.append((fmt_rank, pixels_per_second, mode["width"] * mode["height"], max_fps, device, mode))
-    if not candidates:
-        return None
-    native = [item for item in candidates if item[0] == 0]
-    pool = native or candidates
-    budget = PIXEL_BUDGETS[tier]
-    within_budget = [item for item in pool if item[1] <= budget]
-    # If every advertised native mode exceeds the heuristic budget, start
-    # with the least demanding one and warn; never hide a camera capability.
-    chosen = max(within_budget, key=lambda item: (item[2], item[3])) if within_budget else min(pool, key=lambda item: item[1])
-    return chosen[4], chosen[5], bool(native)
 
 
 def main():
