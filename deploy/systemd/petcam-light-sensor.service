@@ -4,7 +4,6 @@ After=local-fs.target
 
 [Service]
 Type=simple
-StateDirectory=petcam
 ExecStart=/usr/bin/python3 /opt/petcam/current/lib/light_sensor.py
 Restart=on-failure
 RestartSec=10
