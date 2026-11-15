@@ -18,7 +18,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from config import parse_config
+if __package__:
+    from .config import parse_config
+else:  # Support the installed standalone worker entry point.
+    from config import parse_config
 
 CONFIG_FILE = Path("/etc/petcam/petcam.conf")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
