@@ -15,7 +15,10 @@ from pathlib import Path
 
 from PIL import Image, ImageChops
 
-from timelapse import capture_frame, jpeg_frames, prune_frames
+if __package__:
+    from .timelapse import capture_frame, jpeg_frames, prune_frames
+else:  # Support the installed standalone worker entry point.
+    from timelapse import capture_frame, jpeg_frames, prune_frames
 
 BASE = Path("/var/lib/petcam/motion")
 CONFIG = BASE / "config.json"
