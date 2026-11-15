@@ -13,12 +13,12 @@ def _mjpeg_required(data, feature, parse_config, config_path):
         )
 
 
-def _consumer_restart_commands(load_rtmp_config):
+def _consumer_restart_commands(load_rtmp_config, feature):
     commands = [
         (
             ["/usr/bin/systemctl", "restart", "petcam-stream.service"],
             45,
-            "Unable to restart camera after changing feature settings.",
+            f"Unable to restart camera after changing {feature} settings.",
         ),
     ]
     if load_rtmp_config()["enabled"]:
@@ -45,7 +45,7 @@ def update_timelapse(
     """Apply timelapse settings with dependent-service restart and rollback."""
     _mjpeg_required(data, "timelapse", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands(load_rtmp_config)
+    commands = _consumer_restart_commands(load_rtmp_config, "timelapse")
     return apply_transaction(
         save_config, current, {**current, **data}, commands, commands,
     )
@@ -64,7 +64,7 @@ def update_motion(
     """Apply motion settings with dependent-service restart and rollback."""
     _mjpeg_required(data, "motion detection", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands(load_rtmp_config)
+    commands = _consumer_restart_commands(load_rtmp_config, "motion")
     return apply_transaction(
         save_config, current, {**current, **data}, commands, commands,
     )
