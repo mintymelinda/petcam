@@ -89,7 +89,6 @@ def write_update_state(stage: str, message: str = "", **details: object) -> None
         state["finished_at"] = now
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(state, sort_keys=True) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o644)
     os.replace(temporary, path)
 
 
@@ -447,10 +446,7 @@ def install_runtime_integration_files(
         destination.parent.mkdir(parents=True, exist_ok=True)
         temporary = destination.with_name(destination.name + ".new")
         shutil.copyfile(source, temporary)
-        os.chmod(temporary, 0o644)
         os.replace(temporary, destination)
-        if os.geteuid() == 0:
-            os.chown(destination, 0, 0)
 
     config_files = (
         ("etc/petcam/home-assistant.conf", "petcam/home-assistant.conf"),
@@ -465,34 +461,14 @@ def install_runtime_integration_files(
         if not destination.exists():
             temporary = destination.with_name(destination.name + ".new")
             shutil.copyfile(source, temporary)
-            os.chmod(temporary, 0o600)
             os.replace(temporary, destination)
         elif not destination.is_file():
             raise UpdateError(f"Refusing to use a non-regular PetCam configuration file: {destination}")
-        os.chmod(destination, 0o600)
-        if os.geteuid() == 0:
-            os.chown(destination, 0, 0)
 
-    # Preserve unrelated system policies; remove only PetCam's legacy files.
+    # Remove only PetCam's retired privilege bridge files.
     (usr_root / "local/sbin/petcam-rtmp-service").unlink(missing_ok=True)
     (etc_root / "sudoers.d/petcam-rtmp").unlink(missing_ok=True)
 
-
-
-def repair_config_directory_permissions(directory: Path = Path("/etc/petcam")) -> None:
-    """Ensure the application configuration directory is private to root."""
-    try:
-        if directory.is_symlink():
-            raise UpdateError(f"Refusing to repair a symlinked PetCam configuration directory: {directory}")
-        directory.mkdir(parents=True, exist_ok=True)
-        os.chown(directory, 0, 0)
-        os.chmod(directory, 0o700)
-    except UpdateError:
-        raise
-    except OSError as error:
-        raise UpdateError(
-            f"Unable to secure PetCam configuration directory {directory}: {error}"
-        ) from error
 
 
 
@@ -645,7 +621,6 @@ def install_update(config: dict[str, str]) -> dict[str, object]:
         write_update_state("installing", f"Activating release {version}", target_version=version, previous_version=old_version)
         atomic_activate(final)
         switched = True
-        repair_config_directory_permissions()
         install_runtime_integration_files(final)
         run_required(["systemctl", "daemon-reload"], "Reloading systemd units")
         run_required(["systemctl", "enable", "--now", "petcam-timelapse.service"], "Enabling timelapse service")
