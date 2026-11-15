@@ -58,6 +58,27 @@ jobs:
         run: |
           python -m pip install --no-cache-dir --upgrade pip
           python -m pip install --no-cache-dir -e ".[test]"
+      - name: Build and inspect Python wheel
+        run: |
+          python -m pip wheel --no-deps --wheel-dir dist .
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          wheel = next(Path("dist").glob("petcam-*.whl"))
+          with ZipFile(wheel) as archive:
+              files = set(archive.namelist())
+          required = {
+              "petcam/__init__.py",
+              "petcam/static/dashboard.html",
+              "petcam/static/dashboard.js",
+              "petcam/static/browser-source.html",
+              "petcam/static/browser-source.js",
+          }
+          missing = required - files
+          if missing:
+              raise SystemExit(f"Wheel is missing package files: {sorted(missing)}")
+          PY
       - name: Compile source and tests
         run: python -m compileall -q src tests
       - name: Run unit tests
