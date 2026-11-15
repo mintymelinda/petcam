@@ -146,7 +146,7 @@ def restart_service(service: str) -> tuple[bool, str]:
             command = ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]
         elif service == "petcam-stream.service":
             result = process_control.run_systemctl(
-                "restart", service, runner=subprocess.run,
+                "restart", service, runner=subprocess.run, sudo=True,
                 capture_output=True, text=True, timeout=30, check=False,
             )
         else:
