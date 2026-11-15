@@ -120,7 +120,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
         self.assertEqual(commands[0][0], [
             "/usr/bin/systemctl", "restart", "petcam-stream.service",
         ])
-        self.assertEqual(commands[1][0], service_command("enable"))
+        self.assertEqual(commands[1][0], service_command("restart"))
         self.assertEqual(rollback[1][0], service_command("disable"))
 
     def test_rtmp_cannot_be_disabled_while_h264_capture_is_selected(self):
