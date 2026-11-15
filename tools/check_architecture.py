@@ -14,6 +14,8 @@ POLICY_MODULES = {
     "camera_selection.py",
     "camera_capture_policy.py",
     "motion_policy.py",
+    "timelapse_policy.py",
+    "light_sensor_policy.py",
 }
 FORBIDDEN_POLICY_IMPORTS = {
     "subprocess",
