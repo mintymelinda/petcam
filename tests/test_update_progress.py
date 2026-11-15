@@ -48,7 +48,7 @@ class UpdateProgressTests(unittest.TestCase):
             subprocess_mock.run.side_effect = results
             MANAGER.start_update()
         self.assertEqual(subprocess_mock.run.call_args_list[1].args[0], [
-            "sudo", "-n", "/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"
+            "/usr/bin/systemctl", "start", "--no-block", "petcam-update.service"
         ])
 
     def test_start_update_does_not_queue_a_second_active_install(self):
