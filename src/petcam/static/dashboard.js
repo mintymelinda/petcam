@@ -121,24 +121,7 @@ function activateTab(name, moveFocus = false) {
 
 // Camera selection and capture configuration
 function modesFor(camera) {
-  return camera.kind === "usb"
-    ? camera.modes.filter((m) =>
-        [
-          "MJPG",
-          "MJPEG",
-          "JPEG",
-          "YUYV",
-          "YVYU",
-          "UYVY",
-          "YUV420",
-          "YVU420",
-          "RGB565",
-          "RGB24",
-          "GREY",
-          "H264",
-        ].includes(m.format),
-      )
-    : camera.modes;
+  return camera.capture_modes || [];
 }
 function selectedCaptureMode() {
   try {
@@ -165,17 +148,15 @@ function syncOutputModeControls() {
   $("h264-mode-note").hidden = !forced;
 }
 function projectedPixelRate(mode) {
-  return mode.width * mode.height * mode.fps;
+  return Number(mode.estimated_pixels_per_second || 0);
 }
-function exceedsPerformanceBudget(camera, mode) {
-  if (mode.format === "H264") return false;
-  const budget = Number(camera?.hardware_budget_pixels_per_second || 0);
-  return budget > 0 && projectedPixelRate(mode) > budget;
+function exceedsPerformanceBudget(_camera, mode) {
+  return mode.exceeds_performance_budget === true;
 }
 function confirmPerformanceOverride(camera, mode) {
   if (!exceedsPerformanceBudget(camera, mode)) return false;
   const estimate = projectedPixelRate(mode),
-    budget = Number(camera.hardware_budget_pixels_per_second);
+    budget = Number(mode.performance_budget_pixels_per_second || 0);
   return confirm(
     "Performance warning: this capture mode is estimated at " +
       estimate.toLocaleString() +
@@ -222,47 +203,29 @@ function activeCameraMatches(camera, config) {
   return false;
 }
 function fillModes(preferred = null) {
-  const c = inventory[+$("camera").value];
+  const camera = inventory[+$("camera").value];
   $("mode").replaceChildren();
-  if (!c) return;
+  if (!camera) return;
   let matched = false;
-  for (const m of modesFor(c)) {
-    let fps = m.fps?.length ? m.fps : [m.fps_range?.max || 30];
-    if (c.kind === "usb") fps = fps.filter(Number.isInteger);
+  for (const mode of modesFor(camera)) {
+    const option = document.createElement("option");
+    option.value = JSON.stringify(mode);
+    option.textContent =
+      `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}` +
+      (exceedsPerformanceBudget(camera, mode)
+        ? " · ⚠ above device estimate"
+        : "");
     if (
       preferred &&
-      preferred.width === m.width &&
-      preferred.height === m.height &&
-      (preferred.format || "CSI") === (m.format || "CSI") &&
-      !fps.some((f) => Math.abs(f - preferred.fps) < 0.1)
-    )
-      fps = [...fps, preferred.fps];
-    for (const f of fps) {
-      const mode = {
-        format: m.format || "CSI",
-        width: m.width,
-        height: m.height,
-        fps: f,
-      };
-      const o = document.createElement("option");
-      o.value = JSON.stringify(mode);
-      o.textContent =
-        `${m.width}×${m.height} · ${f} fps · ${m.format || "CSI"}` +
-        (exceedsPerformanceBudget(c, mode)
-          ? " · ⚠ above device estimate"
-          : "");
-      if (
-        preferred &&
-        mode.width === preferred.width &&
-        mode.height === preferred.height &&
-        mode.format === (preferred.format || "CSI") &&
-        Math.abs(mode.fps - preferred.fps) < 0.1
-      ) {
-        o.selected = true;
-        matched = true;
-      }
-      $("mode").append(o);
+      mode.width === preferred.width &&
+      mode.height === preferred.height &&
+      mode.format === (preferred.format || "CSI") &&
+      Math.abs(mode.fps - preferred.fps) < 0.1
+    ) {
+      option.selected = true;
+      matched = true;
     }
+    $("mode").append(option);
   }
   if (preferred && !matched) {
     const mode = {
@@ -270,12 +233,13 @@ function fillModes(preferred = null) {
       width: preferred.width,
       height: preferred.height,
       fps: Number(preferred.fps),
+      exceeds_performance_budget: false,
     };
-    const o = document.createElement("option");
-    o.value = JSON.stringify(mode);
-    o.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format} (saved setting; not currently advertised)`;
-    o.selected = true;
-    $("mode").prepend(o);
+    const option = document.createElement("option");
+    option.value = JSON.stringify(mode);
+    option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format} (saved setting; not currently advertised)`;
+    option.selected = true;
+    $("mode").prepend(option);
   }
   $("mode").onchange = showSelectedModeWarning;
   showSelectedModeWarning();
