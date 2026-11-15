@@ -5,6 +5,11 @@ import json
 import os
 import shutil
 import subprocess
+
+if __package__:
+    from . import process_control
+else:
+    import process_control
 import sys
 from pathlib import Path
 
@@ -76,12 +81,12 @@ def reset():
         profile_id = profile.stem
         if profile_id and all(c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in profile_id):
             subprocess.run(
-                ["/usr/bin/systemctl", "disable", "--now", f"petcam-stream@{profile_id}.service"],
+                process_control.systemctl_command("disable", "--now", process_control.stream_instance_unit(profile_id)),
                 check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
     for service in SERVICES:
         subprocess.run(
-            ["/usr/bin/systemctl", "stop", service],
+            process_control.systemctl_command("stop", service),
             check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
 
@@ -106,11 +111,11 @@ def reset():
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
 
     (STATE / "health.json").unlink(missing_ok=True)
-    run("/usr/bin/systemctl", "daemon-reload")
+    process_control.run_systemctl("daemon-reload", runner=run)
     for service in ("petcam-stream.service", "petcam-web.service",
                     "petcam-timelapse.service", "petcam-motion.service",
                     "petcam-home-assistant.service"):
-        run("/usr/bin/systemctl", "start", service)
+        process_control.run_systemctl("start", service, runner=run)
 
 
 def main():
