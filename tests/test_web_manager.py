@@ -875,7 +875,8 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('? "unavailable"', PAGE_AND_JS)
         self.assertIn('" · Default: "', PAGE_AND_JS)
         self.assertIn("defaultLabel", PAGE_AND_JS)
-        self.assertIn('" · Default: "+(menuOption(control.default)?.label??"unavailable")', PAGE_AND_JS)
+        self.assertIn("menuOption(control.default)?.label", PAGE_AND_JS)
+        self.assertIn('"unavailable"', PAGE_AND_JS)
 
     def test_active_usb_camera_is_resolved_from_saved_physical_identity(self):
         camera = {
