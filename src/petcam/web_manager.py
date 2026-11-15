@@ -167,6 +167,7 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 
 
 def build_capture_modes(camera, performance_budget):
+    """Return the server-approved capture-mode catalog for one camera."""
     return _build_capture_modes(camera, performance_budget)
 
 
