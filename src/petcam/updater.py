@@ -433,7 +433,7 @@ def validate_release(directory: Path, version: str) -> None:
 def install_runtime_integration_files(
     release: Path, etc_root: Path = Path("/etc"), usr_root: Path = Path("/usr"),
 ) -> None:
-    """Install root-owned integration assets and remove the former privilege bridge."""
+    """Install integration assets and remove the former privilege bridge."""
     service_files = (
         ("systemd/petcam-home-assistant.service", "systemd/system/petcam-home-assistant.service"),
         ("systemd/petcam-timelapse.service", "systemd/system/petcam-timelapse.service"),
