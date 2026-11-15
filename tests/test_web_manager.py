@@ -8,7 +8,11 @@ from unittest import mock
 from petcam import web_manager as MODULE
 from petcam.api import management_routes
 
-DASHBOARD_JS = Path("src/petcam/static/dashboard.js").read_text(encoding="utf-8")
+DASHBOARD_SCRIPTS = ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
+DASHBOARD_JS = "\\n".join(
+    Path("src/petcam/static", name).read_text(encoding="utf-8")
+    for name in DASHBOARD_SCRIPTS
+)
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
