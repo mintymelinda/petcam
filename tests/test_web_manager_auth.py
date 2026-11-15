@@ -87,7 +87,7 @@ class WebManagerRouteAuthenticationTests(unittest.TestCase):
         return cookie, csrf
 
     def test_post_update_login_field_is_explicitly_masked(self):
-        scripts = ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
+        scripts = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
         page = MANAGER.PAGE + "\\n".join(
             (LIB / "static" / name).read_text(encoding="utf-8") for name in scripts
         )

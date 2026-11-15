@@ -64,6 +64,7 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 STATIC_ASSETS = {
     "dashboard.js": "application/javascript; charset=utf-8",
     "dashboard-core.js": "application/javascript; charset=utf-8",
+    "dashboard-api.js": "application/javascript; charset=utf-8",
     "dashboard-camera.js": "application/javascript; charset=utf-8",
     "dashboard-features.js": "application/javascript; charset=utf-8",
     "browser-source.js": "application/javascript; charset=utf-8",
