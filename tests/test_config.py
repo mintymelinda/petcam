@@ -9,7 +9,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 MODULE_PATH = Path(
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/config.py"
+    "src/petcam/config.py"
 )
 SPEC = importlib.util.spec_from_file_location("petcam_config", MODULE_PATH)
 MODULE = importlib.util.module_from_spec(SPEC)

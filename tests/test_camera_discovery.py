@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("petcam_camera", "stage-petcam/00-install-files/files/usr/local/lib/petcam/camera.py")
+SPEC = importlib.util.spec_from_file_location("petcam_camera", "src/petcam/camera.py")
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 

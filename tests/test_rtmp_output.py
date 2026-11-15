@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_obs_output",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/rtmp_output.py",
+    "src/petcam/rtmp_output.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

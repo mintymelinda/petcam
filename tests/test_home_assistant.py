@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest import mock
 
 MODULE_PATH = Path(
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/home_assistant.py"
+    "src/petcam/home_assistant.py"
 )
 sys.path.insert(0, str(MODULE_PATH.parent))
 SPEC = importlib.util.spec_from_file_location("petcam_home_assistant", MODULE_PATH)

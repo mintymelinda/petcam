@@ -6,7 +6,7 @@ from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_factory_reset",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/factory_reset.py",
+    "src/petcam/factory_reset.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

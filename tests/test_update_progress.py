@@ -8,14 +8,14 @@ from unittest import mock
 ROOT = Path(__file__).resolve().parents[1]
 UPDATER_SPEC = importlib.util.spec_from_file_location(
     "petcam_updater_progress",
-    ROOT / "stage-petcam/00-install-files/files/usr/local/lib/petcam/updater.py",
+    ROOT / "src/petcam/updater.py",
 )
 UPDATER = importlib.util.module_from_spec(UPDATER_SPEC)
 UPDATER_SPEC.loader.exec_module(UPDATER)
 
 MANAGER_SPEC = importlib.util.spec_from_file_location(
     "petcam_web_manager_progress",
-    ROOT / "stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py",
+    ROOT / "src/petcam/web_manager.py",
 )
 MANAGER = importlib.util.module_from_spec(MANAGER_SPEC)
 MANAGER_SPEC.loader.exec_module(MANAGER)

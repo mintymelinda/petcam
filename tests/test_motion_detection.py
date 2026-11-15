@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path("stage-petcam/00-install-files/files/usr/local/lib/p
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_motion",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/motion_detection.py",
+    "src/petcam/motion_detection.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

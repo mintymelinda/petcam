@@ -22,7 +22,7 @@ class SignedReleasePublisherTests(unittest.TestCase):
         script = stage_script.read_text(encoding="utf-8")
         self.assertNotIn("mediamtx", script.lower())
         from create_update_release import REQUIRED_FILES
-        systemd_source_dir = repo / "stage-petcam/00-install-files/files/etc/systemd/system"
+        systemd_source_dir = repo / "deploy/etc/systemd/system"
         for relative in REQUIRED_FILES:
             if relative.startswith("lib/") and relative.endswith(".py"):
                 source = source_dir / Path(relative).name
@@ -31,7 +31,7 @@ class SignedReleasePublisherTests(unittest.TestCase):
                 source = systemd_source_dir / Path(relative).name
                 install_line = f'install -m 0644 files/etc/systemd/system/{source.name} "$RELEASE_DIR/{relative}"'
             elif relative == "etc/petcam/rtmp.json":
-                source = repo / "stage-petcam/00-install-files/files/etc/petcam/rtmp.json"
+                source = repo / "deploy/etc/petcam/rtmp.json"
                 install_line = 'install -m 0640 files/etc/petcam/rtmp.json "$RELEASE_DIR/etc/petcam/rtmp.json"'
             else:
                 continue

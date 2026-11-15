@@ -3,7 +3,7 @@ import unittest
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_csi_stream",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/csi_stream.py",
+    "src/petcam/csi_stream.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

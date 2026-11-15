@@ -8,7 +8,7 @@ from pathlib import Path
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_timelapse",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/timelapse.py",
+    "src/petcam/timelapse.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)

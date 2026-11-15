@@ -8,7 +8,7 @@ from unittest import mock
 
 SPEC = importlib.util.spec_from_file_location(
     "petcam_web_manager",
-    "stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py",
+    "src/petcam/web_manager.py",
 )
 MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
@@ -147,7 +147,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["capture_mode"], "native_h264_csi")
 
     def test_browser_source_shows_camera_connection_status_and_retries(self):
-        source = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam/web_manager.py").read_text()
+        source = Path("src/petcam/web_manager.py").read_text()
         self.assertIn('id="status">Connecting to PetCam camera...', source)
         self.assertIn('image.onerror=', source)
         self.assertIn('image.src="/stream?retry="+Date.now()', source)
@@ -589,7 +589,7 @@ class WebManagerTests(unittest.TestCase):
 
     def test_explicit_h264_capture_hands_v4l2_to_gstreamer_rtsp(self):
         script = Path("stage-petcam/02-configure-petcam/00-run-chroot.sh").read_text()
-        server = Path("stage-petcam/00-install-files/files/usr/local/lib/petcam/rtmp_output.py").read_text()
+        server = Path("src/petcam/rtmp_output.py").read_text()
         self.assertIn('if [[ "$FORMAT" == "H264" ]]', script)
         self.assertIn("start_native_h264", script)
         self.assertIn("exec /usr/bin/sleep infinity", script)
