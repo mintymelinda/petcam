@@ -1,4 +1,3 @@
-import importlib.util
 import json
 import os
 import tempfile
@@ -6,12 +5,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location(
-    "petcam_obs_output",
-    "src/petcam/rtmp_output.py",
-)
-MODULE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(MODULE)
+from petcam import rtmp_output as MODULE
 
 
 class OBSOutputTests(unittest.TestCase):
