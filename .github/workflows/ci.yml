@@ -80,6 +80,8 @@ jobs:
               raise SystemExit(f"Wheel is missing package files: {sorted(missing)}")
           PY
       - name: Compile source and tests
-        run: python -m compileall -q src tests
+        run: python -m compileall -q src tests tools
+      - name: Enforce architecture boundaries
+        run: python tools/check_architecture.py
       - name: Run unit tests
         run: python -m pytest -q
