@@ -202,7 +202,6 @@ def _atomic_write(path: Path, content: bytes) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".tmp")
     temporary.write_bytes(content)
-    os.chmod(temporary, 0o600)
     os.replace(temporary, path)
 
 
@@ -429,7 +428,6 @@ def ensure_config_lock(path: Path | str = CONFIG_PATH) -> Path:
     lock_path = _config_lock_path(path)
     lock_path.parent.mkdir(parents=True, exist_ok=True)
     with lock_path.open("a+") as lock_file:
-        os.chmod(lock_path, 0o600)
     return lock_path
 
 
