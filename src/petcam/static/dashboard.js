@@ -1,1198 +1,961 @@
-const $=id=>document.getElementById(id);
-let inventory=[],
-activeConfig=null,
-captureStatus={
-},
-rtmpSettings={
-  enabled:false
+c o n s t $=i d=>d o c u m e n t.g e t E l e m e n t B y I d(i d);
+l e t i n v e n t o r y=[], a c t i v e C o n f i g=n u l l, c a p t u r e S t a t u s= {
+}, r t m p S e t t i n g s= {
+  e n a b l e d:f a l s e
 };
-$("first-run-form").onsubmit=async event=>{
-  event.preventDefault();
-  const password=$("setup-password").value,
-  confirmation=$("setup-password-confirm").value,
-  message=$("setup-message"),
-  button=$("setup-submit");
-  if(password!==confirmation){
-    message.textContent="The passwords do not match.";
-    return
+$("first-run-form").o n s u b m i t=a s y n c e v e n t=> {
+  e v e n t.p r e v e n t D e f a u l t();
+  c o n s t p a s s w o r d=$("setup-password").v a l u e, c o n f i r m a t i o n=$("setup-password-confirm").v a l u e, m e s s a g e=$("setup-message"), b u t t o n=$("setup-submit");
+  i f(p a s s w o r d!==c o n f i r m a t i o n) {
+    m e s s a g e.t e x t C o n t e n t="The passwords do not match.";
+    r e t u r n
   }
-  button.disabled=true;
-  message.textContent="Creating administrator account…";
-  try{
-    const response=await fetch("/api/setup",
-    {
-      method:"POST",
-      headers:{
+  b u t t o n.d i s a b l e d=t r u e;
+  m e s s a g e.t e x t C o n t e n t="Creating administrator account…";
+  t r y {
+    c o n s t r e s p o n s e=a w a i t f e t c h("/api/setup",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        password,
-        password_confirmation:confirmation
+      }, b o d y:J S O N.s t r i n g i f y( {
+        p a s s w o r d, p a s s w o r d _ c o n f i r m a t i o n:c o n f i r m a t i o n
       })
     });
-    const data=await response.json();
-    if(!response.ok)throw Error(data.error||"Initial setup failed");
-    message.textContent="Administrator account created. Opening PetCam…";
-    location.reload()
+    c o n s t d a t a=a w a i t r e s p o n s e.j s o n();
+    i f(!r e s p o n s e.o k)t h r o w E r r o r(d a t a.e r r o r||"Initial setup failed");
+    m e s s a g e.t e x t C o n t e n t="Administrator account created. Opening PetCam…";
+    l o c a t i o n.r e l o a d()
   }
-  catch(error){
-    message.textContent=error.message;
-    button.disabled=false
+  c a t c h(e r r o r) {
+    m e s s a g e.t e x t C o n t e n t=e r r o r.m e s s a g e;
+    b u t t o n.d i s a b l e d=f a l s e
   }
 };
-let csrfToken=null;
-let loginPromise=null;
-async function login(){
-  if(loginPromise)return loginPromise;
-  loginPromise=(async()=>{
-    const setupResponse=await fetch("/api/setup/status",
-    {
-      cache:"no-store"
+l e t c s r f T o k e n=n u l l;
+l e t l o g i n P r o m i s e=n u l l;
+a s y n c f u n c t i o n l o g i n() {
+  i f(l o g i n P r o m i s e)r e t u r n l o g i n P r o m i s e;
+  l o g i n P r o m i s e=(a s y n c()=> {
+    c o n s t s e t u p R e s p o n s e=a w a i t f e t c h("/api/setup/status",  {
+      c a c h e:"no-store"
     });
-    const setupState=await setupResponse.json();
-    if(!setupResponse.ok)throw Error(setupState.error||"Unable to check initial setup");
-    if(!setupState.configured)throw Error("Create the administrator password in the welcome panel before signing in.");
-    return await new Promise((resolve,
-    reject)=>{
-      const dialog=$("login-dialog"),
-      form=$("login-form"),
-      password=$("login-password"),
-      message=$("login-message"),
-      button=$("login-submit");
-      let settled=false;
-      const finish=(error,
-      data)=>{
-        if(settled)return;
-        settled=true;
-        password.value="";
-        dialog.close();
-        if(error)reject(error);
-        else resolve(data)
+    c o n s t s e t u p S t a t e=a w a i t s e t u p R e s p o n s e.j s o n();
+    i f(!s e t u p R e s p o n s e.o k)t h r o w E r r o r(s e t u p S t a t e.e r r o r||"Unable to check initial setup");
+    i f(!s e t u p S t a t e.c o n f i g u r e d)t h r o w E r r o r("Create the administrator password in the welcome panel before signing in.");
+    r e t u r n a w a i t n e w P r o m i s e((r e s o l v e, r e j e c t)=> {
+      c o n s t d i a l o g=$("login-dialog"), f o r m=$("login-form"), p a s s w o r d=$("login-password"), m e s s a g e=$("login-message"), b u t t o n=$("login-submit");
+      l e t s e t t l e d=f a l s e;
+      c o n s t f i n i s h=(e r r o r, d a t a)=> {
+        i f(s e t t l e d)r e t u r n;
+        s e t t l e d=t r u e;
+        p a s s w o r d.v a l u e="";
+        d i a l o g.c l o s e();
+        i f(e r r o r)r e j e c t(e r r o r);
+        e l s e r e s o l v e(d a t a)
       };
-      form.onsubmit=async event=>{
-        event.preventDefault();
-        button.disabled=true;
-        message.textContent="Signing in…";
-        try{
-          const response=await fetch("/api/login",
-          {
-            method:"POST",
-            headers:{
+      f o r m.o n s u b m i t=a s y n c e v e n t=> {
+        e v e n t.p r e v e n t D e f a u l t();
+        b u t t o n.d i s a b l e d=t r u e;
+        m e s s a g e.t e x t C o n t e n t="Signing in…";
+        t r y {
+          c o n s t r e s p o n s e=a w a i t f e t c h("/api/login",  {
+            m e t h o d:"POST", h e a d e r s: {
               "Content-Type":"application/json"
-            },
-            body:JSON.stringify({
-              password:password.value
+            }, b o d y:J S O N.s t r i n g i f y( {
+              p a s s w o r d:p a s s w o r d.v a l u e
             })
           });
-          const data=await response.json();
-          if(!response.ok)throw Error(data.error||"Sign-in failed");
-          csrfToken=data.csrf_token;
-          finish(null,
-          data)
+          c o n s t d a t a=a w a i t r e s p o n s e.j s o n();
+          i f(!r e s p o n s e.o k)t h r o w E r r o r(d a t a.e r r o r||"Sign-in failed");
+          c s r f T o k e n=d a t a.c s r f _ t o k e n;
+          f i n i s h(n u l l, d a t a)
         }
-        catch(error){
-          message.textContent=error.message;
-          password.value="";
-          password.focus();
-          button.disabled=false
+        c a t c h(e r r o r) {
+          m e s s a g e.t e x t C o n t e n t=e r r o r.m e s s a g e;
+          p a s s w o r d.v a l u e="";
+          p a s s w o r d.f o c u s();
+          b u t t o n.d i s a b l e d=f a l s e
         }
       };
-      dialog.oncancel=event=>{
-        event.preventDefault();
-        finish(Error("Sign-in cancelled"))
+      d i a l o g.o n c a n c e l=e v e n t=> {
+        e v e n t.p r e v e n t D e f a u l t();
+        f i n i s h(E r r o r("Sign-in cancelled"))
       };
-      password.setAttribute("type",
-      "password");
-      password.type="password";
-      password.setAttribute("autocomplete",
-      "current-password");
-      dialog.showModal();
-      password.focus()
+      p a s s w o r d.s e t A t t r i b u t e("type", "password");
+      p a s s w o r d.t y p e="password";
+      p a s s w o r d.s e t A t t r i b u t e("autocomplete", "current-password");
+      d i a l o g.s h o w M o d a l();
+      p a s s w o r d.f o c u s()
     })
   })();
-  try{
-    return await loginPromise
+  t r y {
+    r e t u r n a w a i t l o g i n P r o m i s e
   }
-  finally{
-    loginPromise=null
+  f i n a l l y {
+    l o g i n P r o m i s e=n u l l
   }
 }
-async function request(path,
-options={
-}){
-  const headers=new Headers(options.headers||{
+a s y n c f u n c t i o n r e q u e s t(p a t h, o p t i o n s= {
+}) {
+  c o n s t h e a d e r s=n e w H e a d e r s(o p t i o n s.h e a d e r s|| {
   });
-  if(options.method&&options.method.toUpperCase()!=="GET"&&!csrfToken){
-    let session=await fetch("/api/session");
-    if(session.status===401){
-      await login()
+  i f(o p t i o n s.m e t h o d&&o p t i o n s.m e t h o d.t o U p p e r C a s e()!=="GET"&&!c s r f T o k e n) {
+    l e t s e s s i o n=a w a i t f e t c h("/api/session");
+    i f(s e s s i o n.s t a t u s===4 0 1) {
+      a w a i t l o g i n()
     }
-    else{
-      const state=await session.json();
-      if(!session.ok)throw Error(state.error||session.statusText);
-      csrfToken=state.csrf_token
+    e l s e {
+      c o n s t s t a t e=a w a i t s e s s i o n.j s o n();
+      i f(!s e s s i o n.o k)t h r o w E r r o r(s t a t e.e r r o r||s e s s i o n.s t a t u s T e x t);
+      c s r f T o k e n=s t a t e.c s r f _ t o k e n
     }
   }
-  if(options.method&&options.method.toUpperCase()!=="GET"&&csrfToken)headers.set("X-PetCam-CSRF",
-  csrfToken);
-  let r=await fetch(path,
-  {
-    ...options,
-    headers
+  i f(o p t i o n s.m e t h o d&&o p t i o n s.m e t h o d.t o U p p e r C a s e()!=="GET"&&c s r f T o k e n)h e a d e r s.s e t("X-PetCam-CSRF", c s r f T o k e n);
+  l e t r=a w a i t f e t c h(p a t h,  {
+    ...o p t i o n s, h e a d e r s
   });
-  if(r.status===401){
-    await login();
-    if(options.method&&options.method.toUpperCase()!=="GET"&&csrfToken)headers.set("X-PetCam-CSRF",
-    csrfToken);
-    r=await fetch(path,
-    {
-      ...options,
-      headers
+  i f(r.s t a t u s===4 0 1) {
+    a w a i t l o g i n();
+    i f(o p t i o n s.m e t h o d&&o p t i o n s.m e t h o d.t o U p p e r C a s e()!=="GET"&&c s r f T o k e n)h e a d e r s.s e t("X-PetCam-CSRF", c s r f T o k e n);
+    r=a w a i t f e t c h(p a t h,  {
+      ...o p t i o n s, h e a d e r s
     })
   }
-  const d=await r.json();
-  if(!r.ok)throw Error(d.error||r.statusText);
-  return d
+  c o n s t d=a w a i t r.j s o n();
+  i f(!r.o k)t h r o w E r r o r(d.e r r o r||r.s t a t u s T e x t);
+  r e t u r n d
 }
-const tabButtons=[...document.querySelectorAll("[data-tab]")];
-function activateTab(name,
-moveFocus=false){
-  const selected=tabButtons.find(button=>button.dataset.tab===name);
-  if(!selected)return;
-  for(const button of tabButtons){
-    const active=button===selected;
-    button.setAttribute("aria-selected",
-    String(active));
-    button.tabIndex=active?0:-1;
-    const panel=$(button.getAttribute("aria-controls"));
-    panel.hidden=!active;
-    panel.classList.toggle("active",
-    active);
+c o n s t t a b B u t t o n s=[...d o c u m e n t.q u e r y S e l e c t o r A l l("[data-tab]")];
+f u n c t i o n a c t i v a t e T a b(n a m e, m o v e F o c u s=f a l s e) {
+  c o n s t s e l e c t e d=t a b B u t t o n s.f i n d(b u t t o n=>b u t t o n.d a t a s e t.t a b===n a m e);
+  i f(!s e l e c t e d)r e t u r n;
+  f o r(c o n s t b u t t o n o f t a b B u t t o n s) {
+    c o n s t a c t i v e=b u t t o n===s e l e c t e d;
+    b u t t o n.s e t A t t r i b u t e("aria-selected", S t r i n g(a c t i v e));
+    b u t t o n.t a b I n d e x=a c t i v e?0:-1;
+    c o n s t p a n e l=$(b u t t o n.g e t A t t r i b u t e("aria-controls"));
+    p a n e l.h i d d e n=!a c t i v e;
+    p a n e l.c l a s s L i s t.t o g g l e("active", a c t i v e);
   }
-  if(moveFocus)selected.focus();
+  i f(m o v e F o c u s)s e l e c t e d.f o c u s();
 }
-for(const button of tabButtons){
-  button.addEventListener("click",
-  ()=>activateTab(button.dataset.tab));
-  button.addEventListener("keydown",
-  event=>{
-    const index=tabButtons.indexOf(button);
-    let next=null;
-    if(event.key==="ArrowRight")next=(index+1)%tabButtons.length;
-    else if(event.key==="ArrowLeft")next=(index-1+tabButtons.length)%tabButtons.length;
-    else if(event.key==="Home")next=0;
-    else if(event.key==="End")next=tabButtons.length-1;
-    if(next!==null){
-      event.preventDefault();
-      activateTab(tabButtons[next].dataset.tab,
-      true)
+f o r(c o n s t b u t t o n o f t a b B u t t o n s) {
+  b u t t o n.a d d E v e n t L i s t e n e r("click", ()=>a c t i v a t e T a b(b u t t o n.d a t a s e t.t a b));
+  b u t t o n.a d d E v e n t L i s t e n e r("keydown", e v e n t=> {
+    c o n s t i n d e x=t a b B u t t o n s.i n d e x O f(b u t t o n);
+    l e t n e x t=n u l l;
+    i f(e v e n t.k e y==="ArrowRight")n e x t=(i n d e x+1)%t a b B u t t o n s.l e n g t h;
+    e l s e i f(e v e n t.k e y==="ArrowLeft")n e x t=(i n d e x-1+t a b B u t t o n s.l e n g t h)%t a b B u t t o n s.l e n g t h;
+    e l s e i f(e v e n t.k e y==="Home")n e x t=0;
+    e l s e i f(e v e n t.k e y==="End")n e x t=t a b B u t t o n s.l e n g t h-1;
+    i f(n e x t!==n u l l) {
+      e v e n t.p r e v e n t D e f a u l t();
+      a c t i v a t e T a b(t a b B u t t o n s[n e x t].d a t a s e t.t a b, t r u e)
     }
   });
 }
-activateTab("camera");
-refreshRTMP();
-function modesFor(camera){
-  return camera.kind==="usb"?camera.modes.filter(m=>["MJPG",
-  "MJPEG",
-  "JPEG",
-  "YUYV",
-  "YVYU",
-  "UYVY",
-  "YUV420",
-  "YVU420",
-  "RGB565",
-  "RGB24",
-  "GREY",
-  "H264"].includes(m.format)):camera.modes
+a c t i v a t e T a b("camera");
+r e f r e s h R T M P();
+f u n c t i o n m o d e s F o r(c a m e r a) {
+  r e t u r n c a m e r a.k i n d==="usb"?c a m e r a.m o d e s.f i l t e r(m=>["MJPG", "MJPEG", "JPEG", "YUYV", "YVYU", "UYVY", "YUV420", "YVU420", "RGB565", "RGB24", "GREY", "H264"].i n c l u d e s(m.f o r m a t)):c a m e r a.m o d e s
 }
-function selectedCaptureMode(){
-  try{
-    return JSON.parse($("mode").value)
+f u n c t i o n s e l e c t e d C a p t u r e M o d e() {
+  t r y {
+    r e t u r n J S O N.p a r s e($("mode").v a l u e)
   }
-  catch(error){
-    return null
+  c a t c h(e r r o r) {
+    r e t u r n n u l l
   }
 }
-function h264ModeSelectedOrActive(){
-  return (activeConfig?.SOURCE==="usb"&&activeConfig?.FORMAT==="H264")||captureStatus.active_capture_format==="H264"||selectedCaptureMode()?.format==="H264"
+f u n c t i o n h 2 6 4 M o d e S e l e c t e d O r A c t i v e() {
+  r e t u r n(a c t i v e C o n f i g?.S O U R C E==="usb"&&a c t i v e C o n f i g?.F O R M A T==="H264")||c a p t u r e S t a t u s.a c t i v e _ c a p t u r e _ f o r m a t==="H264"||s e l e c t e d C a p t u r e M o d e()?.f o r m a t==="H264"
 }
-function syncOutputModeControls(){
-  const forced=h264ModeSelectedOrActive();
-  $("rtmp-enabled").checked=forced||!!rtmpSettings.enabled;
-  $("rtmp-enabled").disabled=forced;
-  $("save-rtmp").disabled=forced;
-  document.querySelectorAll("[data-browser-feed-link]").forEach(link=>{
-    link.closest("p").hidden=forced
+f u n c t i o n s y n c O u t p u t M o d e C o n t r o l s() {
+  c o n s t f o r c e d=h 2 6 4 M o d e S e l e c t e d O r A c t i v e();
+  $("rtmp-enabled").c h e c k e d=f o r c e d||!!r t m p S e t t i n g s.e n a b l e d;
+  $("rtmp-enabled").d i s a b l e d=f o r c e d;
+  $("save-rtmp").d i s a b l e d=f o r c e d;
+  d o c u m e n t.q u e r y S e l e c t o r A l l("[data-browser-feed-link]").f o r E a c h(l i n k=> {
+    l i n k.c l o s e s t("p").h i d d e n=f o r c e d
   });
-  $("h264-mode-note").hidden=!forced
+  $("h264-mode-note").h i d d e n=!f o r c e d
 }
-function projectedPixelRate(mode){
-  return mode.width*mode.height*mode.fps
+f u n c t i o n p r o j e c t e d P i x e l R a t e(m o d e) {
+  r e t u r n m o d e.w i d t h*m o d e.h e i g h t*m o d e.f p s
 }
-function exceedsPerformanceBudget(camera,
-mode){
-  if(mode.format==="H264")return false;
-  const budget=Number(camera?.hardware_budget_pixels_per_second||0);
-  return budget>0&&projectedPixelRate(mode)>budget
+f u n c t i o n e x c e e d s P e r f o r m a n c e B u d g e t(c a m e r a, m o d e) {
+  i f(m o d e.f o r m a t==="H264")r e t u r n f a l s e;
+  c o n s t b u d g e t=N u m b e r(c a m e r a?.h a r d w a r e _ b u d g e t _ p i x e l s _ p e r _ s e c o n d||0);
+  r e t u r n b u d g e t>0&&p r o j e c t e d P i x e l R a t e(m o d e)>b u d g e t
 }
-function confirmPerformanceOverride(camera,
-mode){
-  if(!exceedsPerformanceBudget(camera,
-  mode))return false;
-  const estimate=projectedPixelRate(mode),
-  budget=Number(camera.hardware_budget_pixels_per_second);
-  return confirm("Performance warning: this capture mode is estimated at "+estimate.toLocaleString()+" pixels/second, above the "+camera.hardware_tier+" device guideline of "+budget.toLocaleString()+" pixels/second. It may cause low frame rates, dropped frames, or an unresponsive camera stream. Use this mode anyway?")
+f u n c t i o n c o n f i r m P e r f o r m a n c e O v e r r i d e(c a m e r a, m o d e) {
+  i f(!e x c e e d s P e r f o r m a n c e B u d g e t(c a m e r a, m o d e))r e t u r n f a l s e;
+  c o n s t e s t i m a t e=p r o j e c t e d P i x e l R a t e(m o d e), b u d g e t=N u m b e r(c a m e r a.h a r d w a r e _ b u d g e t _ p i x e l s _ p e r _ s e c o n d);
+  r e t u r n c o n f i r m("Performance warning: this capture mode is estimated at "+e s t i m a t e.t o L o c a l e S t r i n g()+" pixels/second, above the "+c a m e r a.h a r d w a r e _ t i e r+" device guideline of "+b u d g e t.t o L o c a l e S t r i n g()+" pixels/second. It may cause low frame rates, dropped frames, or an unresponsive camera stream. Use this mode anyway?")
 }
-function showSelectedModeWarning(){
-  const c=inventory[+$("camera").value],
-  raw=$("mode").value;
-  if(!c||!raw)return;
-  const mode=JSON.parse(raw);
-  if(exceedsPerformanceBudget(c,
-  mode))$("message").textContent="Performance warning: this capture mode exceeds the estimated "+c.hardware_tier+" device budget. You can still apply it after confirming the warning.";
-  else $("message").textContent=mode.format==="H264"?"H.264 selected. The HTTP Browser Source will be disabled and OBS RTSP output will be forced on.":"Selected mode is within the estimated device performance budget.";
-  syncOutputModeControls()
+f u n c t i o n s h o w S e l e c t e d M o d e W a r n i n g() {
+  c o n s t c=i n v e n t o r y[+$("camera").v a l u e], r a w=$("mode").v a l u e;
+  i f(!c||!r a w)r e t u r n;
+  c o n s t m o d e=J S O N.p a r s e(r a w);
+  i f(e x c e e d s P e r f o r m a n c e B u d g e t(c, m o d e))$("message").t e x t C o n t e n t="Performance warning: this capture mode exceeds the estimated "+c.h a r d w a r e _ t i e r+" device budget. You can still apply it after confirming the warning.";
+  e l s e $("message").t e x t C o n t e n t=m o d e.f o r m a t==="H264"?"H.264 selected. The HTTP Browser Source will be disabled and OBS RTSP output will be forced on.":"Selected mode is within the estimated device performance budget.";
+  s y n c O u t p u t M o d e C o n t r o l s()
 }
-function activeCameraMatches(camera,
-config){
-  if(!config)return false;
-  if(config.SOURCE==="usb")return camera.kind==="usb"&&(config.USB_PHYSICAL_PATH?camera.physical_path===config.USB_PHYSICAL_PATH:camera.device===config.DEVICE);
-  if(config.SOURCE==="csi")return camera.kind==="csi"&&(config.CSI_DEVICE_PATH?camera.device_path===config.CSI_DEVICE_PATH:String(camera.camera)===String(config.CAMERA));
-  return false
+f u n c t i o n a c t i v e C a m e r a M a t c h e s(c a m e r a, c o n f i g) {
+  i f(!c o n f i g)r e t u r n f a l s e;
+  i f(c o n f i g.S O U R C E==="usb")r e t u r n c a m e r a.k i n d==="usb"&&(c o n f i g.U S B _ P H Y S I C A L _ P A T H?c a m e r a.p h y s i c a l _ p a t h===c o n f i g.U S B _ P H Y S I C A L _ P A T H:c a m e r a.d e v i c e===c o n f i g.D E V I C E);
+  i f(c o n f i g.S O U R C E==="csi")r e t u r n c a m e r a.k i n d==="csi"&&(c o n f i g.C S I _ D E V I C E _ P A T H?c a m e r a.d e v i c e _ p a t h===c o n f i g.C S I _ D E V I C E _ P A T H:S t r i n g(c a m e r a.c a m e r a)===S t r i n g(c o n f i g.C A M E R A));
+  r e t u r n f a l s e
 }
-function fillModes(preferred=null){
-  const c=inventory[+$("camera").value];
-  $("mode").replaceChildren();
-  if(!c)return;
-  let matched=false;
-  for(const m of modesFor(c)){
-    let fps=m.fps?.length?m.fps:[m.fps_range?.max||30];
-    if(c.kind==="usb")fps=fps.filter(Number.isInteger);
-    if(preferred&&preferred.width===m.width&&preferred.height===m.height&&(preferred.format||"CSI")===(m.format||"CSI")&&!fps.some(f=>Math.abs(f-preferred.fps)<0.1))fps=[...fps,
-    preferred.fps];
-    for(const f of fps){
-      const mode={
-        format:m.format||"CSI",
-        width:m.width,
-        height:m.height,
-        fps:f
+f u n c t i o n f i l l M o d e s(p r e f e r r e d=n u l l) {
+  c o n s t c=i n v e n t o r y[+$("camera").v a l u e];
+  $("mode").r e p l a c e C h i l d r e n();
+  i f(!c)r e t u r n;
+  l e t m a t c h e d=f a l s e;
+  f o r(c o n s t m o f m o d e s F o r(c)) {
+    l e t f p s=m.f p s?.l e n g t h?m.f p s:[m.f p s _ r a n g e?.m a x||3 0];
+    i f(c.k i n d==="usb")f p s=f p s.f i l t e r(N u m b e r.i s I n t e g e r);
+    i f(p r e f e r r e d&&p r e f e r r e d.w i d t h===m.w i d t h&&p r e f e r r e d.h e i g h t===m.h e i g h t&&(p r e f e r r e d.f o r m a t||"CSI")===(m.f o r m a t||"CSI")&&!f p s.s o m e(f=>M a t h.a b s(f-p r e f e r r e d.f p s)<0.1))f p s=[...f p s, p r e f e r r e d.f p s];
+    f o r(c o n s t f o f f p s) {
+      c o n s t m o d e= {
+        f o r m a t:m.f o r m a t||"CSI", w i d t h:m.w i d t h, h e i g h t:m.h e i g h t, f p s:f
       };
-      const o=document.createElement("option");
-      o.value=JSON.stringify(mode);
-      o.textContent=`${m.width}×${m.height} · ${f} fps · ${m.format||"CSI"}`+(exceedsPerformanceBudget(c,
-      mode)?" · ⚠ above device estimate":"");
-      if(preferred&&mode.width===preferred.width&&mode.height===preferred.height&&mode.format===(preferred.format||"CSI")&&Math.abs(mode.fps-preferred.fps)<0.1){
-        o.selected=true;
-        matched=true
+      c o n s t o=d o c u m e n t.c r e a t e E l e m e n t("option");
+      o.v a l u e=J S O N.s t r i n g i f y(m o d e);
+      o.t e x t C o n t e n t=`${m.width}×${m.height} · ${f} fps · ${m.format||"CSI"}`+(e x c e e d s P e r f o r m a n c e B u d g e t(c, m o d e)?" · ⚠ above device estimate":"");
+      i f(p r e f e r r e d&&m o d e.w i d t h===p r e f e r r e d.w i d t h&&m o d e.h e i g h t===p r e f e r r e d.h e i g h t&&m o d e.f o r m a t===(p r e f e r r e d.f o r m a t||"CSI")&&M a t h.a b s(m o d e.f p s-p r e f e r r e d.f p s)<0.1) {
+        o.s e l e c t e d=t r u e;
+        m a t c h e d=t r u e
       }
-      $("mode").append(o)
+      $("mode").a p p e n d(o)
     }
   }
-  if(preferred&&!matched){
-    const mode={
-      format:preferred.format||"CSI",
-      width:preferred.width,
-      height:preferred.height,
-      fps:Number(preferred.fps)
+  i f(p r e f e r r e d&&!m a t c h e d) {
+    c o n s t m o d e= {
+      f o r m a t:p r e f e r r e d.f o r m a t||"CSI", w i d t h:p r e f e r r e d.w i d t h, h e i g h t:p r e f e r r e d.h e i g h t, f p s:N u m b e r(p r e f e r r e d.f p s)
     };
-    const o=document.createElement("option");
-    o.value=JSON.stringify(mode);
-    o.textContent=`${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format} (saved setting; not currently advertised)`;
-    o.selected=true;
-    $("mode").prepend(o)
+    c o n s t o=d o c u m e n t.c r e a t e E l e m e n t("option");
+    o.v a l u e=J S O N.s t r i n g i f y(m o d e);
+    o.t e x t C o n t e n t=`${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format} (saved setting; not currently advertised)`;
+    o.s e l e c t e d=t r u e;
+    $("mode").p r e p e n d(o)
   }
-  $("mode").onchange=showSelectedModeWarning;
-  showSelectedModeWarning()
+  $("mode").o n c h a n g e=s h o w S e l e c t e d M o d e W a r n i n g;
+  s h o w S e l e c t e d M o d e W a r n i n g()
 }
-function renderCaptureStatus(){
-  const fps=Number(captureStatus.latest_captured_fps),
-  configured=activeConfig?.FPS,
-  format=captureStatus.active_capture_format;
-  if(Number.isFinite(fps)&&fps>0){
-    $("capture-rate").textContent="Actual captured rate: "+fps.toFixed(1).replace(/\.0$/,
-    "")+" FPS"+(format?" · "+format:"")+(configured&&configured!=="auto"?" · configured: "+configured+" FPS":"")+(captureStatus.active_resolution?" · "+captureStatus.active_resolution:(activeConfig?.RESOLUTION&&activeConfig.RESOLUTION!=="auto"?" · "+activeConfig.RESOLUTION:""))+(captureStatus.capture_mode==="native_h264_csi"?" · CSI hardware encoder": "")
+f u n c t i o n r e n d e r C a p t u r e S t a t u s() {
+  c o n s t f p s=N u m b e r(c a p t u r e S t a t u s.l a t e s t _ c a p t u r e d _ f p s), c o n f i g u r e d=a c t i v e C o n f i g?.F P S, f o r m a t=c a p t u r e S t a t u s.a c t i v e _ c a p t u r e _ f o r m a t;
+  i f(N u m b e r.i s F i n i t e(f p s)&&f p s>0) {
+    $("capture-rate").t e x t C o n t e n t="Actual captured rate: "+f p s.t o F i x e d(1).r e p l a c e(/\.0 $/, "")+" FPS"+(f o r m a t?" · "+f o r m a t:"")+(c o n f i g u r e d&&c o n f i g u r e d!=="auto"?" · configured: "+c o n f i g u r e d+" FPS":"")+(c a p t u r e S t a t u s.a c t i v e _ r e s o l u t i o n?" · "+c a p t u r e S t a t u s.a c t i v e _ r e s o l u t i o n:(a c t i v e C o n f i g?.R E S O L U T I O N&&a c t i v e C o n f i g.R E S O L U T I O N!=="auto"?" · "+a c t i v e C o n f i g.R E S O L U T I O N:""))+(c a p t u r e S t a t u s.c a p t u r e _ m o d e==="native_h264_csi"?" · CSI hardware encoder":"")
   }
-  else $("capture-rate").textContent="Actual captured rate: not currently reported"+(format?" · "+format:"")
+  e l s e $("capture-rate").t e x t C o n t e n t="Actual captured rate: not currently reported"+(f o r m a t?" · "+f o r m a t:"")
 }
-async function refreshLiveStatus(){
-  try{
-    const d=await request("/api/live-status");
-    refreshStatistics(d);
-    captureStatus=d.capture_status||{
+a s y n c f u n c t i o n r e f r e s h L i v e S t a t u s() {
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/live-status");
+    r e f r e s h S t a t i s t i c s(d);
+    c a p t u r e S t a t u s=d.c a p t u r e _ s t a t u s|| {
     };
-    renderCaptureStatus();
-    syncOutputModeControls();
-    const updated=new Date(d.capture_status_updated_at*1000);
-    $("capture-status-freshness").textContent="Capture status refreshes every 5 seconds · last updated "+updated.toLocaleTimeString()
+    r e n d e r C a p t u r e S t a t u s();
+    s y n c O u t p u t M o d e C o n t r o l s();
+    c o n s t u p d a t e d=n e w D a t e(d.c a p t u r e _ s t a t u s _ u p d a t e d _ a t*1 0 0 0);
+    $("capture-status-freshness").t e x t C o n t e n t="Capture status refreshes every 5 seconds · last updated "+u p d a t e d.t o L o c a l e T i m e S t r i n g()
   }
-  catch(error){
-    $("capture-status-freshness").textContent="Live status unavailable: "+error.message
-  }
-}
-async function refreshSystemInfo(){
-  try{
-    const data=await request("/api/system");
-    $("installed-version").textContent="Installed version: "+(data.installed_version||"unknown")
-  }
-  catch(error){
-    $("installed-version").textContent="Installed version unavailable: "+error.message
+  c a t c h(e r r o r) {
+    $("capture-status-freshness").t e x t C o n t e n t="Live status unavailable: "+e r r o r.m e s s a g e
   }
 }
-async function refreshRTMP(){
-  try{
-    const data=await request("/api/rtmp");
-    rtmpSettings=data.config||{
-      enabled:false
+a s y n c f u n c t i o n r e f r e s h S y s t e m I n f o() {
+  t r y {
+    c o n s t d a t a=a w a i t r e q u e s t("/api/system");
+    $("installed-version").t e x t C o n t e n t="Installed version: "+(d a t a.i n s t a l l e d _ v e r s i o n||"unknown")
+  }
+  c a t c h(e r r o r) {
+    $("installed-version").t e x t C o n t e n t="Installed version unavailable: "+e r r o r.m e s s a g e
+  }
+}
+a s y n c f u n c t i o n r e f r e s h R T M P() {
+  t r y {
+    c o n s t d a t a=a w a i t r e q u e s t("/api/rtmp");
+    r t m p S e t t i n g s=d a t a.c o n f i g|| {
+      e n a b l e d:f a l s e
     };
-    syncOutputModeControls();
-    let sourceLabel="";
-    if(data.status?.source==="native_h264"||data.status?.source==="native_h264_csi")sourceLabel=data.status.source==="native_h264_csi"?"CSI hardware H.264 stream copy":"native H.264 stream copy";
-    else if(data.status?.source==="mjpeg_copy")sourceLabel="MJPEG packet copy";
-    let statusText="OBS RTSP feed: "+(data.status?.state||"stopped")+".";
-    if(data.status?.active){
-      statusText="OBS RTSP feed is running";
-      if(sourceLabel)statusText+=" ("+sourceLabel+")";
-      statusText+="."
+    s y n c O u t p u t M o d e C o n t r o l s();
+    l e t s o u r c e L a b e l="";
+    i f(d a t a.s t a t u s?.s o u r c e==="native_h264"||d a t a.s t a t u s?.s o u r c e==="native_h264_csi")s o u r c e L a b e l=d a t a.s t a t u s.s o u r c e==="native_h264_csi"?"CSI hardware H.264 stream copy":"native H.264 stream copy";
+    e l s e i f(d a t a.s t a t u s?.s o u r c e==="mjpeg_copy")s o u r c e L a b e l="MJPEG packet copy";
+    l e t s t a t u s T e x t="OBS RTSP feed: "+(d a t a.s t a t u s?.s t a t e||"stopped")+".";
+    i f(d a t a.s t a t u s?.a c t i v e) {
+      s t a t u s T e x t="OBS RTSP feed is running";
+      i f(s o u r c e L a b e l)s t a t u s T e x t+=" ("+s o u r c e L a b e l+")";
+      s t a t u s T e x t+="."
     }
-    $("rtmp-status").textContent=statusText
+    $("rtmp-status").t e x t C o n t e n t=s t a t u s T e x t
   }
-  catch(error){
-    $("rtmp-status").textContent="OBS feed status unavailable: "+error.message
+  c a t c h(e r r o r) {
+    $("rtmp-status").t e x t C o n t e n t="OBS feed status unavailable: "+e r r o r.m e s s a g e
   }
 }
-async function saveRTMP(){
-  if(h264ModeSelectedOrActive()){
-    syncOutputModeControls();
-    return
+a s y n c f u n c t i o n s a v e R T M P() {
+  i f(h 2 6 4 M o d e S e l e c t e d O r A c t i v e()) {
+    s y n c O u t p u t M o d e C o n t r o l s();
+    r e t u r n
   }
-  const data={
-    enabled:$("rtmp-enabled").checked
+  c o n s t d a t a= {
+    e n a b l e d:$("rtmp-enabled").c h e c k e d
   };
-  $("save-rtmp").disabled=true;
-  $("rtmp-status").textContent="Saving OBS output settings…";
-  try{
-    const result=await request("/api/rtmp",
-    {
-      method:"POST",
-      headers:{
+  $("save-rtmp").d i s a b l e d=t r u e;
+  $("rtmp-status").t e x t C o n t e n t="Saving OBS output settings…";
+  t r y {
+    c o n s t r e s u l t=a w a i t r e q u e s t("/api/rtmp",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify(data)
+      }, b o d y:J S O N.s t r i n g i f y(d a t a)
     });
-    let sourceLabel="";
-    if(result.status?.source==="native_h264")sourceLabel="native H.264 stream copy";
-    else if(result.status?.source==="mjpeg_copy")sourceLabel="MJPEG packet copy";
-    let statusText="Settings saved; OBS feed: "+(result.status?.state||"stopped")+".";
-    if(result.status?.active){
-      statusText="OBS feed started";
-      if(sourceLabel)statusText+=" ("+sourceLabel+")";
-      statusText+="."
+    l e t s o u r c e L a b e l="";
+    i f(r e s u l t.s t a t u s?.s o u r c e==="native_h264")s o u r c e L a b e l="native H.264 stream copy";
+    e l s e i f(r e s u l t.s t a t u s?.s o u r c e==="mjpeg_copy")s o u r c e L a b e l="MJPEG packet copy";
+    l e t s t a t u s T e x t="Settings saved; OBS feed: "+(r e s u l t.s t a t u s?.s t a t e||"stopped")+".";
+    i f(r e s u l t.s t a t u s?.a c t i v e) {
+      s t a t u s T e x t="OBS feed started";
+      i f(s o u r c e L a b e l)s t a t u s T e x t+=" ("+s o u r c e L a b e l+")";
+      s t a t u s T e x t+="."
     }
-    $("rtmp-status").textContent=statusText
+    $("rtmp-status").t e x t C o n t e n t=s t a t u s T e x t
   }
-  catch(error){
-    $("rtmp-status").textContent="Unable to save OBS output settings: "+error.message
+  c a t c h(e r r o r) {
+    $("rtmp-status").t e x t C o n t e n t="Unable to save OBS output settings: "+e r r o r.m e s s a g e
   }
-  finally{
-    $("save-rtmp").disabled=false
-  }
-}
-$("save-rtmp").onclick=saveRTMP;
-$("refresh-rtmp").onclick=refreshRTMP;
-function renderStatCards(root,
-items){
-  root.replaceChildren();
-  for(const [label,
-  value] of items){
-    const card=document.createElement("div"),
-    name=document.createElement("small"),
-    reading=document.createElement("strong");
-    card.style.cssText="background:#1a1d22;border:1px solid #383e47;border-radius:8px;padding:.7rem;min-width:0";
-    name.className="muted";
-    name.textContent=label;
-    reading.style.cssText="display:block;font-size:1.05rem;overflow-wrap:anywhere;margin-top:.2rem";
-    reading.textContent=value===null||value===undefined||value===""?"Not available":String(value);
-    card.append(name,
-    reading);
-    root.append(card)
+  f i n a l l y {
+    $("save-rtmp").d i s a b l e d=f a l s e
   }
 }
-async function refreshStatistics(data=null){
-  try{
-    const d=data||await request("/api/live-status"),
-    capture=d.capture_status||{
-    },
-    stream=d.stream_metrics||{
-    },
-    network=d.network_status||{
-    },
-    clients=stream.clients||[],
-    system=d.system_metrics||{
-    },
-    wifi=network.wifi||{
-    };
-    const fps=capture.latest_captured_fps,
-    delivered=clients.length?Math.max(...clients.map(client=>Number(client.average_fps||client.window_fps||0))):null,
-    signal=wifi.signal_dbm,
-    rtmp=d.rtmp_output_status||{
-    };
-    const bars=!wifi.connected?0:signal===null||signal===undefined?null:signal>=-50?4:signal>=-60?3:signal>=-67?2:signal>=-75?1:0;
-    const labels=["none",
-    "weak",
-    "poor",
-    "good",
-    "excellent"];
-    const reception=bars===null?"unknown":labels[bars];
-    const metrics=[["Camera FPS",
-    fps?Number(fps).toFixed(1):"Not reported"],
-    ["OBS Feed FPS (RTSP)",
-    rtmp.active&&rtmp.fps!==null&&rtmp.fps!==undefined&&Number.isFinite(Number(rtmp.fps))?Number(rtmp.fps).toFixed(1):rtmp.enabled?(rtmp.state==="stalled"?"No recent output telemetry":rtmp.state):"Disabled"],
-    ["MJPEG delivered FPS (forwarded JPEG FPS)",
-    delivered===null?"No active viewers":delivered.toFixed(1)],
-    ["Wi-Fi signal",
-    reception+(signal===null||signal===undefined?"":" · "+signal+" dBm")+" · "+(bars===null?"—":"▮".repeat(bars)+"▯".repeat(4-bars))],
-    ["CPU",
-    system.cpu_percent===null||system.cpu_percent===undefined?"Not available":Number(system.cpu_percent).toFixed(1)+"%"],
-    ["Memory",
-    system.memory_used_mb===undefined?"Not available":system.memory_used_mb+" / "+system.memory_total_mb+" MiB"],
-    ["Network Up / Down",
-    network.tx_mbps===undefined?"Not available":Number(network.tx_mbps).toFixed(2)+" / "+Number(network.rx_mbps||0).toFixed(2)+" Mbps"]];
-    renderStatCards($("system-health-grid"),
-    metrics);
-    $("statistics-updated").textContent="Updated "+new Date(d.capture_status_updated_at*1000).toLocaleTimeString()+" · OBS feed: "+(rtmp.enabled?(rtmp.state||"starting"):"disabled")+"; MJPEG delivery is measured separately."
-  }
-  catch(error){
-    $("statistics-updated").textContent="Statistics unavailable: "+error.message
+$("save-rtmp").o n c l i c k=s a v e R T M P;
+$("refresh-rtmp").o n c l i c k=r e f r e s h R T M P;
+f u n c t i o n r e n d e r S t a t C a r d s(r o o t, i t e m s) {
+  r o o t.r e p l a c e C h i l d r e n();
+  f o r(c o n s t[l a b e l, v a l u e]o f i t e m s) {
+    c o n s t c a r d=d o c u m e n t.c r e a t e E l e m e n t("div"), n a m e=d o c u m e n t.c r e a t e E l e m e n t("small"), r e a d i n g=d o c u m e n t.c r e a t e E l e m e n t("strong");
+    c a r d.s t y l e.c s s T e x t="background:#1a1d22;border:1px solid #383e47;border-radius:8px;padding:.7rem;min-width:0";
+    n a m e.c l a s s N a m e="muted";
+    n a m e.t e x t C o n t e n t=l a b e l;
+    r e a d i n g.s t y l e.c s s T e x t="display:block;font-size:1.05rem;overflow-wrap:anywhere;margin-top:.2rem";
+    r e a d i n g.t e x t C o n t e n t=v a l u e===n u l l||v a l u e===u n d e f i n e d||v a l u e===""?"Not available":S t r i n g(v a l u e);
+    c a r d.a p p e n d(n a m e, r e a d i n g);
+    r o o t.a p p e n d(c a r d)
   }
 }
-$("refresh-statistics").onclick=refreshStatistics;
-async function refresh(){
-  $("message").textContent="Scanning connected cameras…";
-  try{
-    const d=await request("/api/cameras");
-    inventory=d.cameras;
-    activeConfig=d.active_config;
-    captureStatus=d.capture_status||{
+a s y n c f u n c t i o n r e f r e s h S t a t i s t i c s(d a t a=n u l l) {
+  t r y {
+    c o n s t d=d a t a||a w a i t r e q u e s t("/api/live-status"), c a p t u r e=d.c a p t u r e _ s t a t u s|| {
+    }, s t r e a m=d.s t r e a m _ m e t r i c s|| {
+    }, n e t w o r k=d.n e t w o r k _ s t a t u s|| {
+    }, c l i e n t s=s t r e a m.c l i e n t s||[], s y s t e m=d.s y s t e m _ m e t r i c s|| {
+    }, w i f i=n e t w o r k.w i f i|| {
     };
-    $("camera").replaceChildren();
-    inventory.forEach((c,
-    i)=>{
-      const o=document.createElement("option");
-      o.value=i;
-      o.textContent=c.label;
-      $("camera").append(o)
+    c o n s t f p s=c a p t u r e.l a t e s t _ c a p t u r e d _ f p s, d e l i v e r e d=c l i e n t s.l e n g t h?M a t h.m a x(...c l i e n t s.m a p(c l i e n t=>N u m b e r(c l i e n t.a v e r a g e _ f p s||c l i e n t.w i n d o w _ f p s||0))):n u l l, s i g n a l=w i f i.s i g n a l _ d b m, r t m p=d.r t m p _ o u t p u t _ s t a t u s|| {
+    };
+    c o n s t b a r s=!w i f i.c o n n e c t e d?0:s i g n a l===n u l l||s i g n a l===u n d e f i n e d?n u l l:s i g n a l>=-5 0?4:s i g n a l>=-6 0?3:s i g n a l>=-6 7?2:s i g n a l>=-7 5?1:0;
+    c o n s t l a b e l s=["none", "weak", "poor", "good", "excellent"];
+    c o n s t r e c e p t i o n=b a r s===n u l l?"unknown":l a b e l s[b a r s];
+    c o n s t m e t r i c s=[["Camera FPS", f p s?N u m b e r(f p s).t o F i x e d(1):"Not reported"], ["OBS Feed FPS (RTSP)", r t m p.a c t i v e&&r t m p.f p s!==n u l l&&r t m p.f p s!==u n d e f i n e d&&N u m b e r.i s F i n i t e(N u m b e r(r t m p.f p s))?N u m b e r(r t m p.f p s).t o F i x e d(1):r t m p.e n a b l e d?(r t m p.s t a t e==="stalled"?"No recent output telemetry":r t m p.s t a t e):"Disabled"], ["MJPEG delivered FPS (forwarded JPEG FPS)", d e l i v e r e d===n u l l?"No active viewers":d e l i v e r e d.t o F i x e d(1)], ["Wi-Fi signal", r e c e p t i o n+(s i g n a l===n u l l||s i g n a l===u n d e f i n e d?"":" · "+s i g n a l+" dBm")+" · "+(b a r s===n u l l?"—":"▮".r e p e a t(b a r s)+"▯".r e p e a t(4-b a r s))], ["CPU", s y s t e m.c p u _ p e r c e n t===n u l l||s y s t e m.c p u _ p e r c e n t===u n d e f i n e d?"Not available":N u m b e r(s y s t e m.c p u _ p e r c e n t).t o F i x e d(1)+"%"], ["Memory", s y s t e m.m e m o r y _ u s e d _ m b===u n d e f i n e d?"Not available":s y s t e m.m e m o r y _ u s e d _ m b+" / "+s y s t e m.m e m o r y _ t o t a l _ m b+" MiB"], ["Network Up / Down", n e t w o r k.t x _ m b p s===u n d e f i n e d?"Not available":N u m b e r(n e t w o r k.t x _ m b p s).t o F i x e d(2)+" / "+N u m b e r(n e t w o r k.r x _ m b p s||0).t o F i x e d(2)+" Mbps"]];
+    r e n d e r S t a t C a r d s($("system-health-grid"), m e t r i c s);
+    $("statistics-updated").t e x t C o n t e n t="Updated "+n e w D a t e(d.c a p t u r e _ s t a t u s _ u p d a t e d _ a t*1 0 0 0).t o L o c a l e T i m e S t r i n g()+" · OBS feed: "+(r t m p.e n a b l e d?(r t m p.s t a t e||"starting"):"disabled")+"; MJPEG delivery is measured separately."
+  }
+  c a t c h(e r r o r) {
+    $("statistics-updated").t e x t C o n t e n t="Statistics unavailable: "+e r r o r.m e s s a g e
+  }
+}
+$("refresh-statistics").o n c l i c k=r e f r e s h S t a t i s t i c s;
+a s y n c f u n c t i o n r e f r e s h() {
+  $("message").t e x t C o n t e n t="Scanning connected cameras…";
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/cameras");
+    i n v e n t o r y=d.c a m e r a s;
+    a c t i v e C o n f i g=d.a c t i v e _ c o n f i g;
+    c a p t u r e S t a t u s=d.c a p t u r e _ s t a t u s|| {
+    };
+    $("camera").r e p l a c e C h i l d r e n();
+    i n v e n t o r y.f o r E a c h((c, i)=> {
+      c o n s t o=d o c u m e n t.c r e a t e E l e m e n t("option");
+      o.v a l u e=i;
+      o.t e x t C o n t e n t=c.l a b e l;
+      $("camera").a p p e n d(o)
     });
-    const activeIndex=inventory.findIndex(c=>activeCameraMatches(c,
-    activeConfig));
-    if(activeIndex>=0){
-      $("camera").value=String(activeIndex);
-      $("camera").options[activeIndex].textContent+=" · current"
+    c o n s t a c t i v e I n d e x=i n v e n t o r y.f i n d I n d e x(c=>a c t i v e C a m e r a M a t c h e s(c, a c t i v e C o n f i g));
+    i f(a c t i v e I n d e x>=0) {
+      $("camera").v a l u e=S t r i n g(a c t i v e I n d e x);
+      $("camera").o p t i o n s[a c t i v e I n d e x].t e x t C o n t e n t+=" · current"
     }
-    if(!inventory.length)$("message").textContent="No supported cameras detected. Connect a USB or CSI camera and refresh.";
-    else{
-      const selected=activeIndex>=0?activeConfig:null;
-      const selectedCamera=activeIndex>=0?inventory[activeIndex]:null;
-      const currentResolution=selected&&selected.RESOLUTION!=="auto"?selected.RESOLUTION:captureStatus.active_resolution;
-      const currentFps=selected&&selected.FPS!=="auto"?Number(selected.FPS):Number(captureStatus.latest_captured_fps);
-      let currentFormat=selected&&selected.FORMAT!=="auto"?selected.FORMAT:(captureStatus.active_capture_format||"CSI");
-      if(currentFormat==="MJPEG"||currentFormat==="JPEG")currentFormat="MJPG";
-      if(selectedCamera?.kind==="csi")currentFormat="CSI";
-      const preferred=currentResolution&&currentResolution!=="auto"&&Number.isFinite(currentFps)&&currentFps>0?{
-        width:Number(currentResolution.split("x")[0]),
-        height:Number(currentResolution.split("x")[1]),
-        fps:currentFps,
-        format:currentFormat
+    i f(!i n v e n t o r y.l e n g t h)$("message").t e x t C o n t e n t="No supported cameras detected. Connect a USB or CSI camera and refresh.";
+    e l s e {
+      c o n s t s e l e c t e d=a c t i v e I n d e x>=0?a c t i v e C o n f i g:n u l l;
+      c o n s t s e l e c t e d C a m e r a=a c t i v e I n d e x>=0?i n v e n t o r y[a c t i v e I n d e x]:n u l l;
+      c o n s t c u r r e n t R e s o l u t i o n=s e l e c t e d&&s e l e c t e d.R E S O L U T I O N!=="auto"?s e l e c t e d.R E S O L U T I O N:c a p t u r e S t a t u s.a c t i v e _ r e s o l u t i o n;
+      c o n s t c u r r e n t F p s=s e l e c t e d&&s e l e c t e d.F P S!=="auto"?N u m b e r(s e l e c t e d.F P S):N u m b e r(c a p t u r e S t a t u s.l a t e s t _ c a p t u r e d _ f p s);
+      l e t c u r r e n t F o r m a t=s e l e c t e d&&s e l e c t e d.F O R M A T!=="auto"?s e l e c t e d.F O R M A T:(c a p t u r e S t a t u s.a c t i v e _ c a p t u r e _ f o r m a t||"CSI");
+      i f(c u r r e n t F o r m a t==="MJPEG"||c u r r e n t F o r m a t==="JPEG")c u r r e n t F o r m a t="MJPG";
+      i f(s e l e c t e d C a m e r a?.k i n d==="csi")c u r r e n t F o r m a t="CSI";
+      c o n s t p r e f e r r e d=c u r r e n t R e s o l u t i o n&&c u r r e n t R e s o l u t i o n!=="auto"&&N u m b e r.i s F i n i t e(c u r r e n t F p s)&&c u r r e n t F p s>0? {
+        w i d t h:N u m b e r(c u r r e n t R e s o l u t i o n.s p l i t("x")[0]), h e i g h t:N u m b e r(c u r r e n t R e s o l u t i o n.s p l i t("x")[1]), f p s:c u r r e n t F p s, f o r m a t:c u r r e n t F o r m a t
       }
-      :null;
-      $("message").textContent=inventory.length+" camera(s) found. Current saved camera settings are selected.";
-      fillModes(preferred)
+      :n u l l;
+      $("message").t e x t C o n t e n t=i n v e n t o r y.l e n g t h+" camera(s) found. Current saved camera settings are selected.";
+      f i l l M o d e s(p r e f e r r e d)
     }
-    syncOutputModeControls();
-    renderCaptureStatus();
-    await refreshCameraControls()
+    s y n c O u t p u t M o d e C o n t r o l s();
+    r e n d e r C a p t u r e S t a t u s();
+    a w a i t r e f r e s h C a m e r a C o n t r o l s()
   }
-  catch(e){
-    $("message").textContent=e.message
+  c a t c h(e) {
+    $("message").t e x t C o n t e n t=e.m e s s a g e
   }
 }
-function cameraControlLabel(name){
-  const labels={
-    auto_exposure:"Auto exposure",
-    exposure_time_absolute:"Exposure time",
-    exposure_dynamic_framerate:"Dynamic framerate",
-    white_balance_automatic:"Automatic white balance",
-    white_balance_temperature:"White balance temperature",
-    power_line_frequency:"Power-line frequency",
-    backlight_compensation:"Backlight compensation",
-    focus_automatic_continuous:"Continuous autofocus",
-    focus_absolute:"Focus"
+f u n c t i o n c a m e r a C o n t r o l L a b e l(n a m e) {
+  c o n s t l a b e l s= {
+    a u t o _ e x p o s u r e:"Auto exposure", e x p o s u r e _ t i m e _ a b s o l u t e:"Exposure time", e x p o s u r e _ d y n a m i c _ f r a m e r a t e:"Dynamic framerate", w h i t e _ b a l a n c e _ a u t o m a t i c:"Automatic white balance", w h i t e _ b a l a n c e _ t e m p e r a t u r e:"White balance temperature", p o w e r _ l i n e _ f r e q u e n c y:"Power-line frequency", b a c k l i g h t _ c o m p e n s a t i o n:"Backlight compensation", f o c u s _ a u t o m a t i c _ c o n t i n u o u s:"Continuous autofocus", f o c u s _ a b s o l u t e:"Focus"
   };
-  return labels[name]||name.replaceAll("_",
-  " ").replace(/\b\w/g,
-  letter=>letter.toUpperCase())
+  r e t u r n l a b e l s[n a m e]||n a m e.r e p l a c e A l l("_", " ").r e p l a c e(/\b\w/g, l e t t e r=>l e t t e r.t o U p p e r C a s e())
 }
-const pendingCameraControlChanges=new Map();
-function updateCameraControlDirtyState(control,
-input,
-applyButton){
-  const value=control.type==="bool"?(input.checked?1:0):Number(input.value),
-  original=Number(control.value);
-  if(control.value!==null&&Number.isFinite(original)&&value===original)pendingCameraControlChanges.delete(control.name);
-  else pendingCameraControlChanges.set(control.name,
-  value);
-  applyButton.disabled=pendingCameraControlChanges.size===0
+c o n s t p e n d i n g C a m e r a C o n t r o l C h a n g e s=n e w M a p();
+f u n c t i o n u p d a t e C a m e r a C o n t r o l D i r t y S t a t e(c o n t r o l, i n p u t, a p p l y B u t t o n) {
+  c o n s t v a l u e=c o n t r o l.t y p e==="bool"?(i n p u t.c h e c k e d?1:0):N u m b e r(i n p u t.v a l u e), o r i g i n a l=N u m b e r(c o n t r o l.v a l u e);
+  i f(c o n t r o l.v a l u e!==n u l l&&N u m b e r.i s F i n i t e(o r i g i n a l)&&v a l u e===o r i g i n a l)p e n d i n g C a m e r a C o n t r o l C h a n g e s.d e l e t e(c o n t r o l.n a m e);
+  e l s e p e n d i n g C a m e r a C o n t r o l C h a n g e s.s e t(c o n t r o l.n a m e, v a l u e);
+  a p p l y B u t t o n.d i s a b l e d=p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e===0
 }
-async function applyCameraControlChanges(){
-  const button=$("apply-camera-controls"),
-  status=$("camera-controls-status");
-  if(!pendingCameraControlChanges.size)return;
-  button.disabled=true;
-  status.textContent="Applying camera control changes…";
-  try{
-    for(const [name,
-    value] of pendingCameraControlChanges){
-      await request("/api/camera-controls",
-      {
-        method:"POST",
-        headers:{
+a s y n c f u n c t i o n a p p l y C a m e r a C o n t r o l C h a n g e s() {
+  c o n s t b u t t o n=$("apply-camera-controls"), s t a t u s=$("camera-controls-status");
+  i f(!p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e)r e t u r n;
+  b u t t o n.d i s a b l e d=t r u e;
+  s t a t u s.t e x t C o n t e n t="Applying camera control changes…";
+  t r y {
+    f o r(c o n s t[n a m e, v a l u e]o f p e n d i n g C a m e r a C o n t r o l C h a n g e s) {
+      a w a i t r e q u e s t("/api/camera-controls",  {
+        m e t h o d:"POST", h e a d e r s: {
           "Content-Type":"application/json"
-        },
-        body:JSON.stringify({
-          name,
-          value
+        }, b o d y:J S O N.s t r i n g i f y( {
+          n a m e, v a l u e
         })
       });
-      pendingCameraControlChanges.delete(name)
+      p e n d i n g C a m e r a C o n t r o l C h a n g e s.d e l e t e(n a m e)
     }
-    status.textContent="Camera controls updated.";
-    await refreshCameraControls()
+    s t a t u s.t e x t C o n t e n t="Camera controls updated.";
+    a w a i t r e f r e s h C a m e r a C o n t r o l s()
   }
-  catch(error){
-    status.textContent="Could not apply all camera controls: "+error.message;
-    button.disabled=pendingCameraControlChanges.size===0
+  c a t c h(e r r o r) {
+    s t a t u s.t e x t C o n t e n t="Could not apply all camera controls: "+e r r o r.m e s s a g e;
+    b u t t o n.d i s a b l e d=p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e===0
   }
 }
-async function refreshCameraControls(){
-  const root=$("camera-controls-list"),
-  status=$("camera-controls-status"),
-  applyButton=$("apply-camera-controls");
-  pendingCameraControlChanges.clear();
-  applyButton.disabled=true;
-  root.replaceChildren();
-  root.style.cssText="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:.45rem";
-  status.textContent="Reading active camera controls…";
-  try{
-    const data=await request("/api/camera-controls");
-    if(!data.supported){
-      status.textContent=data.message||"Camera controls are unavailable.";
-      root.textContent="";
-      return
+a s y n c f u n c t i o n r e f r e s h C a m e r a C o n t r o l s() {
+  c o n s t r o o t=$("camera-controls-list"), s t a t u s=$("camera-controls-status"), a p p l y B u t t o n=$("apply-camera-controls");
+  p e n d i n g C a m e r a C o n t r o l C h a n g e s.c l e a r();
+  a p p l y B u t t o n.d i s a b l e d=t r u e;
+  r o o t.r e p l a c e C h i l d r e n();
+  r o o t.s t y l e.c s s T e x t="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:.45rem";
+  s t a t u s.t e x t C o n t e n t="Reading active camera controls…";
+  t r y {
+    c o n s t d a t a=a w a i t r e q u e s t("/api/camera-controls");
+    i f(!d a t a.s u p p o r t e d) {
+      s t a t u s.t e x t C o n t e n t=d a t a.m e s s a g e||"Camera controls are unavailable.";
+      r o o t.t e x t C o n t e n t="";
+      r e t u r n
     }
-    status.textContent="Controls for "+data.label+" · "+data.device;
-    if(!data.controls.length){
-      root.textContent="This camera did not report any controls.";
-      return
+    s t a t u s.t e x t C o n t e n t="Controls for "+d a t a.l a b e l+" · "+d a t a.d e v i c e;
+    i f(!d a t a.c o n t r o l s.l e n g t h) {
+      r o o t.t e x t C o n t e n t="This camera did not report any controls.";
+      r e t u r n
     }
-    for(const control of data.controls){
-      const row=document.createElement("div"),
-      heading=document.createElement("div"),
-      label=document.createElement("label"),
-      details=document.createElement("small"),
-      editor=document.createElement("div");
-      row.style.cssText="border:1px solid #383e47;border-radius:.5rem;padding:.45rem .6rem;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2rem .65rem;align-items:center";
-      heading.style.minWidth="0";
-      label.style.margin="0";
-      label.textContent=cameraControlLabel(control.name);
-      details.className="muted";
-      details.style.cssText="display:block;font-size:.78rem;line-height:1.25";
-      const isMenu=control.type==="menu"||control.type==="intmenu",
-      isBoolean=control.type==="bool",
-      menuOption=value=>control.menu.find(option=>option.value===value),
-      booleanLabel=value=>value===null?"unknown":Number(value)===1?"Enabled":"Disabled",
-      defaultLabel=control.default===null?"unavailable":(isBoolean?booleanLabel(control.default):control.default);
-      details.textContent="Current: "+(isMenu?(menuOption(control.value)?.label??"unknown"):(isBoolean?booleanLabel(control.value):(control.value===null?"unknown":control.value)))+(isMenu?" · Default: "+(menuOption(control.default)?.label??"unavailable")+" · Available: "+control.menu.map(option=>option.label).join(", "):" · Default: "+defaultLabel+(control.min!==null&&control.max!==null?" · Range: "+control.min+"–"+control.max:""))+(control.writable?"":" · Currently unavailable");
-      editor.className="row";
-      editor.style.cssText="align-items:center;gap:.4rem;justify-content:flex-end";
-      let input,
-      output,
-      isRange=false;
-      if(isBoolean){
-        input=document.createElement("input");
-        input.type="checkbox";
-        input.checked=Number(control.value)===1;
-        input.indeterminate=control.value===null;
-        input.disabled=!control.writable
+    f o r(c o n s t c o n t r o l o f d a t a.c o n t r o l s) {
+      c o n s t r o w=d o c u m e n t.c r e a t e E l e m e n t("div"), h e a d i n g=d o c u m e n t.c r e a t e E l e m e n t("div"), l a b e l=d o c u m e n t.c r e a t e E l e m e n t("label"), d e t a i l s=d o c u m e n t.c r e a t e E l e m e n t("small"), e d i t o r=d o c u m e n t.c r e a t e E l e m e n t("div");
+      r o w.s t y l e.c s s T e x t="border:1px solid #383e47;border-radius:.5rem;padding:.45rem .6rem;min-width:0;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.2rem .65rem;align-items:center";
+      h e a d i n g.s t y l e.m i n W i d t h="0";
+      l a b e l.s t y l e.m a r g i n="0";
+      l a b e l.t e x t C o n t e n t=c a m e r a C o n t r o l L a b e l(c o n t r o l.n a m e);
+      d e t a i l s.c l a s s N a m e="muted";
+      d e t a i l s.s t y l e.c s s T e x t="display:block;font-size:.78rem;line-height:1.25";
+      c o n s t i s M e n u=c o n t r o l.t y p e==="menu"||c o n t r o l.t y p e==="intmenu", i s B o o l e a n=c o n t r o l.t y p e==="bool", m e n u O p t i o n=v a l u e=>c o n t r o l.m e n u.f i n d(o p t i o n=>o p t i o n.v a l u e===v a l u e), b o o l e a n L a b e l=v a l u e=>v a l u e===n u l l?"unknown":N u m b e r(v a l u e)===1?"Enabled":"Disabled", d e f a u l t L a b e l=c o n t r o l.d e f a u l t===n u l l?"unavailable":(i s B o o l e a n?b o o l e a n L a b e l(c o n t r o l.d e f a u l t):c o n t r o l.d e f a u l t);
+      d e t a i l s.t e x t C o n t e n t="Current: "+(i s M e n u?(m e n u O p t i o n(c o n t r o l.v a l u e)?.l a b e l??"unknown"):(i s B o o l e a n?b o o l e a n L a b e l(c o n t r o l.v a l u e):(c o n t r o l.v a l u e===n u l l?"unknown":c o n t r o l.v a l u e)))+(i s M e n u?" · Default: "+(m e n u O p t i o n(c o n t r o l.d e f a u l t)?.l a b e l??"unavailable")+" · Available: "+c o n t r o l.m e n u.m a p(o p t i o n=>o p t i o n.l a b e l).j o i n(", "):" · Default: "+d e f a u l t L a b e l+(c o n t r o l.m i n!==n u l l&&c o n t r o l.m a x!==n u l l?" · Range: "+c o n t r o l.m i n+"–"+c o n t r o l.m a x:""))+(c o n t r o l.w r i t a b l e?"":" · Currently unavailable");
+      e d i t o r.c l a s s N a m e="row";
+      e d i t o r.s t y l e.c s s T e x t="align-items:center;gap:.4rem;justify-content:flex-end";
+      l e t i n p u t, o u t p u t, i s R a n g e=f a l s e;
+      i f(i s B o o l e a n) {
+        i n p u t=d o c u m e n t.c r e a t e E l e m e n t("input");
+        i n p u t.t y p e="checkbox";
+        i n p u t.c h e c k e d=N u m b e r(c o n t r o l.v a l u e)===1;
+        i n p u t.i n d e t e r m i n a t e=c o n t r o l.v a l u e===n u l l;
+        i n p u t.d i s a b l e d=!c o n t r o l.w r i t a b l e
       }
-      else if(isMenu){
-        input=document.createElement("select");
-        if(control.value===null){
-          const unknown=document.createElement("option");
-          unknown.value="";
-          unknown.textContent="Unknown";
-          unknown.disabled=true;
-          input.append(unknown)
+      e l s e i f(i s M e n u) {
+        i n p u t=d o c u m e n t.c r e a t e E l e m e n t("select");
+        i f(c o n t r o l.v a l u e===n u l l) {
+          c o n s t u n k n o w n=d o c u m e n t.c r e a t e E l e m e n t("option");
+          u n k n o w n.v a l u e="";
+          u n k n o w n.t e x t C o n t e n t="Unknown";
+          u n k n o w n.d i s a b l e d=t r u e;
+          i n p u t.a p p e n d(u n k n o w n)
         }
-        for(const option of control.menu){
-          const choice=document.createElement("option");
-          choice.value=option.value;
-          choice.textContent=option.label;
-          input.append(choice)
+        f o r(c o n s t o p t i o n o f c o n t r o l.m e n u) {
+          c o n s t c h o i c e=d o c u m e n t.c r e a t e E l e m e n t("option");
+          c h o i c e.v a l u e=o p t i o n.v a l u e;
+          c h o i c e.t e x t C o n t e n t=o p t i o n.l a b e l;
+          i n p u t.a p p e n d(c h o i c e)
         }
-        input.value=control.value===null?"":String(control.value);
-        input.disabled=!control.writable;
-        input.style.maxWidth="10rem"
+        i n p u t.v a l u e=c o n t r o l.v a l u e===n u l l?"":S t r i n g(c o n t r o l.v a l u e);
+        i n p u t.d i s a b l e d=!c o n t r o l.w r i t a b l e;
+        i n p u t.s t y l e.m a x W i d t h="10rem"
       }
-      else if(control.type==="int"&&control.value!==null&&control.min!==null&&control.max!==null&&control.max-control.min<=10000){
-        isRange=true;
-        input=document.createElement("input");
-        input.type="range";
-        input.min=control.min;
-        input.max=control.max;
-        input.step=control.step;
-        input.value=control.value;
-        input.disabled=!control.writable;
-        input.style.maxWidth="8rem";
-        output=document.createElement("output");
-        output.textContent=input.value;
-        input.oninput=()=>{
-          output.textContent=input.value;
-          updateCameraControlDirtyState(control,
-          input,
-          applyButton);
-          if(advancedApplyHandle)clearTimeout(advancedApplyHandle);
-          advancedApplyHandle=setTimeout(()=>{
-            if(pendingCameraControlChanges.size)applyCameraControlChanges()
-          },
-          800)
+      e l s e i f(c o n t r o l.t y p e==="int"&&c o n t r o l.v a l u e!==n u l l&&c o n t r o l.m i n!==n u l l&&c o n t r o l.m a x!==n u l l&&c o n t r o l.m a x-c o n t r o l.m i n<=1 0 0 0 0) {
+        i s R a n g e=t r u e;
+        i n p u t=d o c u m e n t.c r e a t e E l e m e n t("input");
+        i n p u t.t y p e="range";
+        i n p u t.m i n=c o n t r o l.m i n;
+        i n p u t.m a x=c o n t r o l.m a x;
+        i n p u t.s t e p=c o n t r o l.s t e p;
+        i n p u t.v a l u e=c o n t r o l.v a l u e;
+        i n p u t.d i s a b l e d=!c o n t r o l.w r i t a b l e;
+        i n p u t.s t y l e.m a x W i d t h="8rem";
+        o u t p u t=d o c u m e n t.c r e a t e E l e m e n t("output");
+        o u t p u t.t e x t C o n t e n t=i n p u t.v a l u e;
+        i n p u t.o n i n p u t=()=> {
+          o u t p u t.t e x t C o n t e n t=i n p u t.v a l u e;
+          u p d a t e C a m e r a C o n t r o l D i r t y S t a t e(c o n t r o l, i n p u t, a p p l y B u t t o n);
+          i f(a d v a n c e d A p p l y H a n d l e)c l e a r T i m e o u t(a d v a n c e d A p p l y H a n d l e);
+          a d v a n c e d A p p l y H a n d l e=s e t T i m e o u t(()=> {
+            i f(p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e)a p p l y C a m e r a C o n t r o l C h a n g e s()
+          }, 8 0 0)
         }
       }
-      else{
-        input=document.createElement("input");
-        input.type="number";
-        if(control.min!==null)input.min=control.min;
-        if(control.max!==null)input.max=control.max;
-        input.step=control.step;
-        input.value=control.value??"";
-        input.placeholder=control.value===null?"Unknown":"";
-        input.disabled=!control.writable;
-        input.style.width="6rem"
+      e l s e {
+        i n p u t=d o c u m e n t.c r e a t e E l e m e n t("input");
+        i n p u t.t y p e="number";
+        i f(c o n t r o l.m i n!==n u l l)i n p u t.m i n=c o n t r o l.m i n;
+        i f(c o n t r o l.m a x!==n u l l)i n p u t.m a x=c o n t r o l.m a x;
+        i n p u t.s t e p=c o n t r o l.s t e p;
+        i n p u t.v a l u e=c o n t r o l.v a l u e??"";
+        i n p u t.p l a c e h o l d e r=c o n t r o l.v a l u e===n u l l?"Unknown":"";
+        i n p u t.d i s a b l e d=!c o n t r o l.w r i t a b l e;
+        i n p u t.s t y l e.w i d t h="6rem"
       }
-      if(output)editor.append(input,
-      output);
-      else editor.append(input);
-      if(control.writable&&!isRange)input.addEventListener("change",
-      ()=>{
-        updateCameraControlDirtyState(control,
-        input,
-        applyButton);
-        if(advancedApplyHandle)clearTimeout(advancedApplyHandle);
-        advancedApplyHandle=setTimeout(()=>{
-          if(pendingCameraControlChanges.size)applyCameraControlChanges()
-        },
-        800)
+      i f(o u t p u t)e d i t o r.a p p e n d(i n p u t, o u t p u t);
+      e l s e e d i t o r.a p p e n d(i n p u t);
+      i f(c o n t r o l.w r i t a b l e&&!i s R a n g e)i n p u t.a d d E v e n t L i s t e n e r("change", ()=> {
+        u p d a t e C a m e r a C o n t r o l D i r t y S t a t e(c o n t r o l, i n p u t, a p p l y B u t t o n);
+        i f(a d v a n c e d A p p l y H a n d l e)c l e a r T i m e o u t(a d v a n c e d A p p l y H a n d l e);
+        a d v a n c e d A p p l y H a n d l e=s e t T i m e o u t(()=> {
+          i f(p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e)a p p l y C a m e r a C o n t r o l C h a n g e s()
+        }, 8 0 0)
       });
-      heading.append(label,
-      details);
-      row.append(heading,
-      editor);
-      if(control.name==="exposure_dynamic_framerate"){
-        const note=document.createElement("small");
-        note.className="muted";
-        note.style.gridColumn="1 / -1";
-        note.textContent="When enabled, the camera may lower its delivered frame rate to accommodate exposure. Disable it if you need a stable frame-rate target.";
-        row.append(note)
+      h e a d i n g.a p p e n d(l a b e l, d e t a i l s);
+      r o w.a p p e n d(h e a d i n g, e d i t o r);
+      i f(c o n t r o l.n a m e==="exposure_dynamic_framerate") {
+        c o n s t n o t e=d o c u m e n t.c r e a t e E l e m e n t("small");
+        n o t e.c l a s s N a m e="muted";
+        n o t e.s t y l e.g r i d C o l u m n="1 / -1";
+        n o t e.t e x t C o n t e n t="When enabled, the camera may lower its delivered frame rate to accommodate exposure. Disable it if you need a stable frame-rate target.";
+        r o w.a p p e n d(n o t e)
       }
-      root.append(row)
+      r o o t.a p p e n d(r o w)
     }
   }
-  catch(error){
-    status.textContent="Camera controls unavailable: "+error.message
+  c a t c h(e r r o r) {
+    s t a t u s.t e x t C o n t e n t="Camera controls unavailable: "+e r r o r.m e s s a g e
   }
 }
-$("apply-camera-controls").onclick=applyCameraControlChanges;
-$("refresh-camera-controls").onclick=refreshCameraControls;
-let advancedPollHandle=null,
-advancedApplyHandle=null;
-const advancedDialog=$("advanced-camera-dialog");
-$("advanced-camera-open").onclick=()=>{
-  advancedDialog.showModal();
-  refreshCameraControls();
-  if(advancedPollHandle)clearInterval(advancedPollHandle);
-  advancedPollHandle=setInterval(()=>{
-    if(pendingCameraControlChanges.size===0)refreshCameraControls()
-  },
-  60000)
+$("apply-camera-controls").o n c l i c k=a p p l y C a m e r a C o n t r o l C h a n g e s;
+$("refresh-camera-controls").o n c l i c k=r e f r e s h C a m e r a C o n t r o l s;
+l e t a d v a n c e d P o l l H a n d l e=n u l l, a d v a n c e d A p p l y H a n d l e=n u l l;
+c o n s t a d v a n c e d D i a l o g=$("advanced-camera-dialog");
+$("advanced-camera-open").o n c l i c k=()=> {
+  a d v a n c e d D i a l o g.s h o w M o d a l();
+  r e f r e s h C a m e r a C o n t r o l s();
+  i f(a d v a n c e d P o l l H a n d l e)c l e a r I n t e r v a l(a d v a n c e d P o l l H a n d l e);
+  a d v a n c e d P o l l H a n d l e=s e t I n t e r v a l(()=> {
+    i f(p e n d i n g C a m e r a C o n t r o l C h a n g e s.s i z e===0)r e f r e s h C a m e r a C o n t r o l s()
+  }, 6 0 0 0 0)
 };
-$("advanced-camera-close").onclick=()=>advancedDialog.close();
-advancedDialog.addEventListener("close",
-()=>{
-  if(advancedPollHandle){
-    clearInterval(advancedPollHandle);
-    advancedPollHandle=null
+$("advanced-camera-close").o n c l i c k=()=>a d v a n c e d D i a l o g.c l o s e();
+a d v a n c e d D i a l o g.a d d E v e n t L i s t e n e r("close", ()=> {
+  i f(a d v a n c e d P o l l H a n d l e) {
+    c l e a r I n t e r v a l(a d v a n c e d P o l l H a n d l e);
+    a d v a n c e d P o l l H a n d l e=n u l l
   }
-  if(advancedApplyHandle){
-    clearTimeout(advancedApplyHandle);
-    advancedApplyHandle=null
+  i f(a d v a n c e d A p p l y H a n d l e) {
+    c l e a r T i m e o u t(a d v a n c e d A p p l y H a n d l e);
+    a d v a n c e d A p p l y H a n d l e=n u l l
   }
 });
-$("refresh").onclick=refresh;
-$("camera").onchange=()=>{
-  fillModes();
-  syncOutputModeControls()
+$("refresh").o n c l i c k=r e f r e s h;
+$("camera").o n c h a n g e=()=> {
+  f i l l M o d e s();
+  s y n c O u t p u t M o d e C o n t r o l s()
 };
-$("apply").onclick=async()=>{
-  const c=inventory[+$("camera").value],
-  m=$("mode").value;
-  if(!c||!m)return;
-  const mode=JSON.parse(m),
-  override=confirmPerformanceOverride(c,
-  mode);
-  if(exceedsPerformanceBudget(c,
-  mode)&&!override)return;
-  $("apply").disabled=true;
-  $("message").textContent="Applying camera settings…";
-  try{
-    await request("/api/select",
-    {
-      method:"POST",
-      headers:{
+$("apply").o n c l i c k=a s y n c()=> {
+  c o n s t c=i n v e n t o r y[+$("camera").v a l u e], m=$("mode").v a l u e;
+  i f(!c||!m)r e t u r n;
+  c o n s t m o d e=J S O N.p a r s e(m), o v e r r i d e=c o n f i r m P e r f o r m a n c e O v e r r i d e(c, m o d e);
+  i f(e x c e e d s P e r f o r m a n c e B u d g e t(c, m o d e)&&!o v e r r i d e)r e t u r n;
+  $("apply").d i s a b l e d=t r u e;
+  $("message").t e x t C o n t e n t="Applying camera settings…";
+  t r y {
+    a w a i t r e q u e s t("/api/select",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        kind:c.kind,
-        camera_id:c.id,
-        device:c.device,
-        physical_path:c.physical_path,
-        device_path:c.device_path,
-        camera:c.camera,
-        mode,
-        allow_performance_override:override
+      }, b o d y:J S O N.s t r i n g i f y( {
+        k i n d:c.k i n d, c a m e r a _ i d:c.i d, d e v i c e:c.d e v i c e, p h y s i c a l _ p a t h:c.p h y s i c a l _ p a t h, d e v i c e _ p a t h:c.d e v i c e _ p a t h, c a m e r a:c.c a m e r a, m o d e, a l l o w _ p e r f o r m a n c e _ o v e r r i d e:o v e r r i d e
       })
     });
-    await refresh();
-    await refreshRTMP();
-    $("message").textContent=mode.format==="H264"?"H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled.":"Camera settings saved. The live preview has been reconnected."
+    a w a i t r e f r e s h();
+    a w a i t r e f r e s h R T M P();
+    $("message").t e x t C o n t e n t=m o d e.f o r m a t==="H264"?"H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled.":"Camera settings saved. The live preview has been reconnected."
   }
-  catch(e){
-    $("message").textContent=e.message
+  c a t c h(e) {
+    $("message").t e x t C o n t e n t=e.m e s s a g e
   }
-  finally{
-    $("apply").disabled=false
+  f i n a l l y {
+    $("apply").d i s a b l e d=f a l s e
   }
 };
-$("logout").onclick=async()=>{
-  try{
-    await request("/api/logout",
-    {
-      method:"POST",
-      headers:{
+$("logout").o n c l i c k=a s y n c()=> {
+  t r y {
+    a w a i t r e q u e s t("/api/logout",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:"{}"
+      }, b o d y:"{}"
     });
-    csrfToken=null;
-    location.reload()
+    c s r f T o k e n=n u l l;
+    l o c a t i o n.r e l o a d()
   }
-  catch(e){
-    alert(e.message)
+  c a t c h(e) {
+    a l e r t(e.m e s s a g e)
   }
 };
-async function refreshTimelapse(){
-  try{
-    const d=await request("/api/timelapse");
-    const c=d.config,
-    s=d.status;
-    $("timelapse-enabled").checked=c.enabled;
-    $("timelapse-interval").value=c.interval_seconds;
-    $("timelapse-start").value=c.schedule_start;
-    $("timelapse-end").value=c.schedule_end;
-    $("timelapse-retention").value=c.retention_days;
-    $("timelapse-storage").value=c.max_storage_mb;
-    $("timelapse-free").value=c.min_free_mb;
-    $("timelapse-width").value=c.max_width;
-    $("timelapse-quality").value=c.jpeg_quality;
-    $("timelapse-path").value=c.storage_path;
-    $("timelapse-status").textContent="Status: "+s.state+" · "+s.frames+" frames · "+Math.round(s.storage_bytes/1048576)+" MiB"+(s.last_capture_at?" · Last capture: "+s.last_capture_at:"")+(s.last_error?" · "+s.last_error:"")
+a s y n c f u n c t i o n r e f r e s h T i m e l a p s e() {
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/timelapse");
+    c o n s t c=d.c o n f i g, s=d.s t a t u s;
+    $("timelapse-enabled").c h e c k e d=c.e n a b l e d;
+    $("timelapse-interval").v a l u e=c.i n t e r v a l _ s e c o n d s;
+    $("timelapse-start").v a l u e=c.s c h e d u l e _ s t a r t;
+    $("timelapse-end").v a l u e=c.s c h e d u l e _ e n d;
+    $("timelapse-retention").v a l u e=c.r e t e n t i o n _ d a y s;
+    $("timelapse-storage").v a l u e=c.m a x _ s t o r a g e _ m b;
+    $("timelapse-free").v a l u e=c.m i n _ f r e e _ m b;
+    $("timelapse-width").v a l u e=c.m a x _ w i d t h;
+    $("timelapse-quality").v a l u e=c.j p e g _ q u a l i t y;
+    $("timelapse-path").v a l u e=c.s t o r a g e _ p a t h;
+    $("timelapse-status").t e x t C o n t e n t="Status: "+s.s t a t e+" · "+s.f r a m e s+" frames · "+M a t h.r o u n d(s.s t o r a g e _ b y t e s/1 0 4 8 5 7 6)+" MiB"+(s.l a s t _ c a p t u r e _ a t?" · Last capture: "+s.l a s t _ c a p t u r e _ a t:"")+(s.l a s t _ e r r o r?" · "+s.l a s t _ e r r o r:"")
   }
-  catch(e){
-    $("timelapse-status").textContent="Timelapse status unavailable: "+e.message
+  c a t c h(e) {
+    $("timelapse-status").t e x t C o n t e n t="Timelapse status unavailable: "+e.m e s s a g e
   }
 }
-$("refresh-timelapse").onclick=refreshTimelapse;
-$("save-timelapse").onclick=async()=>{
-  const b=$("save-timelapse");
-  b.disabled=true;
-  try{
-    await request("/api/timelapse",
-    {
-      method:"POST",
-      headers:{
+$("refresh-timelapse").o n c l i c k=r e f r e s h T i m e l a p s e;
+$("save-timelapse").o n c l i c k=a s y n c()=> {
+  c o n s t b=$("save-timelapse");
+  b.d i s a b l e d=t r u e;
+  t r y {
+    a w a i t r e q u e s t("/api/timelapse",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        enabled:$("timelapse-enabled").checked,
-        interval_seconds:Number($("timelapse-interval").value),
-        schedule_start:$("timelapse-start").value,
-        schedule_end:$("timelapse-end").value,
-        retention_days:Number($("timelapse-retention").value),
-        max_storage_mb:Number($("timelapse-storage").value),
-        min_free_mb:Number($("timelapse-free").value),
-        max_width:Number($("timelapse-width").value),
-        jpeg_quality:Number($("timelapse-quality").value),
-        storage_path:$("timelapse-path").value
+      }, b o d y:J S O N.s t r i n g i f y( {
+        e n a b l e d:$("timelapse-enabled").c h e c k e d, i n t e r v a l _ s e c o n d s:N u m b e r($("timelapse-interval").v a l u e), s c h e d u l e _ s t a r t:$("timelapse-start").v a l u e, s c h e d u l e _ e n d:$("timelapse-end").v a l u e, r e t e n t i o n _ d a y s:N u m b e r($("timelapse-retention").v a l u e), m a x _ s t o r a g e _ m b:N u m b e r($("timelapse-storage").v a l u e), m i n _ f r e e _ m b:N u m b e r($("timelapse-free").v a l u e), m a x _ w i d t h:N u m b e r($("timelapse-width").v a l u e), j p e g _ q u a l i t y:N u m b e r($("timelapse-quality").v a l u e), s t o r a g e _ p a t h:$("timelapse-path").v a l u e
       })
     });
-    await refreshTimelapse()
+    a w a i t r e f r e s h T i m e l a p s e()
   }
-  catch(e){
-    $("timelapse-status").textContent=e.message
+  c a t c h(e) {
+    $("timelapse-status").t e x t C o n t e n t=e.m e s s a g e
   }
-  finally{
-    b.disabled=false
+  f i n a l l y {
+    b.d i s a b l e d=f a l s e
   }
 };
-refreshTimelapse();
-async function refreshMotion(){
-  try{
-    const d=await request("/api/motion"),
-    c=d.config,
-    s=d.status;
-    $("motion-enabled").checked=c.enabled;
-    $("motion-sensitivity").value=c.sensitivity;
-    $("motion-min-change").value=c.minimum_changed_percent;
-    $("motion-sample").value=c.sample_interval_seconds;
-    $("motion-confirm").value=c.confirm_samples;
-    $("motion-cooldown").value=c.min_event_interval_seconds;
-    $("motion-quiet-enabled").checked=c.quiet_hours_enabled;
-    $("motion-quiet-start").value=c.quiet_hours_start;
-    $("motion-quiet-end").value=c.quiet_hours_end;
-    $("motion-retention").value=c.retention_days;
-    $("motion-storage").value=c.max_storage_mb;
-    $("motion-free").value=c.min_free_mb;
-    $("motion-status").textContent="Status: "+s.state+" · "+s.event_count+" events · "+s.snapshots+" snapshots · "+Math.round(s.storage_bytes/1048576)+" MiB"+(s.last_event_at?" · Last event: "+s.last_event_at:"")+(s.cpu_percent!==undefined?" · Worker CPU: "+s.cpu_percent+"%":"")+(s.peak_rss_kib!==undefined?" · Peak RAM: "+Math.round(s.peak_rss_kib/1024)+" MiB":"")+(s.last_error?" · "+s.last_error:"");
-    const root=$("motion-events");
-    root.replaceChildren();
-    if(!s.events.length){
-      root.textContent="No motion events recorded.";
-      return
+r e f r e s h T i m e l a p s e();
+a s y n c f u n c t i o n r e f r e s h M o t i o n() {
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/motion"), c=d.c o n f i g, s=d.s t a t u s;
+    $("motion-enabled").c h e c k e d=c.e n a b l e d;
+    $("motion-sensitivity").v a l u e=c.s e n s i t i v i t y;
+    $("motion-min-change").v a l u e=c.m i n i m u m _ c h a n g e d _ p e r c e n t;
+    $("motion-sample").v a l u e=c.s a m p l e _ i n t e r v a l _ s e c o n d s;
+    $("motion-confirm").v a l u e=c.c o n f i r m _ s a m p l e s;
+    $("motion-cooldown").v a l u e=c.m i n _ e v e n t _ i n t e r v a l _ s e c o n d s;
+    $("motion-quiet-enabled").c h e c k e d=c.q u i e t _ h o u r s _ e n a b l e d;
+    $("motion-quiet-start").v a l u e=c.q u i e t _ h o u r s _ s t a r t;
+    $("motion-quiet-end").v a l u e=c.q u i e t _ h o u r s _ e n d;
+    $("motion-retention").v a l u e=c.r e t e n t i o n _ d a y s;
+    $("motion-storage").v a l u e=c.m a x _ s t o r a g e _ m b;
+    $("motion-free").v a l u e=c.m i n _ f r e e _ m b;
+    $("motion-status").t e x t C o n t e n t="Status: "+s.s t a t e+" · "+s.e v e n t _ c o u n t+" events · "+s.s n a p s h o t s+" snapshots · "+M a t h.r o u n d(s.s t o r a g e _ b y t e s/1 0 4 8 5 7 6)+" MiB"+(s.l a s t _ e v e n t _ a t?" · Last event: "+s.l a s t _ e v e n t _ a t:"")+(s.c p u _ p e r c e n t!==u n d e f i n e d?" · Worker CPU: "+s.c p u _ p e r c e n t+"%":"")+(s.p e a k _ r s s _ k i b!==u n d e f i n e d?" · Peak RAM: "+M a t h.r o u n d(s.p e a k _ r s s _ k i b/1 0 2 4)+" MiB":"")+(s.l a s t _ e r r o r?" · "+s.l a s t _ e r r o r:"");
+    c o n s t r o o t=$("motion-events");
+    r o o t.r e p l a c e C h i l d r e n();
+    i f(!s.e v e n t s.l e n g t h) {
+      r o o t.t e x t C o n t e n t="No motion events recorded.";
+      r e t u r n
     }
-    for(const event of s.events){
-      const row=document.createElement("div"),
-      img=document.createElement("img"),
-      details=document.createElement("div"),
-      time=document.createElement("div"),
-      change=document.createElement("small");
-      row.className="motion-event";
-      img.src="/api/motion/events/"+encodeURIComponent(event.file);
-      img.alt="Motion snapshot "+event.timestamp;
-      time.textContent=event.timestamp;
-      change.textContent="Changed pixels: "+event.changed_percent+"%";
-      details.append(time,
-      change);
-      row.append(img,
-      details);
-      root.append(row)
+    f o r(c o n s t e v e n t o f s.e v e n t s) {
+      c o n s t r o w=d o c u m e n t.c r e a t e E l e m e n t("div"), i m g=d o c u m e n t.c r e a t e E l e m e n t("img"), d e t a i l s=d o c u m e n t.c r e a t e E l e m e n t("div"), t i m e=d o c u m e n t.c r e a t e E l e m e n t("div"), c h a n g e=d o c u m e n t.c r e a t e E l e m e n t("small");
+      r o w.c l a s s N a m e="motion-event";
+      i m g.s r c="/api/motion/events/"+e n c o d e U R I C o m p o n e n t(e v e n t.f i l e);
+      i m g.a l t="Motion snapshot "+e v e n t.t i m e s t a m p;
+      t i m e.t e x t C o n t e n t=e v e n t.t i m e s t a m p;
+      c h a n g e.t e x t C o n t e n t="Changed pixels: "+e v e n t.c h a n g e d _ p e r c e n t+"%";
+      d e t a i l s.a p p e n d(t i m e, c h a n g e);
+      r o w.a p p e n d(i m g, d e t a i l s);
+      r o o t.a p p e n d(r o w)
     }
   }
-  catch(e){
-    $("motion-status").textContent="Motion status unavailable: "+e.message
+  c a t c h(e) {
+    $("motion-status").t e x t C o n t e n t="Motion status unavailable: "+e.m e s s a g e
   }
 }
-$("refresh-motion").onclick=refreshMotion;
-$("save-motion").onclick=async()=>{
-  const b=$("save-motion");
-  b.disabled=true;
-  try{
-    await request("/api/motion",
-    {
-      method:"POST",
-      headers:{
+$("refresh-motion").o n c l i c k=r e f r e s h M o t i o n;
+$("save-motion").o n c l i c k=a s y n c()=> {
+  c o n s t b=$("save-motion");
+  b.d i s a b l e d=t r u e;
+  t r y {
+    a w a i t r e q u e s t("/api/motion",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        enabled:$("motion-enabled").checked,
-        sensitivity:Number($("motion-sensitivity").value),
-        minimum_changed_percent:Number($("motion-min-change").value),
-        sample_interval_seconds:Number($("motion-sample").value),
-        confirm_samples:Number($("motion-confirm").value),
-        min_event_interval_seconds:Number($("motion-cooldown").value),
-        quiet_hours_enabled:$("motion-quiet-enabled").checked,
-        quiet_hours_start:$("motion-quiet-start").value,
-        quiet_hours_end:$("motion-quiet-end").value,
-        retention_days:Number($("motion-retention").value),
-        max_storage_mb:Number($("motion-storage").value),
-        min_free_mb:Number($("motion-free").value)
+      }, b o d y:J S O N.s t r i n g i f y( {
+        e n a b l e d:$("motion-enabled").c h e c k e d, s e n s i t i v i t y:N u m b e r($("motion-sensitivity").v a l u e), m i n i m u m _ c h a n g e d _ p e r c e n t:N u m b e r($("motion-min-change").v a l u e), s a m p l e _ i n t e r v a l _ s e c o n d s:N u m b e r($("motion-sample").v a l u e), c o n f i r m _ s a m p l e s:N u m b e r($("motion-confirm").v a l u e), m i n _ e v e n t _ i n t e r v a l _ s e c o n d s:N u m b e r($("motion-cooldown").v a l u e), q u i e t _ h o u r s _ e n a b l e d:$("motion-quiet-enabled").c h e c k e d, q u i e t _ h o u r s _ s t a r t:$("motion-quiet-start").v a l u e, q u i e t _ h o u r s _ e n d:$("motion-quiet-end").v a l u e, r e t e n t i o n _ d a y s:N u m b e r($("motion-retention").v a l u e), m a x _ s t o r a g e _ m b:N u m b e r($("motion-storage").v a l u e), m i n _ f r e e _ m b:N u m b e r($("motion-free").v a l u e)
       })
     });
-    await refreshMotion()
+    a w a i t r e f r e s h M o t i o n()
   }
-  catch(e){
-    $("motion-status").textContent=e.message
+  c a t c h(e) {
+    $("motion-status").t e x t C o n t e n t=e.m e s s a g e
   }
-  finally{
-    b.disabled=false
+  f i n a l l y {
+    b.d i s a b l e d=f a l s e
   }
 };
-refreshMotion();
-setInterval(refreshMotion,
-15000);
-async function refreshLightSensor(){
-  try{
-    const d=await request("/api/light-sensor"),
-    c=d.config,
-    s=d.status;
-    $("light-sensor-enabled").checked=c.ENABLED;
-    $("light-bright-threshold").value=c.BRIGHT_THRESHOLD_LUX;
-    $("light-dark-threshold").value=c.DARK_THRESHOLD_LUX;
-    const reading=s.illuminance_lux===undefined?"No lux reading":s.illuminance_lux+" lx";
-    $("light-sensor-status").textContent="Status: "+s.state+" · "+reading+(s.error?" · "+s.error:"")
+r e f r e s h M o t i o n();
+s e t I n t e r v a l(r e f r e s h M o t i o n, 1 5 0 0 0);
+a s y n c f u n c t i o n r e f r e s h L i g h t S e n s o r() {
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/light-sensor"), c=d.c o n f i g, s=d.s t a t u s;
+    $("light-sensor-enabled").c h e c k e d=c.E N A B L E D;
+    $("light-bright-threshold").v a l u e=c.B R I G H T _ T H R E S H O L D _ L U X;
+    $("light-dark-threshold").v a l u e=c.D A R K _ T H R E S H O L D _ L U X;
+    c o n s t r e a d i n g=s.i l l u m i n a n c e _ l u x===u n d e f i n e d?"No lux reading":s.i l l u m i n a n c e _ l u x+" lx";
+    $("light-sensor-status").t e x t C o n t e n t="Status: "+s.s t a t e+" · "+r e a d i n g+(s.e r r o r?" · "+s.e r r o r:"")
   }
-  catch(e){
-    $("light-sensor-status").textContent="Light sensor status unavailable: "+e.message
+  c a t c h(e) {
+    $("light-sensor-status").t e x t C o n t e n t="Light sensor status unavailable: "+e.m e s s a g e
   }
 }
-$("refresh-light-sensor").onclick=refreshLightSensor;
-$("save-light-sensor").onclick=async()=>{
-  const b=$("save-light-sensor");
-  b.disabled=true;
-  try{
-    await request("/api/light-sensor",
-    {
-      method:"POST",
-      headers:{
+$("refresh-light-sensor").o n c l i c k=r e f r e s h L i g h t S e n s o r;
+$("save-light-sensor").o n c l i c k=a s y n c()=> {
+  c o n s t b=$("save-light-sensor");
+  b.d i s a b l e d=t r u e;
+  t r y {
+    a w a i t r e q u e s t("/api/light-sensor",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:JSON.stringify({
-        ENABLED:$("light-sensor-enabled").checked,
-        BRIGHT_THRESHOLD_LUX:Number($("light-bright-threshold").value),
-        DARK_THRESHOLD_LUX:Number($("light-dark-threshold").value)
+      }, b o d y:J S O N.s t r i n g i f y( {
+        E N A B L E D:$("light-sensor-enabled").c h e c k e d, B R I G H T _ T H R E S H O L D _ L U X:N u m b e r($("light-bright-threshold").v a l u e), D A R K _ T H R E S H O L D _ L U X:N u m b e r($("light-dark-threshold").v a l u e)
       })
     });
-    await refreshLightSensor()
+    a w a i t r e f r e s h L i g h t S e n s o r()
   }
-  catch(e){
-    $("light-sensor-status").textContent=e.message
+  c a t c h(e) {
+    $("light-sensor-status").t e x t C o n t e n t=e.m e s s a g e
   }
-  finally{
-    b.disabled=false
+  f i n a l l y {
+    b.d i s a b l e d=f a l s e
   }
 };
-refreshLightSensor();
-setInterval(refreshLightSensor,
-10000);
-async function refreshDiagnostics(){
-  try{
-    const d=await request("/api/diagnostics");
-    const layers=d.layers||{
+r e f r e s h L i g h t S e n s o r();
+s e t I n t e r v a l(r e f r e s h L i g h t S e n s o r, 1 0 0 0 0);
+a s y n c f u n c t i o n r e f r e s h D i a g n o s t i c s() {
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/diagnostics");
+    c o n s t l a y e r s=d.l a y e r s|| {
     };
-    const failed=Object.entries(layers).filter(([k,
-    v])=>v&&(v.healthy===false||v.reachable===false||v.resolved===false||v.available===false));
-    $("diagnostic-summary").textContent=failed.length?failed.map(([k])=>k.replaceAll("_",
-    " ")+": attention needed").join(" · "):"Local camera, listener, and network checks look healthy.";
-    const urls=(d.obs_browser_source_urls||[]).join("\n");
-    $("diagnostic-details").textContent="OBS URL(s): "+urls+"\n"+(d.problems||[]).join("\n")+"\n"+d.remote_client_note
+    c o n s t f a i l e d=O b j e c t.e n t r i e s(l a y e r s).f i l t e r(([k, v])=>v&&(v.h e a l t h y===f a l s e||v.r e a c h a b l e===f a l s e||v.r e s o l v e d===f a l s e||v.a v a i l a b l e===f a l s e));
+    $("diagnostic-summary").t e x t C o n t e n t=f a i l e d.l e n g t h?f a i l e d.m a p(([k])=>k.r e p l a c e A l l("_", " ")+": attention needed").j o i n(" · "):"Local camera, listener, and network checks look healthy.";
+    c o n s t u r l s=(d.o b s _ b r o w s e r _ s o u r c e _ u r l s||[]).j o i n("\n");
+    $("diagnostic-details").t e x t C o n t e n t="OBS URL(s): "+u r l s+"\n"+(d.p r o b l e m s||[]).j o i n("\n")+"\n"+d.r e m o t e _ c l i e n t _ n o t e
   }
-  catch(e){
-    $("diagnostic-summary").textContent="Diagnostics unavailable: "+e.message
+  c a t c h(e) {
+    $("diagnostic-summary").t e x t C o n t e n t="Diagnostics unavailable: "+e.m e s s a g e
   }
 }
-$("refresh-diagnostics").onclick=refreshDiagnostics;
-refreshDiagnostics();
-$("download-support-bundle").onclick=async()=>{
-  const b=$("download-support-bundle");
-  b.disabled=true;
-  try{
-    let r=await fetch("/api/support-bundle");
-    if(r.status===401){
-      await login();
-      r=await fetch("/api/support-bundle")
+$("refresh-diagnostics").o n c l i c k=r e f r e s h D i a g n o s t i c s;
+r e f r e s h D i a g n o s t i c s();
+$("download-support-bundle").o n c l i c k=a s y n c()=> {
+  c o n s t b=$("download-support-bundle");
+  b.d i s a b l e d=t r u e;
+  t r y {
+    l e t r=a w a i t f e t c h("/api/support-bundle");
+    i f(r.s t a t u s===4 0 1) {
+      a w a i t l o g i n();
+      r=a w a i t f e t c h("/api/support-bundle")
     }
-    if(!r.ok)throw Error("Support bundle request failed ("+r.status+")");
-    const blob=await r.blob(),
-    url=URL.createObjectURL(blob),
-    a=document.createElement("a");
-    a.href=url;
-    a.download="petcam-support.tar.gz";
-    document.body.append(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url)
+    i f(!r.o k)t h r o w E r r o r("Support bundle request failed ("+r.s t a t u s+")");
+    c o n s t b l o b=a w a i t r.b l o b(), u r l=U R L.c r e a t e O b j e c t U R L(b l o b), a=d o c u m e n t.c r e a t e E l e m e n t("a");
+    a.h r e f=u r l;
+    a.d o w n l o a d="petcam-support.tar.gz";
+    d o c u m e n t.b o d y.a p p e n d(a);
+    a.c l i c k();
+    a.r e m o v e();
+    U R L.r e v o k e O b j e c t U R L(u r l)
   }
-  catch(e){
-    $("diagnostic-summary").textContent="Support bundle failed: "+e.message
+  c a t c h(e) {
+    $("diagnostic-summary").t e x t C o n t e n t="Support bundle failed: "+e.m e s s a g e
   }
-  finally{
-    b.disabled=false
+  f i n a l l y {
+    b.d i s a b l e d=f a l s e
   }
 };
-async function refreshHealth(){
-  try{
-    const h=await request("/api/health");
-    $("health-state").textContent="Status: "+h.state.replaceAll("_",
-    " ");
-    $("health-reason").textContent=h.reason||"No active issue reported.";
-    $("health-details").textContent="Recoveries: "+(h.recovery_count||0)+" · Last checked: "+(h.last_checked_at||"not yet")+(h.last_recovery_at?" · Last recovery: "+h.last_recovery_at:"")
+a s y n c f u n c t i o n r e f r e s h H e a l t h() {
+  t r y {
+    c o n s t h=a w a i t r e q u e s t("/api/health");
+    $("health-state").t e x t C o n t e n t="Status: "+h.s t a t e.r e p l a c e A l l("_", " ");
+    $("health-reason").t e x t C o n t e n t=h.r e a s o n||"No active issue reported.";
+    $("health-details").t e x t C o n t e n t="Recoveries: "+(h.r e c o v e r y _ c o u n t||0)+" · Last checked: "+(h.l a s t _ c h e c k e d _ a t||"not yet")+(h.l a s t _ r e c o v e r y _ a t?" · Last recovery: "+h.l a s t _ r e c o v e r y _ a t:"")
   }
-  catch(e){
-    $("health-state").textContent="Health status unavailable";
-    $("health-reason").textContent=e.message
+  c a t c h(e) {
+    $("health-state").t e x t C o n t e n t="Health status unavailable";
+    $("health-reason").t e x t C o n t e n t=e.m e s s a g e
   }
 }
-$("refresh-health").onclick=refreshHealth;
-refresh();
-refreshLiveStatus();
-setInterval(refreshLiveStatus,
-5000);
-refreshSystemInfo();
-refreshHealth();
-setInterval(refreshHealth,
-30000);
-const autoCheck=$("auto-check");
-autoCheck.checked=localStorage.getItem("petcam-auto-update-check")==="true";
-autoCheck.onchange=()=>localStorage.setItem("petcam-auto-update-check",
-String(autoCheck.checked));
-let updateAvailable=false,
-updateBusy=false;
-let updatePollTimer=null,
-updatePollInFlight=false;
-function scheduleUpdatePoll(delay=2000){
-  if(updatePollTimer)clearTimeout(updatePollTimer);
-  updatePollTimer=setTimeout(updateStatus,
-  delay)
+$("refresh-health").o n c l i c k=r e f r e s h H e a l t h;
+r e f r e s h();
+r e f r e s h L i v e S t a t u s();
+s e t I n t e r v a l(r e f r e s h L i v e S t a t u s, 5 0 0 0);
+r e f r e s h S y s t e m I n f o();
+r e f r e s h H e a l t h();
+s e t I n t e r v a l(r e f r e s h H e a l t h, 3 0 0 0 0);
+c o n s t a u t o C h e c k=$("auto-check");
+a u t o C h e c k.c h e c k e d=l o c a l S t o r a g e.g e t I t e m("petcam-auto-update-check")==="true";
+a u t o C h e c k.o n c h a n g e=()=>l o c a l S t o r a g e.s e t I t e m("petcam-auto-update-check", S t r i n g(a u t o C h e c k.c h e c k e d));
+l e t u p d a t e A v a i l a b l e=f a l s e, u p d a t e B u s y=f a l s e;
+l e t u p d a t e P o l l T i m e r=n u l l, u p d a t e P o l l I n F l i g h t=f a l s e;
+f u n c t i o n s c h e d u l e U p d a t e P o l l(d e l a y=2 0 0 0) {
+  i f(u p d a t e P o l l T i m e r)c l e a r T i m e o u t(u p d a t e P o l l T i m e r);
+  u p d a t e P o l l T i m e r=s e t T i m e o u t(u p d a t e S t a t u s, d e l a y)
 }
-async function updateStatus(){
-  if(updatePollInFlight)return;
-  updatePollInFlight=true;
-  try{
-    const s=await request("/api/update/status"),
-    wasBusy=updateBusy;
-    updateBusy=!!s.active;
-    const labels={
-      starting:"Starting",
-      checking:"Checking release",
-      downloading:"Downloading",
-      staging:"Staging files",
-      installing:"Installing",
-      restarting:"Restarting services",
-      authenticating:"Verifying signed release",
-      verifying:"Verifying installation",
-      complete:"Complete",
-      failed:"Failed",
-      idle:"Idle"
+a s y n c f u n c t i o n u p d a t e S t a t u s() {
+  i f(u p d a t e P o l l I n F l i g h t)r e t u r n;
+  u p d a t e P o l l I n F l i g h t=t r u e;
+  t r y {
+    c o n s t s=a w a i t r e q u e s t("/api/update/status"), w a s B u s y=u p d a t e B u s y;
+    u p d a t e B u s y=!!s.a c t i v e;
+    c o n s t l a b e l s= {
+      s t a r t i n g:"Starting", c h e c k i n g:"Checking release", d o w n l o a d i n g:"Downloading", s t a g i n g:"Staging files", i n s t a l l i n g:"Installing", r e s t a r t i n g:"Restarting services", a u t h e n t i c a t i n g:"Verifying signed release", v e r i f y i n g:"Verifying installation", c o m p l e t e:"Complete", f a i l e d:"Failed", i d l e:"Idle"
     };
-    $("update-state").textContent=(labels[s.stage]||s.stage||"Unknown")+(s.active?"…":"");
-    const detail=s.message||"No update has been run yet.";
-    const stamp=s.updated_at?new Date(s.updated_at*1000).toLocaleTimeString():"";
-    $("update-message").textContent=detail+(stamp?" · Updated "+stamp:"")+(s.warning?" · Warning: "+s.warning:"");
-    $("update-logs").textContent=s.logs||s.log_warning||"No installer output is available.";
-    if(s.active){
-      $("install-update").disabled=true;
-      $("check-updates").disabled=true;
-      scheduleUpdatePoll(2000)
+    $("update-state").t e x t C o n t e n t=(l a b e l s[s.s t a g e]||s.s t a g e||"Unknown")+(s.a c t i v e?"…":"");
+    c o n s t d e t a i l=s.m e s s a g e||"No update has been run yet.";
+    c o n s t s t a m p=s.u p d a t e d _ a t?n e w D a t e(s.u p d a t e d _ a t*1 0 0 0).t o L o c a l e T i m e S t r i n g():"";
+    $("update-message").t e x t C o n t e n t=d e t a i l+(s t a m p?" · Updated "+s t a m p:"")+(s.w a r n i n g?" · Warning: "+s.w a r n i n g:"");
+    $("update-logs").t e x t C o n t e n t=s.l o g s||s.l o g _ w a r n i n g||"No installer output is available.";
+    i f(s.a c t i v e) {
+      $("install-update").d i s a b l e d=t r u e;
+      $("check-updates").d i s a b l e d=t r u e;
+      s c h e d u l e U p d a t e P o l l(2 0 0 0)
     }
-    else{
-      $("check-updates").disabled=false;
-      $("install-update").hidden=!updateAvailable;
-      $("install-update").disabled=!updateAvailable;
-      if(wasBusy){
-        updateBusy=false;
-        await refreshSystemInfo();
-        if(s.stage==="complete")await checkUpdates()
+    e l s e {
+      $("check-updates").d i s a b l e d=f a l s e;
+      $("install-update").h i d d e n=!u p d a t e A v a i l a b l e;
+      $("install-update").d i s a b l e d=!u p d a t e A v a i l a b l e;
+      i f(w a s B u s y) {
+        u p d a t e B u s y=f a l s e;
+        a w a i t r e f r e s h S y s t e m I n f o();
+        i f(s.s t a g e==="complete")a w a i t c h e c k U p d a t e s()
       }
     }
   }
-  catch(e){
-    $("update-state").textContent=updateBusy?"Reconnecting…":"Status unavailable";
-    $("update-message").textContent=updateBusy?"The manager connection was interrupted. The installer may still be running; reconnecting automatically.":("Unable to read installer status: "+e.message);
-    if(updateBusy)scheduleUpdatePoll(2500);
+  c a t c h(e) {
+    $("update-state").t e x t C o n t e n t=u p d a t e B u s y?"Reconnecting…":"Status unavailable";
+    $("update-message").t e x t C o n t e n t=u p d a t e B u s y?"The manager connection was interrupted. The installer may still be running; reconnecting automatically.":("Unable to read installer status: "+e.m e s s a g e);
+    i f(u p d a t e B u s y)s c h e d u l e U p d a t e P o l l(2 5 0 0);
   }
-  finally{
-    updatePollInFlight=false
-  }
-}
-async function checkUpdates(){
-  const b=$("check-updates");
-  updateAvailable=false;
-  $("install-update").hidden=true;
-  b.disabled=true;
-  $("update-message").textContent="Checking signed release metadata…";
-  try{
-    const d=await request("/api/update/check");
-    updateAvailable=d.update_available;
-    $("install-update").hidden=!updateAvailable;
-    if(d.status==="no-complete-release"){
-      $("update-state").textContent="No complete release";
-      $("update-message").textContent="No complete signed PetCam release is currently available. Incomplete releases are skipped automatically; try again later."
-    }
-    else{
-      $("update-state").textContent=updateAvailable?"Update available":"Up to date";
-      $("update-message").textContent=updateAvailable?"A verified application release is available. Review the notes before installing.":"This device is running the latest published PetCam application."
-    }
-    $("release-notes").textContent=(d.releases||[]).find(r=>r.update_available)?.release_notes||((d.releases||[])[0]?.release_notes)||"No release notes provided by the latest verified release.";
-    const releaseList=(d.releases||[]).map(r=>r.version+" · "+Math.ceil(r.archive_size/1048576)+" MiB"+(r.update_available?" · update":" · installed/current")+(r.release_notes?"\n"+r.release_notes:"")).join("\n\n");
-    $("update-details").textContent="Installed: "+(d.installed_version||"unknown")+" · Newest valid: "+(d.available_version||"none")+"\n\nRecent verified releases\n"+(releaseList||"No complete signed releases found.");
-    $("install-update").disabled=!updateAvailable||updateBusy
-  }
-  catch(e){
-    $("update-state").textContent="Check failed";
-    $("update-message").textContent=e.message
-  }
-  finally{
-    b.disabled=false
+  f i n a l l y {
+    u p d a t e P o l l I n F l i g h t=f a l s e
   }
 }
-$("check-updates").onclick=checkUpdates;
-async function installUpdate(){
-  if(!updateAvailable||updateBusy)return;
-  $("update-confirmation").hidden=true;
-  $("install-update").disabled=true;
-  $("check-updates").disabled=true;
-  updateBusy=true;
-  $("update-message").textContent="Starting verified update…";
-  try{
-    await request("/api/update/install",
-    {
-      method:"POST",
-      headers:{
+a s y n c f u n c t i o n c h e c k U p d a t e s() {
+  c o n s t b=$("check-updates");
+  u p d a t e A v a i l a b l e=f a l s e;
+  $("install-update").h i d d e n=t r u e;
+  b.d i s a b l e d=t r u e;
+  $("update-message").t e x t C o n t e n t="Checking signed release metadata…";
+  t r y {
+    c o n s t d=a w a i t r e q u e s t("/api/update/check");
+    u p d a t e A v a i l a b l e=d.u p d a t e _ a v a i l a b l e;
+    $("install-update").h i d d e n=!u p d a t e A v a i l a b l e;
+    i f(d.s t a t u s==="no-complete-release") {
+      $("update-state").t e x t C o n t e n t="No complete release";
+      $("update-message").t e x t C o n t e n t="No complete signed PetCam release is currently available. Incomplete releases are skipped automatically; try again later."
+    }
+    e l s e {
+      $("update-state").t e x t C o n t e n t=u p d a t e A v a i l a b l e?"Update available":"Up to date";
+      $("update-message").t e x t C o n t e n t=u p d a t e A v a i l a b l e?"A verified application release is available. Review the notes before installing.":"This device is running the latest published PetCam application."
+    }
+    $("release-notes").t e x t C o n t e n t=(d.r e l e a s e s||[]).f i n d(r=>r.u p d a t e _ a v a i l a b l e)?.r e l e a s e _ n o t e s||((d.r e l e a s e s||[])[0]?.r e l e a s e _ n o t e s)||"No release notes provided by the latest verified release.";
+    c o n s t r e l e a s e L i s t=(d.r e l e a s e s||[]).m a p(r=>r.v e r s i o n+" · "+M a t h.c e i l(r.a r c h i v e _ s i z e/1 0 4 8 5 7 6)+" MiB"+(r.u p d a t e _ a v a i l a b l e?" · update":" · installed/current")+(r.r e l e a s e _ n o t e s?"\n"+r.r e l e a s e _ n o t e s:"")).j o i n("\n\n");
+    $("update-details").t e x t C o n t e n t="Installed: "+(d.i n s t a l l e d _ v e r s i o n||"unknown")+" · Newest valid: "+(d.a v a i l a b l e _ v e r s i o n||"none")+"\n\nRecent verified releases\n"+(r e l e a s e L i s t||"No complete signed releases found.");
+    $("install-update").d i s a b l e d=!u p d a t e A v a i l a b l e||u p d a t e B u s y
+  }
+  c a t c h(e) {
+    $("update-state").t e x t C o n t e n t="Check failed";
+    $("update-message").t e x t C o n t e n t=e.m e s s a g e
+  }
+  f i n a l l y {
+    b.d i s a b l e d=f a l s e
+  }
+}
+$("check-updates").o n c l i c k=c h e c k U p d a t e s;
+a s y n c f u n c t i o n i n s t a l l U p d a t e() {
+  i f(!u p d a t e A v a i l a b l e||u p d a t e B u s y)r e t u r n;
+  $("update-confirmation").h i d d e n=t r u e;
+  $("install-update").d i s a b l e d=t r u e;
+  $("check-updates").d i s a b l e d=t r u e;
+  u p d a t e B u s y=t r u e;
+  $("update-message").t e x t C o n t e n t="Starting verified update…";
+  t r y {
+    a w a i t r e q u e s t("/api/update/install",  {
+      m e t h o d:"POST", h e a d e r s: {
         "Content-Type":"application/json"
-      },
-      body:"{}"
+      }, b o d y:"{}"
     });
-    $("update-state").textContent="Starting…";
-    $("update-message").textContent="The update has been accepted. Progress is saved on the device; this page will reconnect automatically if the manager restarts.";
-    scheduleUpdatePoll(500)
+    $("update-state").t e x t C o n t e n t="Starting…";
+    $("update-message").t e x t C o n t e n t="The update has been accepted. Progress is saved on the device; this page will reconnect automatically if the manager restarts.";
+    s c h e d u l e U p d a t e P o l l(5 0 0)
   }
-  catch(e){
-    $("update-message").textContent="The start request did not complete: "+e.message+" Checking whether the updater started…";
-    scheduleUpdatePoll(500)
+  c a t c h(e) {
+    $("update-message").t e x t C o n t e n t="The start request did not complete: "+e.m e s s a g e+" Checking whether the updater started…";
+    s c h e d u l e U p d a t e P o l l(5 0 0)
   }
 }
-$("install-update").onclick=()=>{
-  if(!updateAvailable||updateBusy)return;
-  $("update-confirmation").hidden=false;
-  $("confirm-update-install").focus()
+$("install-update").o n c l i c k=()=> {
+  i f(!u p d a t e A v a i l a b l e||u p d a t e B u s y)r e t u r n;
+  $("update-confirmation").h i d d e n=f a l s e;
+  $("confirm-update-install").f o c u s()
 };
-$("cancel-update-install").onclick=()=>{
-  $("update-confirmation").hidden=true;
-  $("install-update").focus()
+$("cancel-update-install").o n c l i c k=()=> {
+  $("update-confirmation").h i d d e n=t r u e;
+  $("install-update").f o c u s()
 };
-$("confirm-update-install").onclick=installUpdate;
-if(autoCheck.checked)checkUpdates();
-updateStatus();
-(async()=>{
-  try{
-    const response=await fetch("/api/setup/status",
-    {
-      cache:"no-store"
+$("confirm-update-install").o n c l i c k=i n s t a l l U p d a t e;
+i f(a u t o C h e c k.c h e c k e d)c h e c k U p d a t e s();
+u p d a t e S t a t u s();
+(a s y n c()=> {
+  t r y {
+    c o n s t r e s p o n s e=a w a i t f e t c h("/api/setup/status",  {
+      c a c h e:"no-store"
     });
-    const state=await response.json();
-    if(!response.ok)throw Error(state.error||"Unable to check setup status");
-    if(!state.configured){
-      document.body.classList.add("setup-required");
-      $("first-run").hidden=false
+    c o n s t s t a t e=a w a i t r e s p o n s e.j s o n();
+    i f(!r e s p o n s e.o k)t h r o w E r r o r(s t a t e.e r r o r||"Unable to check setup status");
+    i f(!s t a t e.c o n f i g u r e d) {
+      d o c u m e n t.b o d y.c l a s s L i s t.a d d("setup-required");
+      $("first-run").h i d d e n=f a l s e
     }
   }
-  catch(error){
-    $("setup-message").textContent=error.message
+  c a t c h(e r r o r) {
+    $("setup-message").t e x t C o n t e n t=e r r o r.m e s s a g e
   }
 })();
