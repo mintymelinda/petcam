@@ -11,41 +11,27 @@ permissions:
 
 jobs:
   format-javascript:
-    permissions:
-      contents: write
-    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
-      - name: Check out pull request branch
+      - name: Check out source
         uses: actions/checkout@v5
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 22
-      - name: Format JavaScript with pinned Prettier
-        run: npx --yes prettier@3.6.2 --write src/petcam/static/dashboard.js src/petcam/static/browser-source.js
-      - name: Verify Prettier formatting
-        run: npx --yes prettier@3.6.2 --check src/petcam/static/dashboard.js src/petcam/static/browser-source.js
-      - name: Validate JavaScript syntax
+      - name: Verify Prettier formatting for all shipped JavaScript
         run: |
-          node --check src/petcam/static/dashboard.js
-          node --check src/petcam/static/browser-source.js
-      - name: Commit formatting changes
-        env:
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-        run: |
-          if git diff --quiet -- src/petcam/static/dashboard.js src/petcam/static/browser-source.js; then
-            echo "JavaScript is already formatted."
-            exit 0
+          mapfile -t js_files < <(find src/petcam/static -maxdepth 1 -type f -name '*.js' -print | sort)
+          if [ "${#js_files[@]}" -eq 0 ]; then
+            echo "No shipped JavaScript assets found."
+            exit 1
           fi
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/petcam/static/dashboard.js src/petcam/static/browser-source.js
-          git commit -m "style: format external JavaScript assets"
-          git push origin "HEAD:refs/heads/${PR_BRANCH}"
+          npx --yes prettier@3.6.2 --check "${js_files[@]}"
+      - name: Validate syntax for all shipped JavaScript
+        run: |
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find src/petcam/static -maxdepth 1 -type f -name '*.js' -print0 | sort -z)
 
   test:
     runs-on: ubuntu-24.04
@@ -57,7 +43,8 @@ jobs:
       - name: Install application test dependencies
         run: |
           python -m pip install --no-cache-dir --upgrade pip
-          python -m pip install --no-cache-dir -e ".[test]"
+          python -m pip install --no-cache-dir -e .
+          python -m pip install --no-cache-dir "pytest>=8"
       - name: Build and inspect Python wheel
         run: |
           python -m pip wheel --no-deps --wheel-dir dist .
@@ -72,6 +59,10 @@ jobs:
               "petcam/__init__.py",
               "petcam/static/dashboard.html",
               "petcam/static/dashboard.js",
+              "petcam/static/dashboard-api.js",
+              "petcam/static/dashboard-core.js",
+              "petcam/static/dashboard-camera.js",
+              "petcam/static/dashboard-features.js",
               "petcam/static/browser-source.html",
               "petcam/static/browser-source.js",
           }
