@@ -82,6 +82,21 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
     )
 
 
+def refresh_camera_source(factory, camera_status, active_launch, active_source):
+    """Apply newly discovered capture metadata to future RTSP media sessions."""
+    launch = build_gstreamer_launch(camera_status)
+    source = (
+        ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264")
+        if camera_status.get("native_h264") is True else "mjpeg_copy"
+    )
+    if launch == active_launch["value"]:
+        return False
+    factory.set_launch(launch)
+    active_launch["value"] = launch
+    active_source["value"] = source
+    return True
+
+
 def _write_status(state, source, path=STATUS_PATH):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

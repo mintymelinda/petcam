@@ -90,7 +90,7 @@ class GStreamerOutputTests(unittest.TestCase):
         drop_in = (
             root / "petcam-stream.service.d" / "10-gstreamer-rtsp.conf"
         ).read_text(encoding="utf-8")
-        self.assertIn("After=network-online.target petcam-stream.service", unit)
+        self.assertIn("Before=petcam-stream.service", unit)
         self.assertIn("Wants=network-online.target", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
         self.assertIn("Wants=petcam-g-streamer-rtsp.service", drop_in)
