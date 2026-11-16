@@ -3,7 +3,6 @@
 import re
 
 from .capabilities import (
-    NATIVE_H264_FORMATS,
     NATIVE_JPEG_FORMATS,
     mode_max_fps,
     mode_supports_fps,
@@ -74,46 +73,6 @@ def filter_devices_by_format(devices, requested_format):
         for device in devices
         if any(mode["format"] == requested_format for mode in device["modes"])
     ]
-
-
-def select_native_h264_mode(devices, resolution="auto", fps="auto"):
-    """Select only an explicitly advertised V4L2 H.264 capture mode."""
-    candidates = [
-        (device, mode)
-        for device in devices
-        for mode in device["modes"]
-        if mode["format"] in NATIVE_H264_FORMATS
-    ]
-    if resolution != "auto":
-        match = re.fullmatch(r"(\d+)x(\d+)", resolution)
-        if not match:
-            raise ValueError("Resolution must be 'auto' or WIDTHxHEIGHT.")
-        width, height = map(int, match.groups())
-        candidates = [
-            (device, mode) for device, mode in candidates
-            if mode_supports_resolution(mode, width, height)
-        ]
-    if fps != "auto":
-        try:
-            requested_fps = float(fps)
-        except ValueError as error:
-            raise ValueError("FPS must be 'auto' or a positive number.") from error
-        if requested_fps <= 0:
-            raise ValueError("FPS must be 'auto' or a positive number.")
-        candidates = [
-            (device, mode) for device, mode in candidates
-            if mode_supports_fps(mode, requested_fps)
-        ]
-    if not candidates:
-        return None
-    device, mode = candidates[0]
-    selected_fps = float(fps) if fps != "auto" else float(mode_max_fps(mode))
-    return {
-        "device": device["device"],
-        "resolution": f'{mode["width"]}x{mode["height"]}',
-        "fps": int(selected_fps) if selected_fps.is_integer() else selected_fps,
-        "format": "H264",
-    }
 
 
 def select_mode(devices):
