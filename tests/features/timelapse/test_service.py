@@ -154,6 +154,15 @@ class TimelapseTests(unittest.TestCase):
             self.assertEqual(result, {"frames": 0, "storage_bytes": 0})
             self.assertFalse((root / "incomplete.jpg.tmp").exists())
 
+    def test_capture_from_stream_uses_shared_rtsp_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = MODULE.validate_config({"jpeg_quality": 0})
+            frame = b"\xff\xd8shared-frame\xff\xd9"
+            with mock.patch.object(MODULE, "read_latest_frame", return_value=frame) as read:
+                path = MODULE.capture_from_stream(config, directory)
+            read.assert_called_once_with()
+            self.assertEqual(path.read_bytes(), frame)
+
     def test_camera_disconnect_is_reported_without_creating_a_frame(self):
         with tempfile.TemporaryDirectory() as directory:
             config = MODULE.validate_config({"jpeg_quality": 0})

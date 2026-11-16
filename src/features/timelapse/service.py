@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture periodic JPEG frames from PetCam's existing MJPEG stream."""
+"""Capture periodic JPEG frames from PetCam's shared RTSP sampler."""
 import argparse
 from io import BytesIO
 import json

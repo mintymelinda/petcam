@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Low-resource motion detection using sampled frames from the active MJPEG stream."""
+"""Low-resource motion detection using frames from the shared RTSP sampler."""
 import argparse
 from datetime import datetime, timezone
 from io import BytesIO
