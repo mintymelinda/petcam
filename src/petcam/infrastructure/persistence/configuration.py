@@ -108,10 +108,7 @@ def validate_config(values: dict[str, Any], check_hardware: bool = False) -> dic
         fps_value = float(fps)
         if not 0 < fps_value <= 240:
             raise ConfigError("FPS must be greater than 0 and no more than 240.")
-        if config["SOURCE"] != "csi":
-            if not fps_value.is_integer():
-                raise ConfigError("USB and automatic-source FPS must be a whole number.")
-            config["FPS"] = str(int(fps_value))
+        config["FPS"] = str(int(fps_value)) if fps_value.is_integer() else str(fps_value)
 
     if not config["CSI_QUALITY"].isdigit() or not 1 <= int(config["CSI_QUALITY"]) <= 100:
         raise ConfigError("CSI_QUALITY must be an integer from 1 to 100.")
