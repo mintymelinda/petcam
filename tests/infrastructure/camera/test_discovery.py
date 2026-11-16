@@ -166,7 +166,7 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertEqual((cameras[0]["sensor_width"], cameras[0]["sensor_height"]), (4056, 3040))
         self.assertEqual(len(cameras[0]["modes"]), 4)
         selected = MODULE.select_csi_mode(
-            cameras, "pi5", requested_device_path=cameras[0]["device_path"]
+            cameras, requested_device_path=cameras[0]["device_path"]
         )
         self.assertEqual(selected["camera"], 0)
         self.assertEqual(selected["device_path"], cameras[0]["device_path"])
