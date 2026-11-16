@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import logging
 import signal
-import subprocess
 import time
 from pathlib import Path
 from typing import Callable
@@ -54,32 +53,11 @@ def capture_is_ready(status_path="/run/petcam/rtsp-sampler-status.json") -> bool
     return isinstance(status, dict) and status.get("state") == "streaming"
 
 
-def reconcile_services(
-    desired: dict[str, bool],
-    *,
-    run: Callable = subprocess.run,
-) -> None:
-    """Start enabled services and stop disabled ones without restarting healthy units."""
-    for service, enabled in desired.items():
-        try:
-            active = run(
-                ["/usr/bin/systemctl", "is-active", "--quiet", service],
-                capture_output=True, text=True, check=False, timeout=10,
-            ).returncode == 0
-            if enabled and not active:
-                action = "start"
-            elif not enabled and active:
-                action = "stop"
-            else:
-                continue
-            result = run(
-                ["/usr/bin/systemctl", action, service],
-                capture_output=True, text=True, check=False, timeout=30,
-            )
-            if result.returncode:
-                logging.error("systemctl %s %s failed: %s", action, service, result.stderr.strip())
-        except (OSError, subprocess.TimeoutExpired) as error:
-            logging.error("Unable to reconcile %s: %s", service, error)
+def reconcile_services(desired: dict[str, bool], *, run=None) -> None:
+    """Ask the sole PetCam supervisor to reconcile persisted feature settings."""
+    from . import processes
+
+    processes.request("reconcile")
 
 
 def run_loop(

@@ -14,7 +14,7 @@ apt-get update
 apt-get install -y --no-install-recommends ca-certificates openssl cron python3 python3-pil python3-gi \
   gir1.2-gst-rtsp-1.0 gir1.2-gst-rtsp-server-1.0 gstreamer1.0-tools \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-  gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils
+  gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils ustreamer
 install -d -m 0755 "$ETC_ROOT" "$STATE_ROOT" "$RUN_ROOT"
 if [[ ! -e "$ETC_ROOT/petcam.conf" ]]; then install -m 0640 "$REPO_ROOT/deploy/etc/petcam/petcam.conf" "$ETC_ROOT/petcam.conf"; fi
 for name in home-assistant.conf light-sensor.conf web-manager.json; do
