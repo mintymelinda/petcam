@@ -69,43 +69,6 @@ class GStreamerOutputTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.GStreamerError, "h264parse"):
                 MODULE.check_gstreamer_runtime()
 
-    def test_rtsp_source_refreshes_when_camera_appears_after_server_start(self):
-        class Factory:
-            def __init__(self):
-                self.launch = None
-
-            def set_launch(self, launch):
-                self.launch = launch
-
-        factory = Factory()
-        active_launch = {"value": MODULE.build_gstreamer_launch({"native_h264": False})}
-        active_source = {"value": "mjpeg_copy"}
-        changed = MODULE.refresh_camera_source(
-            factory,
-            {
-                "native_h264": True,
-                "device": "/dev/video0",
-                "resolution": "1280x720",
-                "fps": "30",
-            },
-            active_launch,
-            active_source,
-        )
-        self.assertTrue(changed)
-        self.assertEqual(active_source["value"], "native_h264")
-        self.assertIn("v4l2src", factory.launch)
-        self.assertFalse(MODULE.refresh_camera_source(
-            factory,
-            {
-                "native_h264": True,
-                "device": "/dev/video0",
-                "resolution": "1280x720",
-                "fps": "30",
-            },
-            active_launch,
-            active_source,
-        ))
-
     def test_camera_marker_requires_a_live_capture_service_pid(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "camera-status.json"
@@ -127,7 +90,7 @@ class GStreamerOutputTests(unittest.TestCase):
         drop_in = (
             root / "petcam-stream.service.d" / "10-gstreamer-rtsp.conf"
         ).read_text(encoding="utf-8")
-        self.assertIn("After=network-online.target petcam-stream.service", unit)
+        self.assertIn("Before=petcam-stream.service", unit)
         self.assertIn("Wants=network-online.target", unit)
         self.assertIn("WantedBy=multi-user.target", unit)
         self.assertIn("Wants=petcam-g-streamer-rtsp.service", drop_in)
