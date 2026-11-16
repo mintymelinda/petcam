@@ -31,11 +31,15 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         manifest = (ROOT / "deploy/python/requirements.txt").read_text(encoding="utf-8")
         self.assertFalse(any(line.strip() and not line.lstrip().startswith("#") for line in manifest.splitlines()))
 
-    def test_image_workflow_uses_required_runner_and_disables_pigen_cache(self):
+    def test_image_workflow_uses_required_runner_and_secure_headless_defaults(self):
         workflow = (ROOT / ".github/workflows/image-build.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: ubuntu-24.04-arm", workflow)
         self.assertIn("uses: usimd/pi-gen-action@v1.11.0", workflow)
         self.assertIn("enable-pigen-cache: false", workflow)
+        self.assertIn("enable-cloud-init: 0", workflow)
+        self.assertIn("enable-ssh: 0", workflow)
+        self.assertIn("password: ''", workflow)
+        self.assertIn("disable-first-boot-user-rename: 1", workflow)
         self.assertIn("release: trixie", workflow)
         self.assertIn("stage0 stage1 stage2 ./deploy/image/stages/stage-petcam", workflow)
         self.assertIn("01-petcam/02-run-chroot.sh", workflow)

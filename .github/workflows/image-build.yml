@@ -61,13 +61,22 @@ jobs:
         uses: usimd/pi-gen-action@v1.11.0
         with:
           image-name: petcam
+          hostname: petcam
           release: trixie
           pi-gen-version: arm64
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
           enable-pigen-cache: false
+          enable-cloud-init: 0
           enable-ssh: 0
+          username: petcam
+          password: ''
+          disable-first-boot-user-rename: 1
+          locale: en_CA.UTF-8
+          timezone: America/Toronto
+          keyboard-keymap: us
+          keyboard-layout: English (US)
 
       - name: Validate generated image
         env:
