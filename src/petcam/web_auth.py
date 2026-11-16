@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .security.sessions import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .security import sessions import sessions as _implementation
+sys.modules[__name__] = _implementation

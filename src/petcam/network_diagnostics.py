@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .infrastructure.network.diagnostics import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .infrastructure import network import diagnostics import diagnostics as _implementation
+sys.modules[__name__] = _implementation

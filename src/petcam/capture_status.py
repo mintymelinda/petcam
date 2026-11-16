@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .application.capture_status import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .application import capture_status import capture_status as _implementation
+sys.modules[__name__] = _implementation

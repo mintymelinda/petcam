@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .domain.motion.policy import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .domain import motion import policy import policy as _implementation
+sys.modules[__name__] = _implementation

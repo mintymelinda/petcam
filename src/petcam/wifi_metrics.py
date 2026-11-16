@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .infrastructure.network.wifi_metrics import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .infrastructure import network import wifi_metrics import wifi_metrics as _implementation
+sys.modules[__name__] = _implementation

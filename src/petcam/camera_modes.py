@@ -1,2 +1,4 @@
-"""Internal import bridge; implementation lives in the layered package."""
-from .domain.camera.capture_modes import *  # noqa: F401,F403
+"""Module alias for the canonical layered implementation."""
+import sys
+from .domain import camera import capture_modes import capture_modes as _implementation
+sys.modules[__name__] = _implementation
