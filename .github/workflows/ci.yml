@@ -83,6 +83,8 @@ jobs:
           if missing:
               raise SystemExit(f"Wheel is missing package files: {sorted(missing)}")
           PY
+      - name: Validate deployment installer syntax
+        run: bash -n deploy/install.sh
       - name: Compile source and tests
         run: python -m compileall -q src tests tools
       - name: Enforce architecture boundaries
