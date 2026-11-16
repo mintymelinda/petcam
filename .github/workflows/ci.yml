@@ -58,8 +58,18 @@ jobs:
               files = set(names)
               metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
               metadata = archive.read(metadata_name).decode("utf-8")
+              entry_points_name = next(
+                  (name for name in names if name.endswith(".dist-info/entry_points.txt")),
+                  None,
+              )
+              entry_points = (
+                  archive.read(entry_points_name).decode("utf-8")
+                  if entry_points_name else ""
+              )
           if not any(line.startswith("Requires-Dist: Pillow") for line in metadata.splitlines()):
               raise SystemExit("Wheel metadata does not declare Pillow as a runtime dependency.")
+          if "petcam-camera = petcam.infrastructure.camera.cli:main" not in entry_points:
+              raise SystemExit("Wheel does not expose the petcam-camera hardware discovery command.")
           required = {
               "petcam/__init__.py",
               "petcam/static/dashboard.html",

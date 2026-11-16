@@ -2,24 +2,14 @@
 
 import re
 
-if __package__:
-    from .capabilities import (
-        NATIVE_H264_FORMATS,
-        NATIVE_JPEG_FORMATS,
-        USTREAMER_FORMATS,
-        mode_max_fps,
-        mode_supports_fps,
-        mode_supports_resolution,
-    )
-else:  # Support the installed standalone camera worker entry point.
-    from domain.camera.capabilities import (
-        NATIVE_H264_FORMATS,
-        NATIVE_JPEG_FORMATS,
-        USTREAMER_FORMATS,
-        mode_max_fps,
-        mode_supports_fps,
-        mode_supports_resolution,
-    )
+from .capabilities import (
+    NATIVE_H264_FORMATS,
+    NATIVE_JPEG_FORMATS,
+    USTREAMER_FORMATS,
+    mode_max_fps,
+    mode_supports_fps,
+    mode_supports_resolution,
+)
 
 PIXEL_BUDGETS = {
     "zero": 1280 * 720 * 30,
