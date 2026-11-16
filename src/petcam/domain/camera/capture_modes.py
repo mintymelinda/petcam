@@ -4,7 +4,6 @@ import re
 
 from .capabilities import (
     NATIVE_JPEG_FORMATS,
-    mode_max_fps,
     mode_supports_fps,
     mode_supports_resolution,
 )
