@@ -18,9 +18,9 @@ class SupervisorTests(unittest.TestCase):
             self.assertFalse(supervisor.read_enabled(path))
             path.write_text(json.dumps({"enabled": True}), encoding="utf-8")
             self.assertTrue(supervisor.read_enabled(path))
-            path.write_text("MQTT_ENABLED=true\\n", encoding="utf-8")
+            path.write_text("MQTT_ENABLED=true\n", encoding="utf-8")
             self.assertTrue(supervisor.read_enabled(path))
-            path.write_text("ENABLED=false\\n", encoding="utf-8")
+            path.write_text("ENABLED=false\n", encoding="utf-8")
             self.assertFalse(supervisor.read_enabled(path))
 
     def test_worker_process_is_started_and_tracked(self):
