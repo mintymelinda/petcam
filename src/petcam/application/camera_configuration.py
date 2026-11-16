@@ -29,7 +29,7 @@ def save_selection(
     load_timelapse_config,
     load_motion_config,
     check_gstreamer_runtime,
-    run,
+    is_service_active,
     set_rtmp_service,
     apply_config,
 ):
@@ -55,10 +55,7 @@ def save_selection(
     previous_rtmp = load_rtmp_config()
     rtmp_was_active = False
     if requested_h264 or previous_rtmp["enabled"]:
-        rtmp_was_active = run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-            check=False, timeout=5,
-        ).returncode == 0
+        rtmp_was_active = is_service_active("petcam-rtmp.service")
 
     if requested_h264:
         validate_capture_feature_compatibility(
