@@ -255,6 +255,7 @@ def update_motion(data):
         load_config=load_motion_config,
         save_config=save_motion_config,
         load_rtmp_config=load_rtmp_config,
+        systemctl_command=process_control.systemctl_command,
         apply_transaction=apply_service_config_transaction,
     )
 
