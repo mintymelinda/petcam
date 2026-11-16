@@ -73,9 +73,9 @@ class OptionalFeatureServiceTests(unittest.TestCase):
             path = Path(directory) / "web-manager.json"
             self.assertFalse(MODULE._enabled(path))
             path.write_text(json.dumps({"enabled": True}), encoding="utf-8")
-            self.assertTrue(MODULE._web_enabled(path))
+            self.assertTrue(MODULE._enabled(path))
             path.write_text(json.dumps({"enabled": "yes"}), encoding="utf-8")
-            self.assertFalse(MODULE._web_enabled(path))
+            self.assertFalse(MODULE._enabled(path))
 
 
 if __name__ == "__main__":
