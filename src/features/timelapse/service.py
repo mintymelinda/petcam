@@ -7,17 +7,15 @@ import os
 import shutil
 import signal
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 
 from ...infrastructure.persistence.frames import (
     capture_frame as persist_frame,
-    jpeg_frames,
     prune_frames,
     storage_status as persist_storage_status,
 )
+from ...infrastructure.streaming.sampler import read_latest_frame
 
 BASE = Path("/var/lib/petcam/timelapse")
 CONFIG = BASE / "config.json"
@@ -36,7 +34,6 @@ def storage_status(directory=None):
     return persist_storage_status(directory or FRAMES)
 
 
-STREAM_URL = "http://127.0.0.1:8081/stream"
 _running = True
 
 
@@ -133,12 +130,9 @@ def process_frame(frame, config):
         return output.getvalue()
 
 
-def capture_from_stream(config, directory=None, url=STREAM_URL):
-    request = urllib.request.Request(url, headers={"User-Agent": "PetCam-Timelapse/1"})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        frame = next(jpeg_frames(response), None)
-    if frame is None:
-        raise OSError("The live stream closed before a JPEG frame arrived.")
+def capture_from_stream(config, directory=None):
+    """Persist a frame supplied by the shared RTSP sampler."""
+    frame = read_latest_frame()
     return capture_frame(process_frame(frame, config), directory or config["storage_path"])
 
 
@@ -187,7 +181,7 @@ def run():
                     "state": "running", "last_capture_at": datetime.now(timezone.utc).isoformat(),
                     "last_file": path.name, "last_error": None, **storage_status(directory),
                 })
-            except (OSError, urllib.error.URLError, StopIteration, ValueError) as error:
+            except (OSError, ValueError) as error:
                 last_error = str(error)
                 write_state({"state": "camera_unavailable", "last_error": last_error, **storage_status(directory)})
             next_capture = time.monotonic() + config["interval_seconds"]
