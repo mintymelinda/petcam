@@ -28,9 +28,9 @@ class FactoryResetTests(unittest.TestCase):
             (state / "health.json").write_text("{}")
             with mock.patch.object(MODULE, "ETC", etc), mock.patch.object(MODULE, "STATE", state), \
                     mock.patch.object(MODULE.os, "geteuid", return_value=0), \
-                    mock.patch.object(MODULE.subprocess, "run"), \
-                    mock.patch.object(MODULE.subprocess, "run"):
+                    mock.patch.object(MODULE.process_control, "request", return_value={"ok": True}) as request:
                 MODULE.reset()
+            self.assertEqual([call.args[0] for call in request.call_args_list], ["stop_all", "reconcile"])
             self.assertFalse((etc / "web-auth.json").exists())
             self.assertFalse((etc / "petcam.conf.last-good").exists())
             self.assertIn("SOURCE=auto", (etc / "petcam.conf").read_text())
