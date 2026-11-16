@@ -1,12 +1,12 @@
 """Application service for validating and applying camera selections."""
 
-if __package__:
+try:
     from ..domain.camera.capture_policy import (
         validate_capture_feature_compatibility,
         validate_performance_budget,
     )
     from ..camera_selection import resolve_camera_selection
-else:  # Support the installed standalone web-manager entry point.
+except ImportError:  # Support the installed standalone web-manager entry point.
     from domain.camera.capture_policy import (
         validate_capture_feature_compatibility,
         validate_performance_budget,
