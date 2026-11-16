@@ -58,7 +58,8 @@ jobs:
 
       - name: Build Raspberry Pi OS image
         id: image
-        uses: usimd/pi-gen-action@v1.11.0
+        # Pin the first pi-gen-action revision that includes work-directory caching.
+        uses: usimd/pi-gen-action@d075c37c5eed90bf0325858ec2272e84200a5efe
         with:
           image-name: petcam
           hostname: petcam
@@ -76,6 +77,11 @@ jobs:
           timezone: America/Toronto
           keyboard-keymap: us
           keyboard-layout: English (US)
+          # Main refreshes the cache; PRs and other refs consume it without polluting it.
+          enable-pigen-cache: true
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+          # pi-gen uses Git on the host to capture the source revision for its builder.
+          extra-host-dependencies: git
           verbose-output: true
 
       - name: Validate generated image
