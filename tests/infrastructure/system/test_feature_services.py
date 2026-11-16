@@ -71,7 +71,7 @@ class OptionalFeatureServiceTests(unittest.TestCase):
     def test_web_manager_requires_explicit_boolean_configuration(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "web-manager.json"
-            self.assertFalse(MODULE._web_enabled(path))
+            self.assertFalse(MODULE._enabled(path))
             path.write_text(json.dumps({"enabled": True}), encoding="utf-8")
             self.assertTrue(MODULE._web_enabled(path))
             path.write_text(json.dumps({"enabled": "yes"}), encoding="utf-8")
