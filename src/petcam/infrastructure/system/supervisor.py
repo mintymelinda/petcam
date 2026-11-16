@@ -219,6 +219,12 @@ class Supervisor:
             worker = allowed.get(worker_name)
             if worker is None:
                 return {"ok": False, "error": "Unknown worker"}
+            if action == "restart" and worker_name == "camera-capture":
+                for dependent_name in ("rtsp-sampler", "gstreamer-rtsp"):
+                    dependent = allowed.get(dependent_name)
+                    if dependent is not None:
+                        self.stop(dependent)
+                        dependent.next_start = 0
             self.stop(worker)
             worker.next_start = 0
             if action == "restart":

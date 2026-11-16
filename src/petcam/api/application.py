@@ -185,12 +185,10 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
     )
 
 def restart_g_streamer_service():
-    result = process_control.run_command(
-        process_control.supervisor_command("restart", "gstreamer-rtsp"),
-        capture_output=True, text=True, timeout=30, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to restart the GStreamer RTSP service.")
+    try:
+        process_control.restart_worker("gstreamer-rtsp")
+    except process_control.SupervisorUnavailable as error:
+        raise RuntimeError(str(error)) from error
 
 
 def update_timelapse(data):
