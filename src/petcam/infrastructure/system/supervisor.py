@@ -13,6 +13,7 @@ import signal
 import socketserver
 import threading
 import subprocess
+import urllib.request
 import sys
 import time
 from dataclasses import dataclass
@@ -74,6 +75,27 @@ def read_enabled(path: Path, *, default: bool = False) -> bool:
     return default
 
 
+def capture_source_ready() -> bool:
+    try:
+        marker = json.loads((STATE / "camera-status.json").read_text(encoding="utf-8"))
+        pid = int(marker.get("pid", 0))
+        if pid <= 1:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
+def gstreamer_ready() -> bool:
+    try:
+        status = json.loads((RUN / "g-streamer-status.json").read_text(encoding="utf-8"))
+        age = time.time() - float(status.get("updated_at", 0))
+    except (OSError, ValueError, TypeError):
+        return False
+    return status.get("state") in ("ready", "publishing") and 0 <= age <= 15
+
+
 def capture_ready() -> bool:
     try:
         payload = json.loads((RUN / "rtsp-sampler-status.json").read_text(encoding="utf-8"))
@@ -86,8 +108,9 @@ def workers() -> list[Worker]:
     py = sys.executable
     return [
         Worker("setup-portal", (py, "-m", "petcam.bootstrap.setup_portal")),
-        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer")),
-        Worker("rtsp-sampler", (py, "-m", "petcam.infrastructure.streaming.sampler")),
+        Worker("camera-capture", (py, "-m", "petcam.infrastructure.camera.capture")),
+        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer"), capture_source_ready),
+        Worker("rtsp-sampler", (py, "-m", "petcam.infrastructure.streaming.sampler"), gstreamer_ready),
         Worker("web-ui", (py, "-m", "petcam.api.application"),
                lambda: read_enabled(ETC / "web-manager.json")),
         Worker("home-assistant", (py, "-m", "petcam.features.home_assistant.worker"),
@@ -174,7 +197,7 @@ class Supervisor:
                 worker.name: {
                     "pid": worker.process.pid if worker.process and worker.process.poll() is None else None,
                     "running": bool(worker.process and worker.process.poll() is None),
-                    "failures": worker.failures, "next_start": worker.next_start,
+                    "failures": worker.failures, "next_start": worker.next_start, "started_at": worker.started_at,
                 } for worker in self.entries
             },
         }
