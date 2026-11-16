@@ -62,6 +62,7 @@ def select_backend(config: dict) -> tuple[str, dict]:
         raise RuntimeError(discovery.stderr.strip() or "Camera discovery failed")
     inventory = json.loads(discovery.stdout)
     candidates = ("usb", "csi") if requested == "auto" else (requested,)
+    failures = []
     for source in candidates:
         available = inventory.get("usb_devices") if source == "usb" else inventory.get("csi_cameras")
         if not available:
