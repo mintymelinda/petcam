@@ -299,6 +299,15 @@ class TransactionalApplyTests(unittest.TestCase):
             h264_ready.assert_called_once_with()
             ready.assert_not_called()
 
+    def test_restart_capture_uses_shared_systemctl_adapter(self):
+        completed = mock.Mock(returncode=0, stderr="")
+        with mock.patch.object(MODULE.process_control, "run_systemctl", return_value=completed) as run:
+            MODULE.restart_capture()
+        run.assert_called_once_with(
+            "restart", "petcam-stream.service", runner=MODULE.subprocess.run,
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+
     def test_successful_apply_commits_and_updates_last_known_good(self):
         restart = mock.Mock()
         ready = mock.Mock(return_value=True)

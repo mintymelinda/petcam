@@ -32,13 +32,17 @@ class HealthMonitorTests(unittest.TestCase):
         self.config_guard_patch.stop()
         self.directory.cleanup()
 
-    def test_rtmp_restart_uses_installed_scoped_helper(self):
+    def test_gstreamer_restart_uses_shared_system_service_adapter(self):
         completed = mock.Mock(returncode=0, stderr="")
-        with mock.patch.object(MODULE.subprocess, "run", return_value=completed) as run:
-            self.assertEqual(MODULE.restart_service("petcam-rtmp.service"), (True, ""))
-        self.assertEqual(run.call_args.args[0], [
-            "sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart",
-        ])
+        with mock.patch.object(MODULE.process_control, "run_systemctl", return_value=completed) as run:
+            self.assertEqual(
+                MODULE.restart_service("petcam-g-streamer-rtsp.service"), (True, "")
+            )
+        run.assert_called_once_with(
+            "restart", "petcam-g-streamer-rtsp.service",
+            runner=MODULE.subprocess.run, sudo=True,
+            capture_output=True, text=True, timeout=30, check=False,
+        )
 
     def test_restart_service_rejects_unknown_service_names(self):
         with mock.patch.object(MODULE.subprocess, "run") as run:
@@ -65,7 +69,28 @@ class HealthMonitorTests(unittest.TestCase):
             "source": "native_h264_csi", "state": "publishing", "active": True, "updated_at": 1000,
         }))
         with mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file):
-            self.assertTrue(MODULE.native_h264_rtsp_ready(now=1000))
+            self.assertTrue(MODULE.rtsp_service_ready(now=1000))
+
+    def test_mjpeg_rtsp_idle_state_is_ready_without_a_connected_client(self):
+        status_file = Path(self.directory.name) / "rtsp-status.json"
+        status_file.write_text(__import__("json").dumps({
+            "source": "mjpeg_copy", "state": "ready", "active": False, "updated_at": 1000,
+        }))
+        with mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file):
+            self.assertTrue(MODULE.rtsp_service_ready(now=1000))
+
+    def test_mjpeg_health_restarts_gstreamer_when_its_heartbeat_is_stale(self):
+        with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "MJPEG"}), \
+                mock.patch.object(MODULE, "native_h264_capture_active", return_value=False), \
+                mock.patch.object(MODULE, "rtsp_service_ready", return_value=False), \
+                mock.patch.object(MODULE, "probe_stream", return_value=True), \
+                mock.patch.object(MODULE, "service_snapshot", side_effect=lambda _name: self.active), \
+                mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
+            report = MODULE.check_health(now=1000)
+        self.assertEqual(report["state"], "recovering")
+        self.assertFalse(report["rtsp_output_ready"])
+        self.assertEqual(report["recovery_target"], "petcam-g-streamer-rtsp.service")
+        restart.assert_called_once_with("petcam-g-streamer-rtsp.service")
 
     def test_native_h264_health_uses_rtsp_not_mjpeg_probes(self):
         with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}), \
@@ -91,7 +116,7 @@ class HealthMonitorTests(unittest.TestCase):
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "petcam-rtmp.service")
+        self.assertEqual(report["recovery_target"], "petcam-g-streamer-rtsp.service")
         restart.assert_called_once_with("petcam-rtmp.service")
 
     def test_health_recovery_pauses_during_config_transaction(self):

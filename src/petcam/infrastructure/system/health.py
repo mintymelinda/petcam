@@ -103,16 +103,17 @@ def native_h264_capture_active() -> bool:
         return False
 
 
-def native_h264_rtsp_ready(now: float | None = None) -> bool:
-    """Require fresh publishing telemetry from the native-H.264 RTSP publisher."""
+def rtsp_service_ready(now: float | None = None) -> bool:
+    """Require a fresh GStreamer heartbeat; idle-ready is healthy without clients."""
     now = time.time() if now is None else now
     try:
         status = json.loads(RTSP_STATUS_FILE.read_text(encoding="utf-8"))
         age = now - float(status.get("updated_at", 0))
-        return (status.get("source") in ("native_h264", "native_h264_csi")
-                and status.get("state") == "publishing"
-                and status.get("active") is True
-                and 0 <= age <= RTSP_STATUS_MAX_AGE_SECONDS)
+        return (
+            status.get("source") in ("native_h264", "native_h264_csi", "mjpeg_copy")
+            and status.get("state") in ("ready", "publishing")
+            and 0 <= age <= RTSP_STATUS_MAX_AGE_SECONDS
+        )
     except (OSError, ValueError, TypeError):
         return False
 
@@ -138,17 +139,13 @@ def restart_service(service: str) -> tuple[bool, str]:
             # Exit so the existing Restart=always policy replaces the web manager.
             os.kill(os.getpid(), signal.SIGTERM)
             return True, "Manager process exited for systemd recovery."
-        if service == "petcam-rtmp.service":
-            command = ["sudo", "-n", "/usr/local/sbin/petcam-rtmp-service", "restart"]
-        elif service == "petcam-stream.service":
+        if service in ("petcam-stream.service", "petcam-g-streamer-rtsp.service"):
             result = process_control.run_systemctl(
                 "restart", service, runner=subprocess.run, sudo=True,
                 capture_output=True, text=True, timeout=30, check=False,
             )
         else:
             return False, f"Refusing to restart unsupported PetCam service: {service}"
-        if service == "petcam-rtmp.service":
-            result = subprocess.run(command, capture_output=True, text=True, timeout=30, check=False)
         if result.returncode:
             return False, result.stderr.strip() or f"systemctl restart {service} failed"
         return True, ""
@@ -211,18 +208,20 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
     }
 
     backend = service_snapshot("petcam-stream.service")
+    rtsp = service_snapshot("petcam-g-streamer-rtsp.service")
     web = service_snapshot("petcam-web.service")
     report["backend_service_state"] = backend["state"]
+    report["rtsp_service_state"] = rtsp["state"]
     report["web_service_state"] = web["state"]
     report["backend_stream_ready"] = False
     report["public_stream_ready"] = False
     report["camera_connected"] = None
 
-    if backend["state"] == "unknown" or web["state"] == "unknown":
+    if any(snapshot["state"] == "unknown" for snapshot in (backend, rtsp, web)):
         report["state"] = "service_state_unknown"
         report["reason"] = "systemd service state could not be read; no restart was attempted."
         return _persist(report)
-    if _starting(backend) or _starting(web):
+    if any(_starting(snapshot) for snapshot in (backend, rtsp, web)):
         report["state"] = "starting"
         report["reason"] = "A PetCam service is within its startup grace period."
         return _persist(report)
@@ -234,7 +233,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         pass
     h264_mode = configured_format == "H264" or native_h264_capture_active()
     report["capture_mode"] = "native_h264" if h264_mode else "mjpeg"
-    report["rtsp_output_ready"] = None
+    report["rtsp_output_ready"] = False
     if h264_mode:
         backend_ready = backend["state"] == "active" and native_h264_capture_active()
     else:
@@ -260,23 +259,17 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         )
         return _recover(report, previous, "petcam-stream.service", reason, now)
 
-    if h264_mode:
-        rtsp = service_snapshot("petcam-rtmp.service")
-        if rtsp["state"] == "unknown":
-            report["state"] = "service_state_unknown"
-            report["reason"] = "RTSP publisher service state could not be read; no restart was attempted."
-            return _persist(report)
-        if _starting(rtsp):
-            report["state"] = "starting"
-            report["reason"] = "The native H.264 RTSP publisher is within its startup grace period."
-            return _persist(report)
-        rtsp_ready = rtsp["state"] == "active" and native_h264_rtsp_ready(now)
-        report["rtsp_output_ready"] = rtsp_ready
-        if not rtsp_ready:
-            return _recover(
-                report, previous, "petcam-rtmp.service",
-                "Native H.264 capture is active but the RTSP publisher is not reporting fresh output.", now,
-            )
+    rtsp_ready = rtsp["state"] == "active" and rtsp_service_ready(now)
+    report["rtsp_output_ready"] = rtsp_ready
+    if not rtsp_ready:
+        reason = (
+            "GStreamer RTSP service is not active."
+            if rtsp["state"] != "active"
+            else "GStreamer RTSP service is active but its heartbeat is missing or stale."
+        )
+        return _recover(
+            report, previous, "petcam-g-streamer-rtsp.service", reason, now,
+        )
 
     if _starting(web):
         report["state"] = "starting"

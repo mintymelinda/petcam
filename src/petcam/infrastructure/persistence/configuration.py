@@ -19,6 +19,8 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+from ..system import processes as process_control
+
 CONFIG_PATH = Path(os.environ.get("PETCAM_CONFIG_PATH", "/etc/petcam/petcam.conf"))
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 LAST_GOOD_PATH = Path(os.environ.get("PETCAM_LAST_GOOD_PATH", str(CONFIG_PATH.with_name(CONFIG_PATH.name + ".last-good"))))
@@ -348,23 +350,13 @@ def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -
 
 
 def restart_capture() -> None:
-    command = ["/usr/bin/systemctl", "restart", "petcam-stream.service"]
-    result = subprocess.run(
-        command, capture_output=True, text=True, timeout=30, check=False,
+    """Restart the camera capture service after persisting new capture settings."""
+    result = process_control.run_systemctl(
+        "restart", "petcam-stream.service",
+        runner=subprocess.run, capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
         raise ConfigApplyError(result.stderr.strip() or "Unable to restart the camera stream service.")
-
-    # The RTSP server opens V4L2 after petcam-stream publishes the selected mode.
-    try:
-        output_config = json.loads(Path("/etc/petcam/rtmp.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        output_config = {"enabled": False}
-    if output_config.get("enabled") is True:
-        output_command = ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"]
-        output = subprocess.run(output_command, capture_output=True, text=True, timeout=30, check=False)
-        if output.returncode:
-            raise ConfigApplyError(output.stderr.strip() or "Unable to start the GStreamer RTSP server.")
 
 
 def _apply_config_transaction(
