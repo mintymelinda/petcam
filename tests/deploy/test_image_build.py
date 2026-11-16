@@ -15,14 +15,17 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("FROM debian:trixie-slim", dockerfile)
         self.assertIn("assemble-petcam", dockerfile)
 
-    def test_pi_gen_stage_installs_existing_source_runtime(self):
-        run = (STAGE / "01-petcam/00-run.sh").read_text(encoding="utf-8")
-        chroot = (STAGE / "01-petcam/00-run-chroot.sh").read_text(encoding="utf-8")
+    def test_pi_gen_stage_installs_packages_before_runtime_configuration(self):
+        package_dir = STAGE / "01-petcam"
+        run = (package_dir / "00-run.sh").read_text(encoding="utf-8")
+        chroot = (package_dir / "02-run-chroot.sh").read_text(encoding="utf-8")
         self.assertIn("ROOTFS_DIR/opt/petcam", run)
         self.assertIn("bash deploy/install.sh", chroot)
         self.assertIn("PETCAM_SKIP_DEPENDENCIES=1", chroot)
         self.assertIn("PETCAM_SKIP_SERVICE_START=1", chroot)
         self.assertIn("PETCAM_DEFER_TLS=1", chroot)
+        self.assertTrue((package_dir / "01-packages").is_file())
+        self.assertLess("01-packages", "02-run-chroot.sh")
 
     def test_python_pip_manifest_is_explicitly_empty(self):
         manifest = (ROOT / "deploy/python/requirements.txt").read_text(encoding="utf-8")
@@ -35,6 +38,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("enable-pigen-cache: false", workflow)
         self.assertIn("release: trixie", workflow)
         self.assertIn("stage0 stage1 stage2 ./deploy/image/stages/stage-petcam", workflow)
+        self.assertIn("01-petcam/02-run-chroot.sh", workflow)
 
     def test_first_boot_wrapper_owns_device_specific_tls_initialization(self):
         start = (ROOT / "deploy/start.sh").read_text(encoding="utf-8")

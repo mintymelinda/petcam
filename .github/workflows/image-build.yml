@@ -30,7 +30,7 @@ jobs:
             deploy/image/assemble.sh \
             deploy/image/stages/stage-petcam/prerun.sh \
             deploy/image/stages/stage-petcam/01-petcam/00-run.sh \
-            deploy/image/stages/stage-petcam/01-petcam/00-run-chroot.sh \
+            deploy/image/stages/stage-petcam/01-petcam/02-run-chroot.sh \
             tests/deploy/test_dependency_installer.sh; do
             bash -n "$script"
           done
