@@ -22,8 +22,7 @@ collect_feature_packages() {
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%%#*}"
       # Trim leading and trailing whitespace without evaluating manifest data.
-      line="${line#"${line%%[![:space:]]*}}"
-      line="${line%"${line##*[![:space:]]}}"
+      line="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' <<< "$line")"
       [[ -z "$line" ]] && continue
       package="$line"
       if [[ ! "$package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]]; then
