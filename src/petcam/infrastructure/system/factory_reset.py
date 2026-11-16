@@ -76,9 +76,6 @@ def reset():
     if os.geteuid() != 0:
         raise PermissionError("Factory reset must run as root.")
 
-    # Stop managed children before replacing runtime state.
-    process_control.request("stop_all")
-
     # Preserve the OS, networking, SSH, device identity, TLS certificate/key,
     # and installed application releases.
     (ETC / "web-auth.json").unlink(missing_ok=True)
@@ -102,7 +99,9 @@ def reset():
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
 
     (STATE / "health.json").unlink(missing_ok=True)
-    # Re-read persisted feature settings and start the enabled workers.
+    # Restart capture using reset settings; the supervisor stops dependent RTSP
+    # workers and reconciles optional workers from their now-disabled configs.
+    process_control.request("restart", "camera-capture")
     process_control.request("reconcile")
 
 
