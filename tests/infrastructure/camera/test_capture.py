@@ -16,7 +16,7 @@ def test_usb_auto_selection_uses_first_hardware_mode_without_format_preference()
         source, selected = MODULE.select_backend({"SOURCE": "auto", "FORMAT": "auto"})
     assert source == "usb"
     assert selected["format"] == "H264"
-    assert run.call_args_list[1].args[0][-1] == "select"
+    assert run.call_args_list[1].args[0][3] == "select"
 
 
 def test_usb_selection_does_not_silently_fallback_to_another_format():
