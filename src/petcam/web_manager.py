@@ -195,13 +195,13 @@ def set_camera_control(data):
     )
 
 def _run_service_commands(commands):
-    return service_transactions.run_service_commands(commands, subprocess.run)
+    return service_transactions.run_service_commands(commands, process_control.run_command)
 
 
 def apply_service_config_transaction(save, previous, candidate, commands, rollback_commands):
     """Compatibility adapter for the service-configuration transaction."""
     return service_transactions.apply_config_transaction(
-        save, previous, candidate, commands, rollback_commands, subprocess.run,
+        save, previous, candidate, commands, rollback_commands, process_control.run_command,
     )
 
 def rtmp_service_command(action):
@@ -216,9 +216,17 @@ def rtmp_service_command(action):
         raise ValueError(f"Unsupported OBS RTSP output action: {action}") from error
 
 
+def is_service_active(unit):
+    """Query a systemd unit through the infrastructure process adapter."""
+    result = process_control.run_systemctl(
+        "is-active", "--quiet", unit, check=False, timeout=5,
+    )
+    return result.returncode == 0
+
+
 def set_rtmp_service(action):
-    result = subprocess.run(
-        rtmp_service_command(action),
+    result = process_control.run_systemctl(
+        action, "petcam-rtmp.service",
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
@@ -234,6 +242,7 @@ def update_timelapse(data):
         load_config=load_timelapse_config,
         save_config=save_timelapse_config,
         load_rtmp_config=load_rtmp_config,
+        systemctl_command=process_control.systemctl_command,
         apply_transaction=apply_service_config_transaction,
     )
 
@@ -262,7 +271,8 @@ def update_rtmp_output(data):
         load_config=load_rtmp_config,
         save_config=save_rtmp_config,
         check_runtime=check_gstreamer_runtime,
-        run=subprocess.run,
+        is_service_active=is_service_active,
+        systemctl_command=process_control.systemctl_command,
         service_command=rtmp_service_command,
         apply_transaction=apply_service_config_transaction,
         public_config=public_rtmp_config,
@@ -286,7 +296,7 @@ def save_selection(data):
         load_timelapse_config=load_timelapse_config,
         load_motion_config=load_motion_config,
         check_gstreamer_runtime=check_gstreamer_runtime,
-        run=subprocess.run,
+        is_service_active=is_service_active,
         set_rtmp_service=set_rtmp_service,
         apply_config=apply_config,
     )
