@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -43,6 +46,23 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertIs(MODULE.select_mode, camera_modes.select_mode)
         self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
         self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
+
+    def test_auto_selection_uses_first_hardware_mode_and_its_advertised_max_fps(self):
+        devices = [{
+            "device": "/dev/video0",
+            "modes": MODULE.parse_modes(SAMPLE),
+        }]
+        output = io.StringIO()
+        with (
+            patch.object(MODULE.sys, "argv", ["petcam-camera", "select"]),
+            patch.object(MODULE, "read_model", return_value="Test camera host"),
+            patch.object(MODULE, "discover_devices", return_value=devices),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        selected = json.loads(output.getvalue())
+        self.assertEqual(selected["format"], "MJPEG")
+        self.assertEqual(selected["fps"], "60")
 
     def test_parses_formats_resolutions_and_frame_rates(self):
         modes = MODULE.parse_modes(SAMPLE)
