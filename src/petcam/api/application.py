@@ -185,7 +185,7 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
 
 def restart_g_streamer_service():
     result = process_control.run_command(
-        process_control.systemctl_command("restart", "petcam-g-streamer-rtsp.service"),
+        process_control.supervisor_command("restart", "gstreamer-rtsp"),
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
@@ -319,7 +319,7 @@ def diagnostics_snapshot():
 
 
 def g_streamer_status_snapshot():
-    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, run=subprocess.run, clock=time.time)
+    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, clock=time.time)
 
 def health_monitor_loop():
     from ..infrastructure.system.health import check_health

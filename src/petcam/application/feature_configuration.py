@@ -9,15 +9,15 @@ def _mjpeg_required(data, feature, parse_config, config_path):
         )
 
 
-def _consumer_restart_commands(feature, systemctl_command):
+def _consumer_restart_commands(feature, supervisor_command):
     return [
         (
-            systemctl_command("restart", "petcam-stream.service"),
+            supervisor_command("restart", "camera-capture"),
             45,
             f"Unable to restart camera after changing {feature} settings.",
         ),
         (
-            systemctl_command("restart", "petcam-g-streamer-rtsp.service"),
+            supervisor_command("restart", "gstreamer-rtsp"),
             30,
             "Unable to reconnect GStreamer RTSP after changing camera consumer settings.",
         ),

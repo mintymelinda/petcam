@@ -351,12 +351,10 @@ def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -
 
 def restart_capture() -> None:
     """Restart the camera capture service after persisting new capture settings."""
-    result = process_control.run_systemctl(
-        "restart", "petcam-stream.service",
-        runner=subprocess.run, capture_output=True, text=True, timeout=30, check=False,
-    )
-    if result.returncode:
-        raise ConfigApplyError(result.stderr.strip() or "Unable to restart the camera stream service.")
+    try:
+        process_control.restart_worker("camera-capture")
+    except process_control.SupervisorUnavailable as error:
+        raise ConfigApplyError(str(error)) from error
 
 
 def _apply_config_transaction(
