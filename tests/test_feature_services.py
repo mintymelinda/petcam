@@ -22,6 +22,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
             load_config=lambda: current,
             save_config=lambda value: value,
             load_rtmp_config=load_rtmp,
+            systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
             apply_transaction=transaction,
         )
 
@@ -51,6 +52,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
                 load_config=load_config,
                 save_config=mock.Mock(),
                 load_rtmp_config=mock.Mock(),
+                systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
                 apply_transaction=transaction,
             )
 
@@ -66,6 +68,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
             load_config=lambda: {"enabled": False},
             save_config=mock.Mock(),
             load_rtmp_config=lambda: {"enabled": False},
+            systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
             apply_transaction=transaction,
         )
 
@@ -89,7 +92,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
         transaction = mock.Mock(
             side_effect=lambda save, previous, candidate, commands, rollback: candidate,
         )
-        run = mock.Mock(return_value=mock.Mock(returncode=0))
+        is_active = mock.Mock(return_value=True)
         service_command = lambda action: ["/usr/bin/systemctl", action, "petcam-rtmp.service"]
         status = {"state": "running"}
 
@@ -100,7 +103,8 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
             load_config=lambda: current,
             save_config=mock.Mock(),
             check_runtime=mock.Mock(),
-            run=run,
+            is_service_active=is_active,
+            systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
             service_command=service_command,
             apply_transaction=transaction,
             public_config=lambda config: {"enabled": config["enabled"], "url": config["url"]},
@@ -111,11 +115,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
             "config": {"enabled": True, "url": "rtsp://new"},
             "status": status,
         })
-        run.assert_called_once_with(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-            check=False,
-            timeout=5,
-        )
+        is_active.assert_called_once_with("petcam-rtmp.service")
         commands, rollback = transaction.call_args.args[3:5]
         self.assertEqual(commands[0][0], [
             "/usr/bin/systemctl", "restart", "petcam-stream.service",
@@ -134,7 +134,8 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
                 load_config=mock.Mock(),
                 save_config=mock.Mock(),
                 check_runtime=mock.Mock(),
-                run=mock.Mock(),
+                is_service_active=mock.Mock(return_value=False),
+                systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
                 service_command=mock.Mock(),
                 apply_transaction=transaction,
                 public_config=mock.Mock(),
@@ -154,7 +155,8 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
                 load_config=mock.Mock(),
                 save_config=mock.Mock(),
                 check_runtime=check_runtime,
-                run=mock.Mock(),
+                is_service_active=mock.Mock(return_value=False),
+                systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
                 service_command=mock.Mock(),
                 apply_transaction=mock.Mock(),
                 public_config=mock.Mock(),
