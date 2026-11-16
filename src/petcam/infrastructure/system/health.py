@@ -60,9 +60,9 @@ def save_state(state: dict[str, Any]) -> None:
 def service_snapshot(service: str) -> dict[str, Any]:
     """Read lifecycle state from the supervisor process inventory."""
     workers = {
-        "petcam-stream.service": "camera-capture",
-        "petcam-g-streamer-rtsp.service": "gstreamer-rtsp",
-        "petcam-web.service": "web-ui",
+        "camera-capture": "camera-capture",
+        "gstreamer-rtsp": "gstreamer-rtsp",
+        "web-ui": "web-ui",
     }
     worker_name = workers.get(service)
     if worker_name is None:
@@ -134,9 +134,9 @@ def camera_present() -> bool | None:
 
 def restart_service(service: str) -> tuple[bool, str]:
     workers = {
-        "petcam-web.service": "web-ui",
-        "petcam-stream.service": "camera-capture",
-        "petcam-g-streamer-rtsp.service": "gstreamer-rtsp",
+        "web-ui": "web-ui",
+        "camera-capture": "camera-capture",
+        "gstreamer-rtsp": "gstreamer-rtsp",
     }
     worker = workers.get(service)
     if worker is None:
@@ -202,9 +202,9 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         "last_recovery_result": previous.get("last_recovery_result"),
     }
 
-    backend = service_snapshot("petcam-stream.service")
-    rtsp = service_snapshot("petcam-g-streamer-rtsp.service")
-    web = service_snapshot("petcam-web.service")
+    backend = service_snapshot("camera-capture")
+    rtsp = service_snapshot("gstreamer-rtsp")
+    web = service_snapshot("web-ui")
     report["backend_service_state"] = backend["state"]
     report["rtsp_service_state"] = rtsp["state"]
     report["web_service_state"] = web["state"]
@@ -252,7 +252,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
             if backend["state"] != "active"
             else "Capture service is active but the local MJPEG stream produced no frame."
         )
-        return _recover(report, previous, "petcam-stream.service", reason, now)
+        return _recover(report, previous, "camera-capture", reason, now)
 
     rtsp_ready = rtsp["state"] == "active" and rtsp_service_ready(now)
     report["rtsp_output_ready"] = rtsp_ready
@@ -263,7 +263,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
             else "GStreamer RTSP service is active but its heartbeat is missing or stale."
         )
         return _recover(
-            report, previous, "petcam-g-streamer-rtsp.service", reason, now,
+            report, previous, "gstreamer-rtsp", reason, now,
         )
 
     if _starting(web):
@@ -272,7 +272,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         return _persist(report)
     if web["state"] != "active":
         return _recover(
-            report, previous, "petcam-web.service",
+            report, previous, "web-ui",
             "The web manager process is not active while the local capture stream is healthy.", now,
         )
 
@@ -284,7 +284,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         report["public_stream_ready"] = public_ready
         if not public_ready:
             return _recover(
-                report, previous, "petcam-web.service",
+                report, previous, "web-ui",
                 "The local capture stream is healthy but the public OBS stream proxy is not producing frames.", now,
             )
 

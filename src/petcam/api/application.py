@@ -199,7 +199,7 @@ def update_timelapse(data):
         config_path=CONFIG,
         load_config=load_timelapse_config,
         save_config=save_timelapse_config,
-        systemctl_command=process_control.systemctl_command,
+        systemctl_command=process_control.supervisor_command,
         apply_transaction=apply_service_config_transaction,
     )
 
@@ -211,7 +211,7 @@ def update_motion(data):
         config_path=CONFIG,
         load_config=load_motion_config,
         save_config=save_motion_config,
-        systemctl_command=process_control.systemctl_command,
+        systemctl_command=process_control.supervisor_command,
         apply_transaction=apply_service_config_transaction,
     )
 

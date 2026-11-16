@@ -15,9 +15,9 @@ MOTION_CONFIG = Path("/var/lib/petcam/motion/config.json")
 TIMELAPSE_CONFIG = Path("/var/lib/petcam/timelapse/config.json")
 POLL_SECONDS = 5
 SERVICES = {
-    "web_ui": "petcam-web.service",
-    "motion": "petcam-motion.service",
-    "timelapse": "petcam-timelapse.service",
+    "web_ui": "web-ui",
+    "motion": "motion",
+    "timelapse": "timelapse",
 }
 _running = True
 

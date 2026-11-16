@@ -26,21 +26,21 @@ def _consumer_restart_commands(feature, supervisor_command):
 
 def update_timelapse(
     data, *, parse_config, config_path, load_config, save_config,
-    systemctl_command, apply_transaction,
+    supervisor_command, apply_transaction,
 ):
     _mjpeg_required(data, "timelapse", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands("timelapse", systemctl_command)
+    commands = _consumer_restart_commands("timelapse", supervisor_command)
     return apply_transaction(save_config, current, {**current, **data}, commands, commands)
 
 
 def update_motion(
     data, *, parse_config, config_path, load_config, save_config,
-    systemctl_command, apply_transaction,
+    supervisor_command, apply_transaction,
 ):
     _mjpeg_required(data, "motion detection", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands("motion", systemctl_command)
+    commands = _consumer_restart_commands("motion", supervisor_command)
     return apply_transaction(save_config, current, {**current, **data}, commands, commands)
 
 
