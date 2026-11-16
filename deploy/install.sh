@@ -26,7 +26,8 @@ apt-get install -y --no-install-recommends ca-certificates openssl python3 pytho
 log "Installing the wheel into the stable virtual environment."
 install -d -m 0755 "$APP_ROOT" "$ETC_ROOT" "$STATE_ROOT" /run/petcam
 if [[ ! -x "$VENV/bin/python" ]]; then python3 -m venv --system-site-packages "$VENV"; fi
-"$VENV/bin/python" -m pip install --disable-pip-version-check --no-deps --upgrade "$WHEEL"
+"$VENV/bin/python" -m pip install --disable-pip-version-check --upgrade "$WHEEL"
+"$VENV/bin/python" -c 'import petcam.bootstrap.setup_portal, petcam.api.application'
 ln -sfn "$VENV/bin/petcam-camera" /usr/local/bin/petcam-camera
 
 log "Creating defaults only when configuration is absent."
