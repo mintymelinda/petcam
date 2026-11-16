@@ -1,4 +1,4 @@
-"""Application services for hardware-reported camera capabilities."""
+"""Expose hardware-reported camera capabilities without application mode policy."""
 
 
 def build_capture_modes(camera):
