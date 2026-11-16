@@ -97,17 +97,11 @@ def handle_get(handler, services):
             "stream_metrics": services.stream_metrics_snapshot(),
             "network_status": services.collect_network_performance(),
             "system_metrics": services.system_resource_metrics(),
-            "rtmp_output_status": services.rtmp_status_snapshot(),
+            "g_streamer_status": services.g_streamer_status_snapshot(),
         })
         return
     if path == "/api/system":
         handler.send_json(200, {"services.installed_version": services.installed_version()})
-        return
-    if path == "/api/rtmp":
-        try:
-            handler.send_json(200, {"config": services.public_rtmp_config(services.load_rtmp_config()), "status": services.rtmp_status_snapshot()})
-        except Exception as error:
-            handler.send_json(503, {"error": str(error)})
         return
     if path == "/api/health":
         try:
@@ -212,10 +206,6 @@ def handle_post(handler, services):
         if path == "/api/light-sensor":
             updated = services.update_light_sensor(data)
             handler.send_json(200, {"ok": True, "config": updated})
-            return
-        if path == "/api/rtmp":
-            result = services.update_rtmp_output(data)
-            handler.send_json(200, {"ok": True, **result})
             return
         if path == "/api/logout":
             services.invalidate_session(services._cookie(handler))

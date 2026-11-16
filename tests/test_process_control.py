@@ -17,6 +17,17 @@ class ProcessControlTests(unittest.TestCase):
             ["sudo", "-n", "/usr/bin/systemctl", "restart", "petcam-stream.service"],
         )
 
+    def test_run_command_forwards_argument_vector_and_options_to_runner(self):
+        runner = mock.Mock(return_value="result")
+        result = MODULE.run_command(["/usr/bin/example", "--check"], runner=runner, check=False)
+        self.assertEqual(result, "result")
+        runner.assert_called_once_with(["/usr/bin/example", "--check"], check=False)
+
+    def test_run_command_rejects_invalid_argument_vectors(self):
+        for command in ([], [""], "not-a-command"):
+            with self.subTest(command=command), self.assertRaises(ValueError):
+                MODULE.run_command(command)
+
     def test_run_systemctl_forwards_command_and_options_to_runner(self):
         runner = mock.Mock(return_value="result")
         result = MODULE.run_systemctl(

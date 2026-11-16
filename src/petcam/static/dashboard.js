@@ -44,10 +44,7 @@ function initializeDashboard() {
     });
   }
   activateTab("camera");
-  refreshRTMP();
-
-  $("save-rtmp").onclick = saveRTMP;
-  $("refresh-rtmp").onclick = refreshRTMP;
+  refreshGStreamer();
   $("refresh-statistics").onclick = refreshStatistics;
   $("apply-camera-controls").onclick = applyCameraControlChanges;
   $("refresh-camera-controls").onclick = refreshCameraControls;
@@ -100,10 +97,10 @@ function initializeDashboard() {
         }),
       });
       await refresh();
-      await refreshRTMP();
+      await refreshGStreamer();
       $("message").textContent =
         mode.format === "H264"
-          ? "H.264 capture enabled. Use the OBS RTSP Media Source; the HTTP Browser Source is disabled."
+          ? "H.264 capture enabled. the RTSP service is serving H.264; the HTTP Browser Source is disabled."
           : "Camera settings saved. The live preview has been reconnected.";
     } catch (e) {
       $("message").textContent = e.message;

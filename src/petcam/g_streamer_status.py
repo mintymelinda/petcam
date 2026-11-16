@@ -1,15 +1,14 @@
-"""Runtime status aggregation for the OBS RTSP output service."""
+"""Runtime status aggregation for the always-on GStreamer RTSP service."""
 
 import json
 import subprocess
 import time
 
 
-def snapshot(load_config, status_file, run=subprocess.run, clock=time.time):
-    config = load_config()
+def snapshot(status_file, run=subprocess.run, clock=time.time):
     try:
         active_service = run(
-            ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
+            ["systemctl", "is-active", "--quiet", "petcam-g-streamer-rtsp.service"],
             check=False, timeout=1,
         ).returncode == 0
     except (OSError, subprocess.SubprocessError):
@@ -23,10 +22,10 @@ def snapshot(load_config, status_file, run=subprocess.run, clock=time.time):
     updated_at = status.get("updated_at")
     fresh = isinstance(updated_at, (int, float)) and clock() - updated_at <= 10
     state = status.get("state", "starting") if active_service else "stopped"
-    if active_service and updated_at is not None and not fresh:
+    if active_service and not fresh:
         state = "stalled"
     return {
-        "enabled": config["enabled"],
+        "service_active": active_service,
         "active": active_service and state == "publishing",
         "state": state,
         "fps": status.get("fps") if fresh else None,

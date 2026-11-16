@@ -1,0 +1,20 @@
+[Unit]
+Description=PetCam always-on GStreamer RTSP camera service
+Documentation=https://github.com/mintymelinda/petcam
+After=network-online.target petcam-stream.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/petcam/current/lib/g_streamer_output.py
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=0
+Nice=10
+CPUWeight=20
+CPUQuota=80%
+MemoryHigh=192M
+MemoryMax=256M
+
+[Install]
+WantedBy=multi-user.target

@@ -1,8 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let inventory = [],
   activeConfig = null,
-  captureStatus = {},
-  rtmpSettings = { enabled: false };
+  captureStatus = {};
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 const pendingCameraControlChanges = new Map();

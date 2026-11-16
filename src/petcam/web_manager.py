@@ -25,13 +25,13 @@ if __package__:
     from .timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
     from .motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
     from .light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
-    from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
+    from .g_streamer_output import check_gstreamer_runtime
     from .security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
     from . import camera_controls, feature_services, stream_metrics
     from .application import camera_configuration, capture_status, service_transactions
     from .infrastructure.system import metrics as system_metrics, processes as process_control
     from .infrastructure.streaming import proxy as stream_proxy
-    from . import rtsp_status
+    from . import g_streamer_status
 else:  # Support the installed standalone web-manager entry point.
     import api.management_routes as management_routes
     import api.streaming_routes as streaming_routes
@@ -43,7 +43,7 @@ else:  # Support the installed standalone web-manager entry point.
     from timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
     from motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
     from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
-    from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
+    from g_streamer_output import check_gstreamer_runtime
     from security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
     import camera_controls
     import feature_services
@@ -52,14 +52,14 @@ else:  # Support the installed standalone web-manager entry point.
     from infrastructure.system import metrics as system_metrics
     from infrastructure.system import processes as process_control
     from application import camera_configuration, capture_status
-    import rtsp_status
+    import g_streamer_status
     from infrastructure.streaming import proxy as stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
 TLS_KEY = Path("/etc/petcam/web-manager.key")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
-RTMP_STATUS_FILE = Path("/run/petcam/rtmp-status.json")
+G_STREAMER_STATUS_FILE = Path("/run/petcam/g-streamer-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -195,35 +195,22 @@ def set_camera_control(data):
     )
 
 def _run_service_commands(commands):
-    return service_transactions.run_service_commands(commands, subprocess.run)
+    return service_transactions.run_service_commands(commands, process_control.run_command)
 
 
 def apply_service_config_transaction(save, previous, candidate, commands, rollback_commands):
     """Compatibility adapter for the service-configuration transaction."""
     return service_transactions.apply_config_transaction(
-        save, previous, candidate, commands, rollback_commands, subprocess.run,
+        save, previous, candidate, commands, rollback_commands, process_control.run_command,
     )
 
-def rtmp_service_command(action):
-    commands = {
-        "enable": process_control.systemctl_command("enable", "--now", "petcam-rtmp.service"),
-        "disable": process_control.systemctl_command("disable", "--now", "petcam-rtmp.service"),
-        "restart": process_control.systemctl_command("restart", "petcam-rtmp.service"),
-    }
-    try:
-        return commands[action]
-    except KeyError as error:
-        raise ValueError(f"Unsupported OBS RTSP output action: {action}") from error
-
-
-def set_rtmp_service(action):
-    result = subprocess.run(
-        rtmp_service_command(action),
+def restart_g_streamer_service():
+    result = process_control.run_command(
+        process_control.systemctl_command("restart", "petcam-g-streamer-rtsp.service"),
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
-        raise RuntimeError(result.stderr.strip() or f"Unable to {action} OBS RTSP output service.")
-
+        raise RuntimeError(result.stderr.strip() or "Unable to restart the GStreamer RTSP service.")
 
 
 def update_timelapse(data):
@@ -233,7 +220,7 @@ def update_timelapse(data):
         config_path=CONFIG,
         load_config=load_timelapse_config,
         save_config=save_timelapse_config,
-        load_rtmp_config=load_rtmp_config,
+        systemctl_command=process_control.systemctl_command,
         apply_transaction=apply_service_config_transaction,
     )
 
@@ -245,29 +232,13 @@ def update_motion(data):
         config_path=CONFIG,
         load_config=load_motion_config,
         save_config=save_motion_config,
-        load_rtmp_config=load_rtmp_config,
+        systemctl_command=process_control.systemctl_command,
         apply_transaction=apply_service_config_transaction,
     )
 
 
 def update_light_sensor(data):
     return feature_services.update_light_sensor(data, save_config=save_light_config)
-
-
-def update_rtmp_output(data):
-    return feature_services.update_rtmp_output(
-        data,
-        parse_config=parse_config,
-        config_path=CONFIG,
-        load_config=load_rtmp_config,
-        save_config=save_rtmp_config,
-        check_runtime=check_gstreamer_runtime,
-        run=subprocess.run,
-        service_command=rtmp_service_command,
-        apply_transaction=apply_service_config_transaction,
-        public_config=public_rtmp_config,
-        status_snapshot=rtmp_status_snapshot,
-    )
 
 
 def save_selection(data):
@@ -281,13 +252,10 @@ def save_selection(data):
         read_model=read_model,
         config_path=CONFIG,
         parse_config=parse_config,
-        load_rtmp_config=load_rtmp_config,
-        save_rtmp_config=save_rtmp_config,
         load_timelapse_config=load_timelapse_config,
         load_motion_config=load_motion_config,
         check_gstreamer_runtime=check_gstreamer_runtime,
-        run=subprocess.run,
-        set_rtmp_service=set_rtmp_service,
+        restart_g_streamer_service=restart_g_streamer_service,
         apply_config=apply_config,
     )
 
@@ -399,10 +367,8 @@ class StreamHandler(BaseHTTPRequestHandler):
         pass
 
 
-def rtmp_status_snapshot():
-    return rtsp_status.snapshot(
-        load_rtmp_config, RTMP_STATUS_FILE, run=subprocess.run, clock=time.time,
-    )
+def g_streamer_status_snapshot():
+    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, run=subprocess.run, clock=time.time)
 
 def health_monitor_loop():
     if __package__:

@@ -18,14 +18,12 @@ function h264ModeSelectedOrActive() {
 }
 function syncOutputModeControls() {
   const forced = h264ModeSelectedOrActive();
-  $("rtmp-enabled").checked = forced || !!rtmpSettings.enabled;
-  $("rtmp-enabled").disabled = forced;
-  $("save-rtmp").disabled = forced;
   document.querySelectorAll("[data-browser-feed-link]").forEach((link) => {
     link.closest("p").hidden = forced;
   });
   $("h264-mode-note").hidden = !forced;
 }
+
 function projectedPixelRate(mode) {
   return Number(mode.estimated_pixels_per_second || 0);
 }
@@ -59,7 +57,7 @@ function showSelectedModeWarning() {
   else
     $("message").textContent =
       mode.format === "H264"
-        ? "H.264 selected. The HTTP Browser Source will be disabled and OBS RTSP output will be forced on."
+        ? "H.264 selected. The HTTP Browser Source will be disabled and the always-on RTSP service serves H.264 directly."
         : "Selected mode is within the estimated device performance budget.";
   syncOutputModeControls();
 }
@@ -178,67 +176,30 @@ async function refreshSystemInfo() {
   }
 }
 
-async function refreshRTMP() {
-  try {
-    const data = await request("/api/rtmp");
-    rtmpSettings = data.config || { enabled: false };
-    syncOutputModeControls();
-    let sourceLabel = "";
-    if (
-      data.status?.source === "native_h264" ||
-      data.status?.source === "native_h264_csi"
-    )
-      sourceLabel =
-        data.status.source === "native_h264_csi"
-          ? "CSI hardware H.264 stream copy"
-          : "native H.264 stream copy";
-    else if (data.status?.source === "mjpeg_copy")
-      sourceLabel = "MJPEG packet copy";
-    let statusText =
-      "OBS RTSP feed: " + (data.status?.state || "stopped") + ".";
-    if (data.status?.active) {
-      statusText = "OBS RTSP feed is running";
-      if (sourceLabel) statusText += " (" + sourceLabel + ")";
-      statusText += ".";
-    }
-    $("rtmp-status").textContent = statusText;
-  } catch (error) {
-    $("rtmp-status").textContent =
-      "OBS feed status unavailable: " + error.message;
-  }
+function renderGStreamerStatus(status) {
+  const source =
+    status.source === "native_h264_csi"
+      ? "CSI hardware H.264 stream copy"
+      : status.source === "native_h264"
+        ? "native H.264 stream copy"
+        : status.source === "mjpeg_copy"
+          ? "MJPEG packet copy"
+          : "camera source pending";
+  $("g-streamer-status").textContent =
+    "GStreamer RTSP service: " +
+    (status.state || "starting") +
+    (status.service_active
+      ? " · always on · " + source
+      : " · service unavailable");
 }
-async function saveRTMP() {
-  if (h264ModeSelectedOrActive()) {
-    syncOutputModeControls();
-    return;
-  }
-  const data = { enabled: $("rtmp-enabled").checked };
-  $("save-rtmp").disabled = true;
-  $("rtmp-status").textContent = "Saving OBS output settings…";
+
+async function refreshGStreamer() {
   try {
-    const result = await request("/api/rtmp", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
-    });
-    let sourceLabel = "";
-    if (result.status?.source === "native_h264")
-      sourceLabel = "native H.264 stream copy";
-    else if (result.status?.source === "mjpeg_copy")
-      sourceLabel = "MJPEG packet copy";
-    let statusText =
-      "Settings saved; OBS feed: " + (result.status?.state || "stopped") + ".";
-    if (result.status?.active) {
-      statusText = "OBS feed started";
-      if (sourceLabel) statusText += " (" + sourceLabel + ")";
-      statusText += ".";
-    }
-    $("rtmp-status").textContent = statusText;
+    const data = await request("/api/live-status");
+    renderGStreamerStatus(data.g_streamer_status || {});
   } catch (error) {
-    $("rtmp-status").textContent =
-      "Unable to save OBS output settings: " + error.message;
-  } finally {
-    $("save-rtmp").disabled = false;
+    $("g-streamer-status").textContent =
+      "GStreamer RTSP status unavailable: " + error.message;
   }
 }
 // System statistics
@@ -280,7 +241,8 @@ async function refreshStatistics(data = null) {
           )
         : null,
       signal = wifi.signal_dbm,
-      rtmp = d.rtmp_output_status || {};
+      gStreamer = d.g_streamer_status || {};
+    renderGStreamerStatus(gStreamer);
     const bars = !wifi.connected
       ? 0
       : signal === null || signal === undefined
@@ -299,17 +261,17 @@ async function refreshStatistics(data = null) {
     const metrics = [
       ["Camera FPS", fps ? Number(fps).toFixed(1) : "Not reported"],
       [
-        "OBS Feed FPS (RTSP)",
-        rtmp.active &&
-        rtmp.fps !== null &&
-        rtmp.fps !== undefined &&
-        Number.isFinite(Number(rtmp.fps))
-          ? Number(rtmp.fps).toFixed(1)
-          : rtmp.enabled
-            ? rtmp.state === "stalled"
-              ? "No recent output telemetry"
-              : rtmp.state
-            : "Disabled",
+        "GStreamer RTSP FPS",
+        gStreamer.active &&
+        gStreamer.fps !== null &&
+        gStreamer.fps !== undefined &&
+        Number.isFinite(Number(gStreamer.fps))
+          ? Number(gStreamer.fps).toFixed(1)
+          : gStreamer.service_active
+            ? gStreamer.state === "stalled"
+              ? "No recent service heartbeat"
+              : gStreamer.state
+            : "Service unavailable",
       ],
       [
         "MJPEG delivered FPS (forwarded JPEG FPS)",
@@ -350,8 +312,8 @@ async function refreshStatistics(data = null) {
     $("statistics-updated").textContent =
       "Updated " +
       new Date(d.capture_status_updated_at * 1000).toLocaleTimeString() +
-      " · OBS feed: " +
-      (rtmp.enabled ? rtmp.state || "starting" : "disabled") +
+      " · GStreamer RTSP: " +
+      (gStreamer.state || "unknown") +
       "; MJPEG delivery is measured separately.";
   } catch (error) {
     $("statistics-updated").textContent =

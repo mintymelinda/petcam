@@ -10,7 +10,7 @@ def handle_get(handler, services):
         return
     try:
         if services.parse_config(services.CONFIG).get("FORMAT") == "H264":
-            handler.send_error(503, "HTTP Browser Source is disabled while H.264 capture is selected. Use the OBS RTSP Media Source.")
+            handler.send_error(503, "HTTP Browser Source is disabled while H.264 capture is selected. Use the RTSP endpoint.")
             return
     except Exception:
         pass
