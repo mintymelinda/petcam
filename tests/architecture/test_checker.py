@@ -7,7 +7,7 @@ from tools import check_architecture
 
 def violations_for(tmp_path, monkeypatch, modules: dict[str, str]) -> list[str]:
     root = tmp_path
-    package = root / "src" / "petcam"
+    package = root / "src"
     for relative, content in modules.items():
         path = package / relative
         path.parent.mkdir(parents=True, exist_ok=True)
