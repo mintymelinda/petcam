@@ -44,8 +44,13 @@ jobs:
         run: |
           python -m pip install --no-cache-dir --upgrade pip
           python -m pip install --no-cache-dir "Pillow>=10" "pytest>=8"
-      - name: Validate deployment launcher syntax
-        run: bash -n deploy/install.sh
+      - name: Validate deployment shell syntax
+        run: |
+          for script in deploy/install.sh deploy/lib/dependencies.sh tests/deploy/test_dependency_installer.sh; do
+            bash -n "$script"
+          done
+      - name: Test feature dependency discovery
+        run: bash tests/deploy/test_dependency_installer.sh
       - name: Compile source and tests
         run: python -m compileall -q src tests tools
       - name: Enforce architecture boundaries
