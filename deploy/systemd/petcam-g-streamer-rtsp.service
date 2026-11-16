@@ -6,8 +6,7 @@ Wants=network-online.target petcam-rtsp-sampler.service
 
 [Service]
 Type=simple
-Environment=PYTHONPATH=/opt/petcam/current/lib
-ExecStart=/usr/bin/python3 -m petcam.infrastructure.streaming.gstreamer
+ExecStart=/opt/petcam/venv/bin/python -m petcam.infrastructure.streaming.gstreamer
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=0
