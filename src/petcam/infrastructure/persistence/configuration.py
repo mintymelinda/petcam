@@ -126,7 +126,7 @@ def validate_config(values: dict[str, Any], check_hardware: bool = False) -> dic
         if config["USB_PHYSICAL_PATH"]:
             try:
                 result = subprocess.run(
-                    ["/usr/local/bin/petcam-camera", "discover"],
+                    [sys.executable, "-m", "petcam.infrastructure.camera.cli", "discover"],
                     capture_output=True, text=True, timeout=20, check=False,
                 )
                 if result.returncode:
@@ -141,7 +141,7 @@ def validate_config(values: dict[str, Any], check_hardware: bool = False) -> dic
         if config["SOURCE"] in {"auto", "csi"} and (config["CSI_DEVICE_PATH"] or config["CAMERA"] != "auto"):
             try:
                 result = subprocess.run(
-                    ["/usr/local/bin/petcam-camera", "discover-csi"],
+                    [sys.executable, "-m", "petcam.infrastructure.camera.cli", "discover-csi"],
                     capture_output=True, text=True, timeout=20, check=False,
                 )
                 if result.returncode:
