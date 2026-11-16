@@ -364,10 +364,7 @@ def g_streamer_status_snapshot():
     return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, run=subprocess.run, clock=time.time)
 
 def health_monitor_loop():
-    if __package__:
-        from .health_monitor import check_health
-    else:
-        from health_monitor import check_health
+    from ..infrastructure.system.health import check_health
     last_summary = None
     while True:
         started = time.monotonic()
