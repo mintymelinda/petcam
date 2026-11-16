@@ -10,7 +10,7 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
-The pi-gen action is pinned to the first revision with work-directory cache support. Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
+The cache-enabled pi-gen action source is pinned to an immutable upstream commit and packaged with `npm ci` / `npm run package` before execution, because the cache implementation is newer than the published v1.11.0 action bundle. Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
 
 ## Production image signing
 
