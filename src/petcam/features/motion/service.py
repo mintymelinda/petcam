@@ -22,7 +22,7 @@ from ...domain.motion.policy import (
     pixel_delta_threshold,
     validate_config,
 )
-from ..timelapse.service import capture_frame, jpeg_frames, prune_frames
+from ...infrastructure.persistence.frames import capture_frame, jpeg_frames, prune_frames
 
 BASE = Path("/var/lib/petcam/motion")
 CONFIG = BASE / "config.json"
