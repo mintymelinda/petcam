@@ -132,7 +132,6 @@ def main():
             if (mode["fps"] or mode.get("fps_range")) and not mode_supports_fps(mode, fps_value):
                 print(f"Requested {fps_value} FPS is not advertised for {width} {fmt}.", file=sys.stderr)
                 return 2
-        selected_fps = float(fps) if fps != "0" else float(mode_max_fps(mode))
         print(json.dumps({
             "device": device["device"], "resolution": width, "fps": fps,
             "format": ustreamer_format(fmt),
