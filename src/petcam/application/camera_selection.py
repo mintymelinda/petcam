@@ -71,8 +71,6 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
         raise ValueError("Selected camera is no longer available.")
 
     if kind == "usb":
-        if not float(fps).is_integer():
-            raise ValueError("USB camera FPS must be a whole number")
         if not any(
             item["width"] == width
             and item["height"] == height
@@ -95,7 +93,7 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
             "CAMERA": "auto",
             "FORMAT": mode_format,
             "RESOLUTION": f"{width}x{height}",
-            "FPS": str(int(fps)),
+            "FPS": str(int(fps)) if float(fps).is_integer() else str(fps),
         }
 
     if not any(
