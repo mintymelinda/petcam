@@ -10,10 +10,9 @@ import time
 from pathlib import Path
 from typing import Callable
 
-from ...features.motion.service import load_config as load_motion_config
-from ...features.timelapse.service import load_config as load_timelapse_config
-
 WEB_CONFIG = Path("/etc/petcam/web-manager.json")
+MOTION_CONFIG = Path("/var/lib/petcam/motion/config.json")
+TIMELAPSE_CONFIG = Path("/var/lib/petcam/timelapse/config.json")
 POLL_SECONDS = 5
 SERVICES = {
     "web_ui": "petcam-web.service",
@@ -23,16 +22,17 @@ SERVICES = {
 _running = True
 
 
-def _web_enabled(path: Path = WEB_CONFIG) -> bool:
+def _enabled(path: Path) -> bool:
+    """Read only the enable switch; malformed or missing settings fail closed."""
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return False
     except (OSError, ValueError) as error:
-        logging.error("Unable to read web manager feature configuration: %s", error)
+        logging.error("Unable to read feature configuration %s: %s", path, error)
         return False
     if not isinstance(payload, dict) or not isinstance(payload.get("enabled"), bool):
-        logging.error("Web manager feature configuration must contain a boolean enabled value.")
+        logging.error("Feature configuration %s must contain a boolean enabled value.", path)
         return False
     return payload["enabled"]
 
@@ -85,24 +85,21 @@ def reconcile_services(
 def run_loop(
     *,
     web_config: Path = WEB_CONFIG,
+    motion_config: Path = MOTION_CONFIG,
+    timelapse_config: Path = TIMELAPSE_CONFIG,
     capture_status: Path = Path("/run/petcam/rtsp-sampler-status.json"),
-    motion_loader: Callable = load_motion_config,
-    timelapse_loader: Callable = load_timelapse_config,
     run: Callable = subprocess.run,
     sleep: Callable = time.sleep,
 ) -> None:
     """Continuously follow feature settings and camera availability."""
     while _running:
-        try:
-            desired = desired_services(
-                capture_ready=capture_is_ready(capture_status),
-                web_enabled=_web_enabled(web_config),
-                motion=motion_loader(),
-                timelapse=timelapse_loader(),
-            )
-            reconcile_services(desired, run=run)
-        except Exception:
-            logging.exception("Optional feature service reconciliation failed")
+        desired = desired_services(
+            capture_ready=capture_is_ready(capture_status),
+            web_enabled=_enabled(web_config),
+            motion={"enabled": _enabled(motion_config)},
+            timelapse={"enabled": _enabled(timelapse_config)},
+        )
+        reconcile_services(desired, run=run)
         sleep(POLL_SECONDS)
 
 
