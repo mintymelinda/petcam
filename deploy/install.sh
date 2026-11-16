@@ -8,7 +8,7 @@ log() { printf '[petcam-install] %s\n' "$*"; }
 fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
 command -v apt-get >/dev/null || fail "Debian/Raspberry Pi OS with apt is required."
-[[ -f "$REPO_ROOT/src/supervisor.py" ]] || fail "Run this installer from the PetCam source checkout."
+[[ -f "$REPO_ROOT/src/infrastructure/system/supervisor.py" ]] || fail "Run this installer from the PetCam source checkout."
 export DEBIAN_FRONTEND=noninteractive
 apt-get update
 apt-get install -y --no-install-recommends ca-certificates openssl cron python3 python3-pil python3-gi \
@@ -37,11 +37,11 @@ if [[ ! -s "$ETC_ROOT/web-manager.crt" || ! -s "$ETC_ROOT/web-manager.key" ]]; t
   rm -f "$ETC_ROOT/web-manager.key.tmp" "$ETC_ROOT/web-manager.crt.tmp"
 fi
 chmod 0600 "$ETC_ROOT/web-manager.key"
-printf '@reboot root cd %q && PYTHONPATH=%q /usr/bin/python3 -m petcam.supervisor >>/var/log/petcam-supervisor.log 2>&1\n' \
+printf '@reboot root cd %q && PYTHONPATH=%q /usr/bin/python3 -m petcam.infrastructure.system.supervisor >>/var/log/petcam-supervisor.log 2>&1\n' \
   "$REPO_ROOT" "$REPO_ROOT/src" > /etc/cron.d/petcam
 chmod 0644 /etc/cron.d/petcam
 update-rc.d cron defaults || true
 service cron start
 log "Installed source-based PetCam boot entry."
-log "Supervisor command: PYTHONPATH=$REPO_ROOT/src python3 -m petcam.supervisor"
+log "Supervisor command: PYTHONPATH=$REPO_ROOT/src python3 -m petcam.infrastructure.system.supervisor"
 log "Setup portal: https://$(hostname -f 2>/dev/null || hostname):8443/setup"
