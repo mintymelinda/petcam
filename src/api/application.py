@@ -13,9 +13,9 @@ import sys
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import urlparse
 
-from . import management_routes, streaming_routes
+from . import management_routes
 from ..infrastructure.persistence.configuration import apply_config, ensure_config_lock, parse_config
 from ..infrastructure.camera.cli import (
     PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras,
@@ -31,10 +31,8 @@ from ..infrastructure.streaming.gstreamer import check_gstreamer_runtime
 from ..security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
 from ..infrastructure.camera import controls as camera_controls
 from ..application import feature_configuration as feature_services
-from ..infrastructure.streaming import metrics as stream_metrics
 from ..application import camera_configuration, capture_status, service_transactions, diagnostics as application_diagnostics
 from ..infrastructure.system import metrics as system_metrics, processes as process_control
-from ..infrastructure.streaming import proxy as stream_proxy
 from ..infrastructure.streaming import status as g_streamer_status
 
 CONFIG = Path("/etc/petcam/petcam.conf")
@@ -51,7 +49,6 @@ STATIC_ASSETS = {
     "dashboard-api.js": "application/javascript; charset=utf-8",
     "dashboard-camera.js": "application/javascript; charset=utf-8",
     "dashboard-features.js": "application/javascript; charset=utf-8",
-    "browser-source.js": "application/javascript; charset=utf-8",
 }
 
 
@@ -242,40 +239,12 @@ def save_selection(data):
     )
 
 
-def register_stream_client(source):
-    return stream_metrics.register_client(source)
-
-
-def unregister_stream_client(client_id):
-    return stream_metrics.unregister_client(client_id)
-
-
-def record_stream_chunk(client_id, chunk, parser_state):
-    return stream_metrics.record_chunk(client_id, chunk, parser_state)
-
-
-def stream_metrics_snapshot():
-    return stream_metrics.snapshot()
-
-
 def system_resource_metrics():
     return system_metrics.resource_metrics()
 
 
 def installed_version():
     return system_metrics.installed_version(__file__)
-
-def proxy_stream(handler, port):
-    return stream_proxy.proxy(
-        handler,
-        port,
-        parse_config=lambda: parse_config(CONFIG),
-        register_client=register_stream_client,
-        unregister_client=unregister_stream_client,
-        record_chunk=record_stream_chunk,
-        urlopen=urllib.request.urlopen,
-        sleep=time.sleep,
-    )
 
 def _origin_ok(handler):
     origin = urlparse(handler.headers.get("Origin", ""))
@@ -339,20 +308,9 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
-class StreamHandler(BaseHTTPRequestHandler):
-    """Unauthenticated HTTP endpoint reserved for OBS stream clients."""
-
-    def do_GET(self):
-        streaming_routes.handle_get(self, sys.modules[__name__])
-
-    def log_message(self, fmt, *args):
-        pass
-
-
 def diagnostics_snapshot():
     return application_diagnostics.live_snapshot(
         capture_status=live_capture_status(),
-        stream_metrics=stream_metrics_snapshot(),
         network_status=collect_network_performance(),
         system_metrics=system_resource_metrics(),
         rtsp_status=g_streamer_status_snapshot(),
@@ -389,10 +347,8 @@ def main():
     context.load_cert_chain(TLS_CERT, TLS_KEY)
     manager = ThreadingHTTPServer(("0.0.0.0", 8443), Handler)
     manager.socket = context.wrap_socket(manager.socket, server_side=True)
-    stream = ThreadingHTTPServer(("0.0.0.0", 8080), StreamHandler)
     threads = [
         threading.Thread(target=manager.serve_forever, daemon=True),
-        threading.Thread(target=stream.serve_forever, daemon=True),
     ]
     for thread in threads:
         thread.start()
@@ -403,9 +359,7 @@ def main():
         pass
     finally:
         manager.shutdown()
-        stream.shutdown()
         manager.server_close()
-        stream.server_close()
 
 
 if __name__ == "__main__":

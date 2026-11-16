@@ -17,7 +17,6 @@ def handle_get(handler, services):
         try:
             body = services.create_support_bundle(performance={
                 "capture_status": services.live_capture_status(),
-                "stream_metrics": services.stream_metrics_snapshot(),
                 "network_status": services.collect_network_performance(),
                 "captured_at": time.time(),
             })

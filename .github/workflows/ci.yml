@@ -78,8 +78,6 @@ jobs:
               "petcam/static/dashboard-core.js",
               "petcam/static/dashboard-camera.js",
               "petcam/static/dashboard-features.js",
-              "petcam/static/browser-source.html",
-              "petcam/static/browser-source.js",
           }
           missing = required - files
           if missing:

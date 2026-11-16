@@ -9,21 +9,6 @@ function selectedCaptureMode() {
     return null;
   }
 }
-function h264ModeSelectedOrActive() {
-  return (
-    (activeConfig?.SOURCE === "usb" && activeConfig?.FORMAT === "H264") ||
-    captureStatus.active_capture_format === "H264" ||
-    selectedCaptureMode()?.format === "H264"
-  );
-}
-function syncOutputModeControls() {
-  const forced = h264ModeSelectedOrActive();
-  document.querySelectorAll("[data-browser-feed-link]").forEach((link) => {
-    link.closest("p").hidden = forced;
-  });
-  $("h264-mode-note").hidden = !forced;
-}
-
 function projectedPixelRate(mode) {
   return Number(mode.estimated_pixels_per_second || 0);
 }
@@ -59,7 +44,6 @@ function showSelectedModeWarning() {
       mode.format === "H264"
         ? "H.264 selected. The HTTP Browser Source will be disabled and the always-on RTSP service serves H.264 directly."
         : "Selected mode is within the estimated device performance budget.";
-  syncOutputModeControls();
 }
 function activeCameraMatches(camera, config) {
   if (!config) return false;
@@ -154,8 +138,7 @@ async function refreshLiveStatus() {
     refreshStatistics(d);
     captureStatus = d.capture_status || {};
     renderCaptureStatus();
-    syncOutputModeControls();
-    const updated = new Date(d.capture_status_updated_at * 1000);
+      const updated = new Date(d.capture_status_updated_at * 1000);
     $("capture-status-freshness").textContent =
       "Capture status refreshes every 5 seconds · last updated " +
       updated.toLocaleTimeString();
@@ -227,19 +210,10 @@ async function refreshStatistics(data = null) {
   try {
     const d = data || (await request("/api/live-status")),
       capture = d.capture_status || {},
-      stream = d.stream_metrics || {},
       network = d.network_status || {},
-      clients = stream.clients || [],
       system = d.system_metrics || {},
       wifi = network.wifi || {};
     const fps = capture.latest_captured_fps,
-      delivered = clients.length
-        ? Math.max(
-            ...clients.map((client) =>
-              Number(client.average_fps || client.window_fps || 0),
-            ),
-          )
-        : null,
       signal = wifi.signal_dbm,
       gStreamer = d.g_streamer_status || {};
     renderGStreamerStatus(gStreamer);
@@ -272,10 +246,6 @@ async function refreshStatistics(data = null) {
               ? "No recent service heartbeat"
               : gStreamer.state
             : "Service unavailable",
-      ],
-      [
-        "MJPEG delivered FPS (forwarded JPEG FPS)",
-        delivered === null ? "No active viewers" : delivered.toFixed(1),
       ],
       [
         "Wi-Fi signal",
@@ -380,8 +350,7 @@ async function refresh() {
         " camera(s) found. Current saved camera settings are selected.";
       fillModes(preferred);
     }
-    syncOutputModeControls();
-    renderCaptureStatus();
+      renderCaptureStatus();
     await refreshCameraControls();
   } catch (e) {
     $("message").textContent = e.message;
