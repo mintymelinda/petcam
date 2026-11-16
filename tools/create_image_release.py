@@ -5,11 +5,9 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import subprocess
 from pathlib import Path
 
-VERSION_PATTERN = re.compile(r"^[0-9]+\\.[0-9]+\\.[0-9]+$")
 MAX_IMAGE_SIZE = 16 * 1024 * 1024 * 1024
 
 def sha256(path: Path) -> str:
@@ -22,7 +20,8 @@ def sha256(path: Path) -> str:
 def create_signed_image_manifest(image: Path, version: str, image_url: str,
                                   private_key: Path, public_key: Path,
                                   output_dir: Path) -> tuple[Path, Path]:
-    if not VERSION_PATTERN.fullmatch(version):
+    parts = version.split(".")
+    if len(parts) != 3 or any(not part.isascii() or not part.isdigit() for part in parts):
         raise ValueError("Version must use MAJOR.MINOR.PATCH format")
     if not image.is_file() or image.is_symlink():
         raise ValueError(f"Image must be a regular file: {image}")
@@ -48,7 +47,7 @@ def create_signed_image_manifest(image: Path, version: str, image_url: str,
             "architecture": "arm64", "image_url": image_url,
             "image_size": size, "image_sha256": sha256(image),
         }
-        manifest_path.write_text(json.dumps(manifest, sort_keys=True, separators=(",", ":")) + "\\n", encoding="utf-8")
+        manifest_path.write_text(json.dumps(manifest, sort_keys=True, separators=(",", ":")) + chr(10), encoding="utf-8")
         os.chmod(manifest_path, 0o644)
         subprocess.run(["openssl", "pkeyutl", "-sign", "-inkey", str(private_key), "-rawin", "-in", str(manifest_path), "-out", str(signature_path)], check=True, capture_output=True)
         subprocess.run(["openssl", "pkeyutl", "-verify", "-pubin", "-inkey", str(public_key), "-rawin", "-in", str(manifest_path), "-sigfile", str(signature_path)], check=True, capture_output=True)
