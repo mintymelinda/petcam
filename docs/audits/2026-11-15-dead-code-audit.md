@@ -41,7 +41,7 @@ The five sample values are ignored and removed the first time the service loads 
 
 **Recommendation**
 
-Reduce the deployed sample to the supported `enabled` setting and add a regression test that asserts the shipped configuration keys match the runtime schema. If backwards compatibility requires accepting old keys, document that migration behavior separately rather than shipping them as current settings.
+Reduce the deployed sample to the supported `enabled` setting and add a regression test that asserts the shipped configuration keys match the runtime schema. Do not retain obsolete keys solely for migration compatibility.
 
 **Confidence:** High.
 
@@ -76,14 +76,31 @@ These are inert markup remnants and make the dashboard's DOM appear to expose te
 
 **Recommendation**
 
-Remove the three hidden containers after confirming no external browser automation or third-party customization relies on these undocumented IDs.
+Remove the three hidden containers. They have no references in the shipped application code; undocumented external consumers are not a reason to preserve dead internal markup without an explicit supported integration contract.
 
 **Confidence:** Medium-high (static reference scan; external consumers cannot be ruled out).
 
-## Explicit non-findings / preserve
+### 5. [Medium] `camera_profiles.py` is an unused compatibility-only module
 
-- `src/petcam/camera_profiles.py` has no application imports, but its module docstring explicitly says older installed updaters require the path while validating upgrade archives. It is an intentional compatibility marker, not safe dead-code deletion. Reassess only when the old updater compatibility window is formally retired.
-- The camera, capture, stream, worker, and systemd entry points are externally invoked by deployment/service configuration; lack of ordinary Python imports is not evidence that those files are unused.
+**Evidence**
+
+- `src/petcam/camera_profiles.py` has no application imports.
+- Its module docstring identifies its remaining purpose as satisfying older installed updater validation of upgrade archives.
+- No current application feature or runtime entry point depends on this module.
+
+**Impact**
+
+The module exists solely to accommodate a past updater/upgrade path. Keeping it adds compatibility-only surface area and perpetuates obsolete upgrade behavior without providing current application functionality.
+
+**Recommendation**
+
+Remove `src/petcam/camera_profiles.py` and remove any remaining references that exist only to preserve the old updater compatibility path. Do not retain dead code solely for historical upgrade compatibility; current supported application behavior is the source of truth.
+
+**Confidence:** High for absence of current application imports; verify archive-validation references are removed as part of deletion.
+
+## Preserve active external entry points
+
+- Camera, capture, stream, worker, and systemd entry points are externally invoked by deployment/service configuration. Lack of ordinary Python imports is not evidence that those files are unused.
 - No additional function or configuration removal is proposed from name-count heuristics alone. Python worker entry points, dynamically loaded modules, service commands, and browser globals make naive single-reference counts unsafe.
 
 ## Suggested remediation order
@@ -91,8 +108,9 @@ Remove the three hidden containers after confirming no external browser automati
 1. Correct the Pillow runtime dependency contract and add a clean-install import smoke test.
 2. Remove the obsolete RTSP sample keys and assert config-schema parity.
 3. Expand JavaScript formatting, syntax, and wheel-asset coverage to all shipped modules.
-4. Remove the three inert hidden telemetry containers, subject to compatibility review.
+4. Remove the inert hidden telemetry containers.
+5. Remove the obsolete `camera_profiles.py` compatibility module and updater-only references.
 
 ## Audit limitations
 
-This is a static audit of the recorded main revision. It does not establish that optional hardware integrations work on every supported Raspberry Pi image, nor can it detect references in external scripts, user modifications, or undocumented updater tooling. The report deliberately distinguishes confirmed stale configuration from compatibility files and service entry points that must be retained.
+This is a static audit of the recorded main revision. It does not establish that optional hardware integrations work on every supported Raspberry Pi image, nor can it detect references in external scripts or user modifications. Historical updater compatibility is not treated as a reason to preserve dead application code. The report distinguishes current externally invoked service entry points from unused compatibility-only remnants.
