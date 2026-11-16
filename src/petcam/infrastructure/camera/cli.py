@@ -14,7 +14,6 @@ from pathlib import Path
 from ...domain.camera.capabilities import (
     NATIVE_H264_FORMATS,
     NATIVE_JPEG_FORMATS,
-    USTREAMER_FORMATS,
     camera_identity,
     mode_max_fps,
     mode_supports_fps,
