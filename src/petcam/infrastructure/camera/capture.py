@@ -68,13 +68,30 @@ def select_backend(config: dict) -> tuple[str, dict]:
         if not available:
             continue
         if source == "usb":
-            command = "select-h264" if str(config.get("FORMAT", "auto")).upper() == "H264" else "select"
+            requested_format = str(config.get("FORMAT", "auto")).upper()
+            commands = ("select-h264", "select") if requested_format == "AUTO" else (
+                ("select-h264",) if requested_format == "H264" else ("select",)
+            )
+            for command in commands:
+                try:
+                    return source, _run_selection(command, config, source=source)
+                except (RuntimeError, ValueError) as error:
+                    failures.append(str(error))
         else:
-            command = "select-csi"
-        try:
-            return source, _run_selection(command, config, source=source)
-        except (RuntimeError, ValueError) as error:
-            failures.append(str(error))
+            try:
+                selected = _run_selection("select-csi", config, source=source)
+                requested_format = str(config.get("FORMAT", "auto")).upper()
+                if requested_format in ("AUTO", "H264"):
+                    probe = subprocess.run(
+                        [sys.executable, "-m", CAMERA_CLI, "h264-encoder"],
+                        capture_output=True, text=True, timeout=15, check=False,
+                    )
+                    if requested_format == "H264" and probe.returncode:
+                        raise RuntimeError("CSI native H.264 encoding was requested but no hardware encoder is available")
+                    selected["_native_h264"] = probe.returncode == 0
+                return source, selected
+            except (RuntimeError, ValueError) as error:
+                failures.append(str(error))
     if failures:
         raise RuntimeError("; ".join(failures))
     raise RuntimeError("No supported USB or CSI camera is currently available")
@@ -100,7 +117,7 @@ def run_capture(config: dict) -> int:
     source, selected = select_backend(config)
     resolution = str(selected["resolution"])
     fps = str(selected["fps"])
-    native_h264 = (str(config.get("FORMAT", "auto")).upper() == "H264") if source == "csi" else (str(selected.get("format", "")).upper() == "H264")
+    native_h264 = bool(selected.get("_native_h264")) if source == "csi" else (str(selected.get("format", "")).upper() == "H264")
     if source == "usb":
         marker = {
             "pid": os.getpid(), "backend": "usb", "device": selected["device"],
