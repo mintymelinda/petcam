@@ -651,8 +651,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn('id="frame-statistics"', PAGE_AND_JS)
         self.assertNotIn('id="viewer-statistics"', PAGE_AND_JS)
         self.assertNotIn('id="network-statistics"', PAGE_AND_JS)
-        self.assertIn('id="viewer-statistics"', PAGE_AND_JS)
-        self.assertIn('id="network-statistics"', PAGE_AND_JS)
         self.assertIn("refreshStatistics", PAGE_AND_JS)
         self.assertIn("/api/live-status", PAGE_AND_JS)
         self.assertIn("/api/system", PAGE_AND_JS)
