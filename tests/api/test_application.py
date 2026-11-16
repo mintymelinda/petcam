@@ -109,7 +109,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("gStreamer.state", PAGE_AND_JS)
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
-        self.assertIn("RTSP service serves the camera stream directly", PAGE_AND_JS)
+        self.assertIn("RTSP service will attempt to use this hardware mode", PAGE_AND_JS)
         self.assertNotIn("rtmp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
         self.assertNotIn("rtmp-server-url", PAGE_AND_JS)
@@ -493,7 +493,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-url" type="text"', PAGE_AND_JS)
         self.assertNotIn('id="live-preview"', PAGE_AND_JS)
         self.assertNotIn('rtmp-encoder', PAGE_AND_JS)
-        self.assertIn("saved camera settings are selected", PAGE_AND_JS)
+        self.assertIn("Hardware-advertised modes are available for selection", PAGE_AND_JS)
 
     def test_camera_page_displays_measured_capture_rate_separately_from_configured_fps(self):
         self.assertIn("Actual captured rate:", PAGE_AND_JS)
