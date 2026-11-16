@@ -13,10 +13,10 @@ def _mjpeg_required(data, feature, parse_config, config_path):
         )
 
 
-def _consumer_restart_commands(load_rtmp_config, feature):
+def _consumer_restart_commands(load_rtmp_config, feature, systemctl_command):
     commands = [
         (
-            ["/usr/bin/systemctl", "restart", "petcam-stream.service"],
+            systemctl_command("restart", "petcam-stream.service"),
             45,
             f"Unable to restart camera after changing {feature} settings.",
         ),
@@ -24,7 +24,7 @@ def _consumer_restart_commands(load_rtmp_config, feature):
     if load_rtmp_config()["enabled"]:
         commands.append(
             (
-                ["/usr/bin/systemctl", "restart", "petcam-rtmp.service"],
+                systemctl_command("restart", "petcam-rtmp.service"),
                 30,
                 "Unable to restart OBS output after changing MJPEG consumer settings.",
             )
@@ -40,12 +40,13 @@ def update_timelapse(
     load_config,
     save_config,
     load_rtmp_config,
+    systemctl_command,
     apply_transaction,
 ):
     """Apply timelapse settings with dependent-service restart and rollback."""
     _mjpeg_required(data, "timelapse", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands(load_rtmp_config, "timelapse")
+    commands = _consumer_restart_commands(load_rtmp_config, "timelapse", systemctl_command)
     return apply_transaction(
         save_config, current, {**current, **data}, commands, commands,
     )
@@ -64,7 +65,7 @@ def update_motion(
     """Apply motion settings with dependent-service restart and rollback."""
     _mjpeg_required(data, "motion detection", parse_config, config_path)
     current = load_config()
-    commands = _consumer_restart_commands(load_rtmp_config, "motion")
+    commands = _consumer_restart_commands(load_rtmp_config, "motion", systemctl_command)
     return apply_transaction(
         save_config, current, {**current, **data}, commands, commands,
     )
@@ -89,7 +90,8 @@ def update_rtmp_output(
     load_config,
     save_config,
     check_runtime,
-    run,
+    is_service_active,
+    systemctl_command,
     service_command,
     apply_transaction,
     public_config,
@@ -106,17 +108,13 @@ def update_rtmp_output(
             raise RuntimeError(str(error)) from error
 
     current = load_config()
-    was_active = run(
-        ["systemctl", "is-active", "--quiet", "petcam-rtmp.service"],
-        check=False,
-        timeout=5,
-    ).returncode == 0
+    was_active = is_service_active("petcam-rtmp.service")
     candidate = {**current, **data}
     action = _rtmp_action(candidate["enabled"], was_active)
     previous_action = _rtmp_action(current["enabled"], was_active)
     commands = [
         (
-            ["/usr/bin/systemctl", "restart", "petcam-stream.service"],
+            systemctl_command("restart", "petcam-stream.service"),
             45,
             "Unable to restart the camera with the saved OBS output settings.",
         ),
