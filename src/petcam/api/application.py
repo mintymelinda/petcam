@@ -40,6 +40,7 @@ TLS_CERT = Path("/etc/petcam/web-manager.crt")
 TLS_KEY = Path("/etc/petcam/web-manager.key")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
 G_STREAMER_STATUS_FILE = Path("/run/petcam/g-streamer-status.json")
+SUPERVISOR_STATUS_FILE = Path("/run/petcam/supervisor-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -184,12 +185,10 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
     )
 
 def restart_g_streamer_service():
-    result = process_control.run_command(
-        process_control.systemctl_command("restart", "petcam-g-streamer-rtsp.service"),
-        capture_output=True, text=True, timeout=30, check=False,
-    )
-    if result.returncode:
-        raise RuntimeError(result.stderr.strip() or "Unable to restart the GStreamer RTSP service.")
+    try:
+        process_control.restart_worker("gstreamer-rtsp")
+    except process_control.SupervisorUnavailable as error:
+        raise RuntimeError(str(error)) from error
 
 
 def update_timelapse(data):
@@ -199,7 +198,7 @@ def update_timelapse(data):
         config_path=CONFIG,
         load_config=load_timelapse_config,
         save_config=save_timelapse_config,
-        systemctl_command=process_control.systemctl_command,
+        supervisor_command=process_control.supervisor_command,
         apply_transaction=apply_service_config_transaction,
     )
 
@@ -211,7 +210,7 @@ def update_motion(data):
         config_path=CONFIG,
         load_config=load_motion_config,
         save_config=save_motion_config,
-        systemctl_command=process_control.systemctl_command,
+        supervisor_command=process_control.supervisor_command,
         apply_transaction=apply_service_config_transaction,
     )
 
@@ -319,7 +318,7 @@ def diagnostics_snapshot():
 
 
 def g_streamer_status_snapshot():
-    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, run=subprocess.run, clock=time.time)
+    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, supervisor_file=SUPERVISOR_STATUS_FILE, clock=time.time)
 
 def health_monitor_loop():
     from ..infrastructure.system.health import check_health

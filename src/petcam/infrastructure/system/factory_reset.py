@@ -58,13 +58,7 @@ MOTION_DEFAULTS = {
     "retention_days": 14, "max_storage_mb": 512, "min_free_mb": 256,
     "max_events": 100,
 }
-SERVICES = (
-    "petcam-g-streamer-rtsp.service", "petcam-rtsp-sampler.service",
-    "petcam-setup.service", "petcam-feature-services.service",
-    "petcam-motion.service", "petcam-timelapse.service",
-    "petcam-home-assistant.service", "petcam-light-sensor.service",
-    "petcam-web.service",
-)
+
 
 
 def run(*command):
@@ -82,12 +76,8 @@ def reset():
     if os.geteuid() != 0:
         raise PermissionError("Factory reset must run as root.")
 
-    # Stop all managed PetCam services before clearing configuration and data.
-    for service in SERVICES:
-        subprocess.run(
-            process_control.systemctl_command("stop", service),
-            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+    # Stop managed children before replacing runtime state.
+    process_control.request("stop_all")
 
     # Preserve the OS, networking, SSH, device identity, TLS certificate/key,
     # and installed application releases.
@@ -112,11 +102,9 @@ def reset():
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
 
     (STATE / "health.json").unlink(missing_ok=True)
-    run(*process_control.systemctl_command("daemon-reload"))
-    for service in ("petcam-g-streamer-rtsp.service", "petcam-rtsp-sampler.service",
-                    "petcam-setup.service", "petcam-feature-services.service",
-                    "petcam-home-assistant.service", "petcam-light-sensor.service"):
-        run(*process_control.systemctl_command("start", service))
+    # Re-read persisted feature settings and start the enabled workers.
+    process_control.request("reconcile")
+
 
 
 def main():

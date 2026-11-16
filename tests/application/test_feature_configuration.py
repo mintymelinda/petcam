@@ -16,13 +16,13 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
             config_path="/etc/petcam/petcam.conf",
             load_config=lambda: current,
             save_config=lambda value: value,
-            systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
+            supervisor_command=lambda *args: ["@supervisor", *args],
             apply_transaction=transaction,
         )
         commands = transaction.call_args.args[3]
         self.assertEqual([item[0] for item in commands], [
-            ["/usr/bin/systemctl", "restart", "petcam-stream.service"],
-            ["/usr/bin/systemctl", "restart", "petcam-g-streamer-rtsp.service"],
+            ["@supervisor", "restart", "camera-capture"],
+            ["@supervisor", "restart", "gstreamer-rtsp"],
         ])
 
     def test_motion_update_rejects_mjpeg_only_feature_on_h264(self):
@@ -32,7 +32,7 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
                 {"enabled": True}, parse_config=lambda path: {"FORMAT": "H264"},
                 config_path="/etc/petcam/petcam.conf", load_config=mock.Mock(),
                 save_config=mock.Mock(),
-                systemctl_command=lambda *args: ["/usr/bin/systemctl", *args],
+                supervisor_command=lambda *args: ["@supervisor", *args],
                 apply_transaction=transaction,
             )
         transaction.assert_not_called()

@@ -37,21 +37,14 @@ class HealthMonitorTests(unittest.TestCase):
         self.config_guard_patch.stop()
         self.directory.cleanup()
 
-    def test_gstreamer_restart_uses_shared_system_service_adapter(self):
-        completed = mock.Mock(returncode=0, stderr="")
-        with mock.patch.object(MODULE.process_control, "run_systemctl", return_value=completed) as run:
-            self.assertEqual(
-                MODULE.restart_service("petcam-g-streamer-rtsp.service"), (True, "")
-            )
-        run.assert_called_once_with(
-            "restart", "petcam-g-streamer-rtsp.service",
-            runner=MODULE.subprocess.run, sudo=True,
-            capture_output=True, text=True, timeout=30, check=False,
-        )
+    def test_gstreamer_restart_uses_supervisor_worker_control(self):
+        with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
+            self.assertEqual(MODULE.restart_service("gstreamer-rtsp"), (True, ""))
+        restart.assert_called_once_with("gstreamer-rtsp")
 
     def test_restart_service_rejects_unknown_service_names(self):
         with mock.patch.object(MODULE.subprocess, "run") as run:
-            succeeded, error = MODULE.restart_service("arbitrary.service")
+            succeeded, error = MODULE.restart_service("unknown-worker")
         self.assertFalse(succeeded)
         self.assertIn("unsupported", error.lower())
         run.assert_not_called()
@@ -94,8 +87,8 @@ class HealthMonitorTests(unittest.TestCase):
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
         self.assertFalse(report["rtsp_output_ready"])
-        self.assertEqual(report["recovery_target"], "petcam-g-streamer-rtsp.service")
-        restart.assert_called_once_with("petcam-g-streamer-rtsp.service")
+        self.assertEqual(report["recovery_target"], "gstreamer-rtsp")
+        restart.assert_called_once_with("gstreamer-rtsp")
 
     def test_native_h264_health_uses_rtsp_not_mjpeg_probes(self):
         with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}), \
@@ -121,8 +114,8 @@ class HealthMonitorTests(unittest.TestCase):
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "petcam-g-streamer-rtsp.service")
-        restart.assert_called_once_with("petcam-g-streamer-rtsp.service")
+        self.assertEqual(report["recovery_target"], "gstreamer-rtsp")
+        restart.assert_called_once_with("gstreamer-rtsp")
 
     def test_health_recovery_pauses_during_config_transaction(self):
         with mock.patch.object(MODULE, "config_transaction_guard", return_value=contextlib.nullcontext(False)), \
@@ -133,7 +126,7 @@ class HealthMonitorTests(unittest.TestCase):
         snapshot.assert_not_called()
         restart.assert_not_called()
 
-    def test_unknown_systemd_state_does_not_trigger_recovery(self):
+    def test_unknown_supervisor_state_does_not_trigger_recovery(self):
         with mock.patch.object(MODULE, "service_snapshot", return_value={"state": "unknown", "active_age": None}), \
                 mock.patch.object(MODULE, "restart_service") as restart:
             report = MODULE.check_health(now=1000)
@@ -160,7 +153,7 @@ class HealthMonitorTests(unittest.TestCase):
 
     def test_dead_capture_process_is_distinguished_from_stalled_stream(self):
         def snapshot(service):
-            if service == "petcam-stream.service":
+            if service == "camera-capture":
                 return {"state": "inactive", "active_age": None}
             return self.active
         with mock.patch.object(MODULE, "service_snapshot", side_effect=snapshot), \
@@ -171,7 +164,7 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertEqual(report["state"], "recovering")
         self.assertEqual(report["reason"], "Capture service is not active.")
         probe.assert_not_called()
-        restart.assert_called_once_with("petcam-stream.service")
+        restart.assert_called_once_with("camera-capture")
 
     def test_live_but_stalled_backend_is_restarted(self):
         with mock.patch.object(MODULE, "probe_stream", return_value=False), \
@@ -179,9 +172,9 @@ class HealthMonitorTests(unittest.TestCase):
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "petcam-stream.service")
+        self.assertEqual(report["recovery_target"], "camera-capture")
         self.assertEqual(report["recovery_count"], 1)
-        restart.assert_called_once_with("petcam-stream.service")
+        restart.assert_called_once_with("camera-capture")
 
     def test_recovered_backend_and_public_stream_return_to_healthy(self):
         with mock.patch.object(MODULE, "probe_stream", side_effect=[False, True, True]), \
@@ -199,8 +192,8 @@ class HealthMonitorTests(unittest.TestCase):
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "petcam-web.service")
-        restart.assert_called_once_with("petcam-web.service")
+        self.assertEqual(report["recovery_target"], "web-ui")
+        restart.assert_called_once_with("web-ui")
 
     def test_camera_discovery_failure_does_not_trigger_restart(self):
         with mock.patch.object(MODULE, "probe_stream", return_value=False), \

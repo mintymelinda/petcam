@@ -146,28 +146,25 @@ def main():
             "performance_warning": warning,
         }))
         return 0
-    # Runtime snapshot: captured FPS is taken from uStreamer performance logs.
+    # Runtime state is read from PetCam's own process inventory and camera marker.
     try:
-        status = subprocess.run(
-            ["systemctl", "is-active", "petcam-stream.service"],
-            capture_output=True, text=True, check=False,
-        ).stdout.strip()
-    except OSError:
+        supervisor = json.loads(Path("/run/petcam/supervisor-status.json").read_text(encoding="utf-8"))
+        managed = supervisor.get("workers", {})
+        status = "active" if managed.get("camera-capture", {}).get("running") else "inactive"
+    except (OSError, ValueError, TypeError):
         status = "unknown"
     try:
-        log = subprocess.run(
-            ["/usr/bin/journalctl", "-u", "petcam-stream.service", "-n", "300", "--no-pager"],
-            capture_output=True, text=True, check=False,
-        ).stdout
-    except OSError:
-        log = ""
-    fps_values = re.findall(r"captured_fps=(\d+)", log)
-    resolutions = re.findall(r"Using resolution: (\d+x\d+)", log)
-    formats = re.findall(r"Using format: ([A-Za-z0-9_-]+)", log)
-    devices_in_log = re.findall(r"Using V4L2 device: (\S+)", log)
-    start_config = re.findall(r"Starting USB camera (\S+) at (\d+x\d+), format=([^,]+)", log)
-    csi_start = re.findall(r"Starting CSI camera index=(\d+) at (\d+x\d+), requested_fps=([\d.]+)", log)
-    backend_values = re.findall(r"PetCam backend: (usb|csi)", log)
+        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError, TypeError):
+        marker = {}
+    log = ""
+    fps_values = [str(marker["fps"])] if marker.get("fps") else []
+    resolutions = [marker["resolution"]] if marker.get("resolution") else []
+    formats = [marker["format"]] if marker.get("format") else []
+    devices_in_log = [marker["device"]] if marker.get("device") else []
+    start_config = [(marker.get("device", ""), marker.get("resolution", ""), marker.get("format", ""))] if marker.get("backend") == "usb" else []
+    csi_start = [(str(marker.get("camera", "")), marker.get("resolution", ""), str(marker.get("fps", "")))] if marker.get("backend") == "csi" else []
+    backend_values = [marker["backend"]] if marker.get("backend") else []
     try:
         port = int(parse_config()["PORT"])
     except Exception:

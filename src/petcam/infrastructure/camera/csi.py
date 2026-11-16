@@ -7,6 +7,7 @@ import os
 import signal
 import socket
 import subprocess
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -190,7 +191,7 @@ class H264TCPBridge:
 def run_hardware_h264(args, width, height):
     """Run rpicam-vid only after the V4L2 hardware encoder has been positively identified."""
     probe = subprocess.run(
-        ["/usr/local/bin/petcam-camera", "h264-encoder"],
+        [sys.executable, "-m", "petcam.infrastructure.camera.cli", "h264-encoder"],
         capture_output=True, text=True, check=False, timeout=8,
     )
     try:

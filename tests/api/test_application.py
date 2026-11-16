@@ -10,7 +10,7 @@ from petcam.api import auth_routes, management_routes
 
 DASHBOARD_SCRIPTS = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
 DASHBOARD_JS = "\\n".join(
-    Path("src/static", name).read_text(encoding="utf-8")
+    Path("src/petcam/static", name).read_text(encoding="utf-8")
     for name in DASHBOARD_SCRIPTS
 )
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
@@ -23,12 +23,12 @@ class WebManagerTests(unittest.TestCase):
         saved = []
         save = lambda value: saved.append(dict(value)) or dict(value)
         commands = [
-            (["systemctl", "restart", "petcam-stream.service"], 45, "capture restart failed"),
-            (["systemctl", "restart", "petcam-g-streamer-rtsp.service"], 30, "publisher restart failed"),
+            (["@supervisor", "restart", "camera-capture"], 45, "capture restart failed"),
+            (["@supervisor", "restart", "gstreamer-rtsp"], 30, "publisher restart failed"),
         ]
         rollback_commands = [
-            (["systemctl", "restart", "petcam-stream.service"], 45, "capture rollback failed"),
-            (["systemctl", "restart", "petcam-g-streamer-rtsp.service"], 30, "publisher rollback failed"),
+            (["@supervisor", "restart", "camera-capture"], 45, "capture rollback failed"),
+            (["@supervisor", "restart", "gstreamer-rtsp"], 30, "publisher rollback failed"),
         ]
         results = [
             mock.Mock(returncode=0, stderr=""),
@@ -36,7 +36,7 @@ class WebManagerTests(unittest.TestCase):
             mock.Mock(returncode=0, stderr=""),
             mock.Mock(returncode=0, stderr=""),
         ]
-        with mock.patch.object(MODULE.subprocess, "run", side_effect=results) as run:
+        with mock.patch.object(MODULE.process_control, "run_command", side_effect=results) as run:
             with self.assertRaisesRegex(RuntimeError, "publisher failed"):
                 MODULE.apply_service_config_transaction(
                     save, previous, candidate, commands, rollback_commands,
@@ -110,7 +110,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/application/camera_inventory.py").read_text())
+        self.assertIn('{"H264"}', Path("src/petcam/application/camera_inventory.py").read_text())
         self.assertIn("RTSP service serves the camera stream directly", PAGE_AND_JS)
         self.assertNotIn("rtmp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
@@ -171,7 +171,7 @@ class WebManagerTests(unittest.TestCase):
                 MODULE.Handler.do_GET(request)
                 self.assertEqual(request.status, 200)
                 self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
-                expected = Path("src/static", name).read_text(encoding="utf-8")
+                expected = Path("src/petcam/static", name).read_text(encoding="utf-8")
                 self.assertEqual(request.wfile.getvalue().decode(), expected)
 
         self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
@@ -182,13 +182,13 @@ class WebManagerTests(unittest.TestCase):
         source = Path(MODULE.__file__).read_text(encoding="utf-8")
         self.assertNotIn("streaming_routes", source)
         self.assertNotIn("browser-source", MODULE.STATIC_ASSETS)
-        dashboard = Path("src/static/dashboard.html").read_text(encoding="utf-8")
+        dashboard = Path("src/petcam/static/dashboard.html").read_text(encoding="utf-8")
         self.assertNotIn("data-browser-feed-link", dashboard)
         self.assertIn("g-streamer-url", dashboard)
 
 
-    def test_g_streamer_status_treats_systemd_timeout_as_stopped(self):
-        with mock.patch.object(MODULE.subprocess, "run", side_effect=MODULE.subprocess.TimeoutExpired("systemctl", 1)):
+    def test_g_streamer_status_without_supervisor_snapshot_is_stopped(self):
+        with mock.patch.object(MODULE, "SUPERVISOR_STATUS_FILE", Path("/missing/supervisor.json")):
             status = MODULE.g_streamer_status_snapshot()
         self.assertFalse(status["active"])
         self.assertFalse(status["service_active"])
@@ -200,8 +200,10 @@ class WebManagerTests(unittest.TestCase):
             status_file.write_text(json.dumps({
                 "state": "publishing", "active": True, "fps": 29.8, "updated_at": MODULE.time.time()
             }))
+            supervisor_file = Path(directory) / "supervisor-status.json"
+            supervisor_file.write_text(json.dumps({"workers": {"gstreamer-rtsp": {"running": True}}}))
             with mock.patch.object(MODULE, "G_STREAMER_STATUS_FILE", status_file), \
-                    mock.patch.object(MODULE.subprocess, "run", return_value=mock.Mock(returncode=0)):
+                    mock.patch.object(MODULE, "SUPERVISOR_STATUS_FILE", supervisor_file):
                 status = MODULE.g_streamer_status_snapshot()
         self.assertTrue(status["active"])
         self.assertTrue(status["service_active"])
@@ -286,13 +288,10 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(request.response[0], 409)
         initialize.assert_not_called()
 
-    def test_g_streamer_service_restart_uses_system_process_adapter(self):
-        completed = mock.Mock(returncode=0, stderr="")
-        with mock.patch.object(MODULE.process_control, "run_command", return_value=completed) as run:
+    def test_g_streamer_service_restart_uses_supervisor_worker_control(self):
+        with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
             MODULE.restart_g_streamer_service()
-        self.assertEqual(run.call_args.args[0], [
-            "/usr/bin/systemctl", "restart", "petcam-g-streamer-rtsp.service",
-        ])
+        restart.assert_called_once_with("gstreamer-rtsp")
 
     def test_api_application_has_no_sudo_privilege_handoffs(self):
         source = Path(MODULE.__file__).read_text(encoding="utf-8")

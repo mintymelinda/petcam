@@ -13,7 +13,7 @@ from unittest import mock
 from petcam.security import sessions as web_auth
 from petcam.api import application as MANAGER
 
-LIB = Path("src")
+LIB = Path("src/petcam")
 
 
 class WebManagerRouteAuthenticationTests(unittest.TestCase):

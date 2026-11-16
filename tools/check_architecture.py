@@ -7,7 +7,7 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGE = ROOT / "src"
+PACKAGE = ROOT / "src" / "petcam"
 
 POLICY_MODULES = {
     "domain/camera/capabilities.py",
