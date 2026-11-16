@@ -91,14 +91,7 @@ def handle_get(handler, services):
             handler.send_json(503, {"error": str(error)})
         return
     if path == "/api/live-status":
-        handler.send_json(200, {
-            "capture_status": services.live_capture_status(),
-            "capture_status_updated_at": time.time(),
-            "stream_metrics": services.stream_metrics_snapshot(),
-            "network_status": services.collect_network_performance(),
-            "system_metrics": services.system_resource_metrics(),
-            "g_streamer_status": services.g_streamer_status_snapshot(),
-        })
+        handler.send_json(200, services.diagnostics_snapshot())
         return
     if path == "/api/system":
         handler.send_json(200, {"services.installed_version": services.installed_version()})

@@ -30,7 +30,7 @@ def live_status(config_path, parse_config, urlopen=urllib.request.urlopen, kill=
                 "hardware_encoder": marker.get("encoder"),
             }
             try:
-                status = json.loads(path_factory("/run/petcam/rtmp-status.json").read_text(encoding="utf-8"))
+                status = json.loads(path_factory("/run/petcam/g-streamer-status.json").read_text(encoding="utf-8"))
                 if status.get("source") in ("native_h264", "native_h264_csi"):
                     result["latest_captured_fps"] = status.get("fps")
                     result["rtsp_output_ready"] = status.get("active") is True and status.get("state") == "publishing"

@@ -1,17 +1,10 @@
 """Application service for validating and applying camera selections."""
 
-try:
-    from ..domain.camera.capture_policy import (
-        validate_capture_feature_compatibility,
-        validate_performance_budget,
-    )
-    from ..camera_selection import resolve_camera_selection
-except ImportError:  # Support the installed standalone web-manager entry point.
-    from domain.camera.capture_policy import (
-        validate_capture_feature_compatibility,
-        validate_performance_budget,
-    )
-    from camera_selection import resolve_camera_selection
+from ..domain.camera.capture_policy import (
+    validate_capture_feature_compatibility,
+    validate_performance_budget,
+)
+from .camera_selection import resolve_camera_selection
 
 
 def save_selection(

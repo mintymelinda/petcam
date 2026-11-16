@@ -18,10 +18,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-try:
-    from ...config import parse_config
-except ImportError:  # Support the installed standalone web-manager entry point.
-    from config import parse_config
+from ..persistence.configuration import parse_config
 
 CONFIG_FILE = Path("/etc/petcam/petcam.conf")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
