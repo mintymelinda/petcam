@@ -1,0 +1,44 @@
+from pathlib import Path
+import unittest
+
+ROOT = Path(__file__).resolve().parents[2]
+IMAGE = ROOT / "deploy/image"
+STAGE = IMAGE / "stages/stage-petcam"
+
+
+class RaspberryPiImageBuildTests(unittest.TestCase):
+    def test_compose_uses_native_arm64_docker_assembly(self):
+        compose = (IMAGE / "compose.yaml").read_text(encoding="utf-8")
+        dockerfile = (IMAGE / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("platform: linux/arm64", compose)
+        self.assertIn("deploy/image/Dockerfile", compose)
+        self.assertIn("FROM debian:trixie-slim", dockerfile)
+        self.assertIn("assemble-petcam", dockerfile)
+
+    def test_pi_gen_stage_installs_existing_source_runtime(self):
+        run = (STAGE / "01-petcam/00-run.sh").read_text(encoding="utf-8")
+        chroot = (STAGE / "01-petcam/00-run-chroot.sh").read_text(encoding="utf-8")
+        self.assertIn("ROOTFS_DIR/opt/petcam", run)
+        self.assertIn("bash deploy/install.sh", chroot)
+        self.assertIn("PETCAM_SKIP_DEPENDENCIES=1", chroot)
+        self.assertIn("PETCAM_SKIP_SERVICE_START=1", chroot)
+        self.assertIn("PETCAM_DEFER_TLS=1", chroot)
+
+    def test_python_pip_manifest_is_explicitly_empty(self):
+        manifest = (ROOT / "deploy/python/requirements.txt").read_text(encoding="utf-8")
+        self.assertFalse(any(line.strip() and not line.lstrip().startswith("#") for line in manifest.splitlines()))
+
+    def test_image_workflow_uses_required_runner_and_disables_pigen_cache(self):
+        workflow = (ROOT / ".github/workflows/image-build.yml").read_text(encoding="utf-8")
+        self.assertIn("runs-on: ubuntu-24.04-arm", workflow)
+        self.assertIn("uses: usimd/pi-gen-action@v1.11.0", workflow)
+        self.assertIn("enable-pigen-cache: false", workflow)
+        self.assertIn("release: trixie", workflow)
+        self.assertIn("stage0 stage1 stage2 ./deploy/image/stages/stage-petcam", workflow)
+
+    def test_first_boot_wrapper_owns_device_specific_tls_initialization(self):
+        start = (ROOT / "deploy/start.sh").read_text(encoding="utf-8")
+        installer = (ROOT / "deploy/install.sh").read_text(encoding="utf-8")
+        self.assertIn("Generating the device HTTPS certificate", start)
+        self.assertIn("deploy/start.sh", installer)
+        self.assertIn("PETCAM_DEFER_TLS", installer)

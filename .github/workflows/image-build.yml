@@ -1,0 +1,86 @@
+name: Raspberry Pi Image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: raspberry-pi-image-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+
+      - name: Validate deployment scripts and manifests
+        run: |
+          for script in \
+            deploy/install.sh \
+            deploy/start.sh \
+            deploy/lib/dependencies.sh \
+            deploy/image/assemble.sh \
+            deploy/image/stages/stage-petcam/prerun.sh \
+            deploy/image/stages/stage-petcam/01-petcam/00-run.sh \
+            deploy/image/stages/stage-petcam/01-petcam/00-run-chroot.sh \
+            tests/deploy/test_dependency_installer.sh; do
+            bash -n "$script"
+          done
+          bash tests/deploy/test_dependency_installer.sh
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build
+
+      - name: Validate Docker Compose configuration
+        run: docker compose -f deploy/image/compose.yaml config --quiet
+
+      - name: Assemble PetCam runtime with Docker Compose
+        run: |
+          mkdir -p deploy/image/dist
+          docker compose -f deploy/image/compose.yaml run --build --rm assemble
+
+      - name: Prepare pi-gen custom stage
+        run: |
+          source deploy/lib/dependencies.sh
+          collect_feature_packages deploy/features \
+            > deploy/image/stages/stage-petcam/01-petcam/01-packages
+          mkdir -p deploy/image/stages/stage-petcam/01-petcam/files
+          install -m 0644 deploy/image/dist/petcam-runtime.tar.gz \
+            deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
+          test -s deploy/image/stages/stage-petcam/01-petcam/01-packages
+          test -s deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
+
+      - name: Build Raspberry Pi OS image
+        id: image
+        uses: usimd/pi-gen-action@v1.11.0
+        with:
+          image-name: petcam
+          release: trixie
+          pi-gen-version: arm64
+          stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
+          export-last-stage-only: true
+          compression: xz
+          enable-pigen-cache: false
+          enable-ssh: 0
+
+      - name: Validate generated image
+        env:
+          IMAGE_PATH: ${{ steps.image.outputs.image-path }}
+        run: |
+          test -n "$IMAGE_PATH"
+          test -s "$IMAGE_PATH"
+          xz -t "$IMAGE_PATH"
+
+      - name: Upload image validation artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: petcam-image-${{ github.sha }}
+          path: ${{ steps.image.outputs.image-path }}
+          if-no-files-found: error
+          retention-days: 7

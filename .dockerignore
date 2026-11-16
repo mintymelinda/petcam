@@ -1,0 +1,7 @@
+.git
+**/__pycache__
+.pytest_cache
+tests
+tools
+deploy/image/dist
+deploy/image/stages/stage-petcam/01-petcam/files
