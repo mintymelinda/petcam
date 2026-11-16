@@ -126,7 +126,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("signal >= -50", PAGE_AND_JS)
         self.assertIn("signal >= -75", PAGE_AND_JS)
         self.assertIn('"▮".repeat(bars) + "▯".repeat(4 - bars)', PAGE_AND_JS)
-        self.assertIn('Network and OBS diagnostics', PAGE_AND_JS)
+        self.assertIn("Network diagnostics", PAGE_AND_JS)
         self.assertIn('/api/diagnostics', PAGE_AND_JS)
         self.assertIn('/api/support-bundle', PAGE_AND_JS)
         self.assertNotIn('/api/streams', PAGE_AND_JS)
