@@ -28,21 +28,21 @@ def request(action: str, worker: str | None = None, *, timeout: float = 5) -> di
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
             connection.settimeout(timeout)
             connection.connect(str(SOCKET_PATH))
-            connection.sendall(json.dumps(payload).encode("utf-8") + b"\\n")
+            connection.sendall(json.dumps(payload).encode("utf-8") + b"\n")
             response = bytearray()
             while len(response) <= MAX_RESPONSE_BYTES:
                 chunk = connection.recv(4096)
                 if not chunk:
                     break
                 response.extend(chunk)
-                if b"\\n" in response:
+                if b"\n" in response:
                     break
     except OSError as error:
         raise SupervisorUnavailable(f"PetCam supervisor is unavailable: {error}") from error
     if not response or len(response) > MAX_RESPONSE_BYTES:
         raise SupervisorUnavailable("PetCam supervisor returned an empty or oversized response")
     try:
-        result = json.loads(bytes(response).split(b"\\n", 1)[0])
+        result = json.loads(bytes(response).split(b"\n", 1)[0])
     except (ValueError, TypeError) as error:
         raise SupervisorUnavailable("PetCam supervisor returned invalid JSON") from error
     if not isinstance(result, dict) or result.get("ok") is not True:

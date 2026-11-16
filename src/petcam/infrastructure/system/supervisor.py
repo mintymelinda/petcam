@@ -10,6 +10,8 @@ import json
 import logging
 import os
 import signal
+import socketserver
+import threading
 import subprocess
 import sys
 import time
@@ -99,12 +101,19 @@ def workers() -> list[Worker]:
     ]
 
 
+class ControlServer(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
+    daemon_threads = True
+    allow_reuse_address = True
+
+
 class Supervisor:
     def __init__(self, entries: list[Worker] | None = None, *, clock=time.monotonic):
         self.entries = entries if entries is not None else workers()
         self.clock = clock
         self.stopping = False
         self.started_at = clock()
+        self.control_server = None
+        self.control_thread = None
 
     def start(self, worker: Worker) -> None:
         if self.clock() < worker.next_start:
@@ -177,16 +186,82 @@ class Supervisor:
         temporary.write_text(json.dumps(self.snapshot(), indent=2) + "\n", encoding="utf-8")
         temporary.replace(destination)
 
+    def handle_control(self, request: dict) -> dict:
+        action = request.get("action")
+        worker_name = request.get("worker")
+        allowed = {worker.name: worker for worker in self.entries}
+        if action == "status":
+            return {"ok": True, "snapshot": self.snapshot()}
+        if action in ("restart", "stop"):
+            worker = allowed.get(worker_name)
+            if worker is None:
+                return {"ok": False, "error": "Unknown worker"}
+            self.stop(worker)
+            worker.next_start = 0
+            if action == "restart":
+                worker.failures = 0
+                self.start(worker)
+            self.publish()
+            return {"ok": True, "worker": worker_name}
+        if action == "stop_all":
+            for worker in reversed(self.entries):
+                self.stop(worker)
+            self.publish()
+            return {"ok": True}
+        if action == "reconcile":
+            self.tick()
+            self.publish()
+            return {"ok": True}
+        return {"ok": False, "error": "Unsupported supervisor action"}
+
+    def start_control_server(self) -> None:
+        RUN.mkdir(parents=True, exist_ok=True)
+        socket_path = RUN / "supervisor.sock"
+        socket_path.unlink(missing_ok=True)
+        supervisor = self
+
+        class Handler(socketserver.StreamRequestHandler):
+            def handle(self):
+                raw = self.rfile.readline(4097)
+                if len(raw) > 4096 or not raw.endswith(b"\n"):
+                    result = {"ok": False, "error": "Invalid request size"}
+                else:
+                    try:
+                        payload = json.loads(raw)
+                        if not isinstance(payload, dict):
+                            raise ValueError("Request must be an object")
+                        result = supervisor.handle_control(payload)
+                    except (ValueError, TypeError) as error:
+                        result = {"ok": False, "error": str(error)}
+                self.wfile.write(json.dumps(result).encode("utf-8") + b"\n")
+
+        self.control_server = ControlServer(str(socket_path), Handler)
+        os.chmod(socket_path, 0o660)
+        self.control_thread = threading.Thread(
+            target=self.control_server.serve_forever, name="supervisor-control", daemon=True
+        )
+        self.control_thread.start()
+
+    def stop_control_server(self) -> None:
+        if self.control_server is not None:
+            self.control_server.shutdown()
+            self.control_server.server_close()
+            (RUN / "supervisor.sock").unlink(missing_ok=True)
+            if self.control_thread is not None:
+                self.control_thread.join(timeout=2)
+
     def run(self) -> int:
         logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
         signal.signal(signal.SIGTERM, self.request_stop)
         signal.signal(signal.SIGINT, self.request_stop)
+        self.start_control_server()
         try:
             while not self.stopping:
                 self.tick()
                 self.publish()
                 time.sleep(POLL_SECONDS)
         finally:
+            self.stop_control_server()
             for worker in reversed(self.entries):
                 self.stop(worker)
             self.publish()
