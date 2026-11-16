@@ -10,7 +10,7 @@ from petcam.api import auth_routes, management_routes
 
 DASHBOARD_SCRIPTS = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
 DASHBOARD_JS = "\\n".join(
-    Path("src/petcam/static", name).read_text(encoding="utf-8")
+    Path("src/static", name).read_text(encoding="utf-8")
     for name in DASHBOARD_SCRIPTS
 )
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
@@ -110,7 +110,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/petcam/application/camera_inventory.py").read_text())
+        self.assertIn('{"H264"}', Path("src/application/camera_inventory.py").read_text())
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("always-on RTSP service serves H.264 directly", PAGE_AND_JS)
@@ -153,8 +153,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["capture_mode"], "native_h264_csi")
 
     def test_browser_source_shows_camera_connection_status_and_retries(self):
-        page = Path("src/petcam/static/browser-source.html").read_text(encoding="utf-8")
-        script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
+        page = Path("src/static/browser-source.html").read_text(encoding="utf-8")
+        script = Path("src/static/browser-source.js").read_text(encoding="utf-8")
         self.assertIn('id="status">Connecting to PetCam camera...', page)
         self.assertIn('<script src="/browser-source.js" defer></script>', page)
         self.assertIn('image.addEventListener("load", handleStreamLoad)', script)
@@ -184,13 +184,13 @@ class WebManagerTests(unittest.TestCase):
                 MODULE.Handler.do_GET(request)
                 self.assertEqual(request.status, 200)
                 self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
-                expected = Path("src/petcam/static", name).read_text(encoding="utf-8")
+                expected = Path("src/static", name).read_text(encoding="utf-8")
                 self.assertEqual(request.wfile.getvalue().decode(), expected)
 
         self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
 
     def test_browser_source_javascript_is_served_on_stream_port(self):
-        script = Path("src/petcam/static/browser-source.js").read_text(encoding="utf-8")
+        script = Path("src/static/browser-source.js").read_text(encoding="utf-8")
         class Request:
             path = "/browser-source.js"
             def __init__(self):
