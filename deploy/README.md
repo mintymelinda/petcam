@@ -34,9 +34,11 @@ its live process inventory to /run/petcam/supervisor-status.json.
 
 ## Start at boot
 
-The installer adds one root crontab @reboot entry that invokes the supervisor
-from the checkout. Cron is only the boot trigger; all PetCam process lifecycle,
-health and optional-feature decisions belong to the Python supervisor.
+The installer removes legacy PetCam unit files and enablement links, then adds
+one root crontab @reboot entry that invokes the supervisor from the checkout.
+Reboot once after migrating an existing installation to release processes
+started by the old units. Cron is only the boot trigger; all PetCam process
+lifecycle, health and optional-feature decisions belong to the Python supervisor.
 
 The setup portal remains at https://<device-hostname>:8443/. The full manager
 is disabled by default and can be enabled from the setup portal.

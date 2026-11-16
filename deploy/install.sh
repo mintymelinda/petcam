@@ -15,6 +15,9 @@ apt-get install -y --no-install-recommends ca-certificates openssl cron python3 
   gir1.2-gst-rtsp-1.0 gir1.2-gst-rtsp-server-1.0 gstreamer1.0-tools \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
   gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils ustreamer
+# Remove legacy PetCam unit files and enablement links without calling a service manager.
+rm -f /etc/systemd/system/petcam-*.service /etc/systemd/system/multi-user.target.wants/petcam-*.service
+rm -f /usr/lib/systemd/system/petcam-*.service /lib/systemd/system/petcam-*.service
 install -d -m 0755 "$ETC_ROOT" "$STATE_ROOT" "$RUN_ROOT"
 if [[ ! -e "$ETC_ROOT/petcam.conf" ]]; then install -m 0640 "$REPO_ROOT/deploy/etc/petcam/petcam.conf" "$ETC_ROOT/petcam.conf"; fi
 for name in home-assistant.conf light-sensor.conf web-manager.json; do
@@ -43,5 +46,6 @@ chmod 0644 /etc/cron.d/petcam
 update-rc.d cron defaults || true
 service cron start
 log "Installed source-based PetCam boot entry."
+log "Legacy PetCam unit files were removed; reboot once to release processes from the previous installation."
 log "Supervisor command: PYTHONPATH=$REPO_ROOT/src python3 -m petcam.infrastructure.system.supervisor"
 log "Setup portal: https://$(hostname -f 2>/dev/null || hostname):8443/setup"
