@@ -17,9 +17,9 @@ class OptionalFeatureServiceTests(unittest.TestCase):
             timelapse={"enabled": True},
         )
         self.assertEqual(desired, {
-            "petcam-web.service": True,
-            "petcam-motion.service": False,
-            "petcam-timelapse.service": False,
+            "web-ui": True,
+            "motion": False,
+            "timelapse": False,
         })
 
     def test_web_ui_is_independent_of_camera_capture_readiness(self):
@@ -42,34 +42,17 @@ class OptionalFeatureServiceTests(unittest.TestCase):
         )
         self.assertFalse(any(desired.values()))
 
-    def test_enabled_features_are_started_and_disabled_features_stopped(self):
-        calls = []
-        active = {"petcam-motion.service"}
+    def test_reconciliation_is_delegated_to_supervisor(self):
+        from unittest.mock import patch
+        with patch("petcam.infrastructure.system.processes.request") as request:
+            MODULE.reconcile_services({"motion": True, "timelapse": False})
+        request.assert_called_once_with("reconcile")
 
-        def run(command, **_kwargs):
-            calls.append(command)
-            if command[1:3] == ["is-active", "--quiet"]:
-                return SimpleNamespace(returncode=0 if command[3] in active else 3, stderr="")
-            if command[1] == "start":
-                active.add(command[2])
-            elif command[1] == "stop":
-                active.discard(command[2])
-            return SimpleNamespace(returncode=0, stderr="")
-
-        MODULE.reconcile_services({
-            "petcam-motion.service": False,
-            "petcam-timelapse.service": True,
-        }, run=run)
-        self.assertIn(["/usr/bin/systemctl", "stop", "petcam-motion.service"], calls)
-        self.assertIn(["/usr/bin/systemctl", "start", "petcam-timelapse.service"], calls)
-
-    def test_healthy_enabled_service_is_not_restarted(self):
-        run = Mock(return_value=SimpleNamespace(returncode=0, stderr=""))
-        MODULE.reconcile_services({"petcam-web.service": True}, run=run)
-        run.assert_called_once_with(
-            ["/usr/bin/systemctl", "is-active", "--quiet", "petcam-web.service"],
-            capture_output=True, text=True, check=False, timeout=10,
-        )
+    def test_reconciliation_does_not_spawn_host_service_manager(self):
+        from unittest.mock import patch
+        with patch("petcam.infrastructure.system.processes.request") as request:
+            MODULE.reconcile_services({"web-ui": True})
+        request.assert_called_once_with("reconcile")
 
     def test_capture_readiness_requires_sampler_streaming_state(self):
         with tempfile.TemporaryDirectory() as directory:
