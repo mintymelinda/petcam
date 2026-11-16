@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import socket
+from types import SimpleNamespace
 from pathlib import Path
 from typing import Any
 
@@ -64,7 +65,8 @@ def run_command(command: list[str], **_options: Any) -> dict[str, Any]:
     """Compatibility adapter for existing transactional callers; never executes a host service manager."""
     if not isinstance(command, (list, tuple)) or len(command) < 2 or command[0] != "@supervisor":
         raise ValueError("Only supervisor control commands are supported")
-    return request(command[1], command[2] if len(command) > 2 else None)
+    result = request(command[1], command[2] if len(command) > 2 else None)
+    return SimpleNamespace(returncode=0, stderr="", stdout=json.dumps(result))
 
 
 def supervisor_command(action: str, worker: str | None = None) -> list[str]:
