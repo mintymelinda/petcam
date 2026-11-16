@@ -110,7 +110,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/petcam/application/camera_inventory.py").read_text())
+        self.assertIn('{"H264"}', Path("src/application/camera_inventory.py").read_text())
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("always-on RTSP service serves H.264 directly", PAGE_AND_JS)
