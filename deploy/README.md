@@ -4,7 +4,7 @@ Build the wheel from the repository root, copy it and this `deploy/` directory
 to the Raspberry Pi, then run:
 
 ```sh
-sudo ./deploy/install.sh ./dist/petcam-<version>-py3-none-any.whl
+sudo bash ./deploy/install.sh ./dist/petcam-<version>-py3-none-any.whl
 ```
 
 The installer targets Debian/Raspberry Pi OS with apt and systemd. It installs
