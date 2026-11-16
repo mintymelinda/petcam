@@ -333,7 +333,7 @@ class WebManagerTests(unittest.TestCase):
             "/usr/bin/systemctl", "restart", "petcam-g-streamer-rtsp.service",
         ])
 
-    def test_web_manager_has_no_sudo_privilege_handoffs(self):
+    def test_api_application_has_no_sudo_privilege_handoffs(self):
         source = Path(MODULE.__file__).read_text(encoding="utf-8")
         self.assertNotIn('"sudo"', source)
 
@@ -654,7 +654,7 @@ class WebManagerTests(unittest.TestCase):
             version_file.write_text("9.8.7\n", encoding="utf-8")
             lib_directory = Path(directory) / "lib"
             lib_directory.mkdir()
-            with mock.patch.object(MODULE, "__file__", str(lib_directory / "web_manager.py")):
+            with mock.patch.object(MODULE, "__file__", str(lib_directory / "application.py")):
                 self.assertEqual(MODULE.installed_version(), "9.8.7")
 
     def test_system_resource_metrics_reports_procfs_memory_and_cpu(self):
