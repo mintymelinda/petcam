@@ -15,6 +15,12 @@ class OBSOutputTests(unittest.TestCase):
     def test_output_configuration_contains_only_enabled_switch(self):
         self.assertEqual(MODULE.validate_config(self.valid_config()), {"enabled": True})
 
+    def test_shipped_config_matches_supported_runtime_schema(self):
+        config_path = Path(__file__).parents[1] / "deploy" / "etc" / "petcam" / "rtmp.json"
+        shipped = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(set(shipped), set(MODULE.DEFAULTS))
+        self.assertEqual(MODULE.validate_config(shipped), shipped)
+
     def test_public_config_contains_no_remote_destination_or_credentials(self):
         public = MODULE.public_config(MODULE.validate_config(self.valid_config()))
         self.assertNotIn("server_url", public)
