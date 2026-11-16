@@ -34,7 +34,11 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
     def test_image_workflow_uses_required_runner_and_secure_headless_defaults(self):
         workflow = (ROOT / ".github/workflows/image-build.yml").read_text(encoding="utf-8")
         self.assertIn("runs-on: ubuntu-24.04-arm", workflow)
-        self.assertIn("uses: usimd/pi-gen-action@d075c37c5eed90bf0325858ec2272e84200a5efe", workflow)
+        self.assertIn("repository: usimd/pi-gen-action", workflow)
+        self.assertIn("ref: d075c37c5eed90bf0325858ec2272e84200a5efe", workflow)
+        self.assertIn("uses: ./.github/actions/pi-gen-action", workflow)
+        self.assertIn("npm ci", workflow)
+        self.assertIn("npm run package", workflow)
         self.assertIn("enable-pigen-cache: true", workflow)
         self.assertIn("cache-read-only: ${{ github.ref != 'refs/heads/main' }}", workflow)
         self.assertIn("extra-host-dependencies: git", workflow)
