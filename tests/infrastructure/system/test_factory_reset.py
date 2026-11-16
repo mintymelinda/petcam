@@ -30,7 +30,7 @@ class FactoryResetTests(unittest.TestCase):
                     mock.patch.object(MODULE.os, "geteuid", return_value=0), \
                     mock.patch.object(MODULE.process_control, "request", return_value={"ok": True}) as request:
                 MODULE.reset()
-            self.assertEqual([call.args[0] for call in request.call_args_list], ["stop_all", "reconcile"])
+            request.assert_called_once_with("restart", "camera-capture")
             self.assertFalse((etc / "web-auth.json").exists())
             self.assertFalse((etc / "petcam.conf.last-good").exists())
             self.assertIn("SOURCE=auto", (etc / "petcam.conf").read_text())

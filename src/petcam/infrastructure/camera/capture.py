@@ -62,15 +62,38 @@ def select_backend(config: dict) -> tuple[str, dict]:
         raise RuntimeError(discovery.stderr.strip() or "Camera discovery failed")
     inventory = json.loads(discovery.stdout)
     candidates = ("usb", "csi") if requested == "auto" else (requested,)
+    failures = []
     for source in candidates:
         available = inventory.get("usb_devices") if source == "usb" else inventory.get("csi_cameras")
         if not available:
             continue
         if source == "usb":
-            command = "select-h264" if str(config.get("FORMAT", "auto")).upper() == "H264" else "select"
+            requested_format = str(config.get("FORMAT", "auto")).upper()
+            commands = ("select-h264", "select") if requested_format == "AUTO" else (
+                ("select-h264",) if requested_format == "H264" else ("select",)
+            )
+            for command in commands:
+                try:
+                    return source, _run_selection(command, config, source=source)
+                except (RuntimeError, ValueError) as error:
+                    failures.append(str(error))
         else:
-            command = "select-csi"
-        return source, _run_selection(command, config, source=source)
+            try:
+                selected = _run_selection("select-csi", config, source=source)
+                requested_format = str(config.get("FORMAT", "auto")).upper()
+                if requested_format in ("AUTO", "H264"):
+                    probe = subprocess.run(
+                        [sys.executable, "-m", CAMERA_CLI, "h264-encoder"],
+                        capture_output=True, text=True, timeout=15, check=False,
+                    )
+                    if requested_format == "H264" and probe.returncode:
+                        raise RuntimeError("CSI native H.264 encoding was requested but no hardware encoder is available")
+                    selected["_native_h264"] = probe.returncode == 0
+                return source, selected
+            except (RuntimeError, ValueError) as error:
+                failures.append(str(error))
+    if failures:
+        raise RuntimeError("; ".join(failures))
     raise RuntimeError("No supported USB or CSI camera is currently available")
 
 
@@ -94,7 +117,11 @@ def run_capture(config: dict) -> int:
     source, selected = select_backend(config)
     resolution = str(selected["resolution"])
     fps = str(selected["fps"])
-    native_h264 = str(selected.get("format", "")).upper() == "H264"
+    native_h264 = (
+        bool(selected.get("_native_h264"))
+        if source == "csi"
+        else str(selected.get("format", "")).upper() == "H264"
+    )
     if source == "usb":
         marker = {
             "pid": os.getpid(), "backend": "usb", "device": selected["device"],
@@ -127,12 +154,14 @@ def run_capture(config: dict) -> int:
         ]
         if native_h264:
             command.append("--h264")
-        else:
-            _write_marker({
-                "pid": os.getpid(), "backend": "csi", "camera": selected["camera"],
-                "resolution": resolution, "fps": fps, "format": "MJPEG",
-                "native_h264": False,
-            })
+        # The supervisor gates RTSP startup on this PID marker for every CSI
+        # mode, including native H.264 capture.
+        _write_marker({
+            "pid": os.getpid(), "backend": "csi", "camera": selected["camera"],
+            "resolution": resolution, "fps": fps,
+            "format": "H264" if native_h264 else "MJPEG",
+            "native_h264": native_h264,
+        })
     child = None
     stopping = False
 

@@ -1,7 +1,7 @@
 # PetCam source deployment
 
 PetCam runs directly from this checkout. There is no wheel build, package build,
-virtual environment, or PetCam systemd unit.
+or virtual environment.
 
 ## Install runtime dependencies
 
