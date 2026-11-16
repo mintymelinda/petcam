@@ -176,24 +176,27 @@ async function refreshSystemInfo() {
   }
 }
 
+function renderGStreamerStatus(status) {
+  const source =
+    status.source === "native_h264_csi"
+      ? "CSI hardware H.264 stream copy"
+      : status.source === "native_h264"
+        ? "native H.264 stream copy"
+        : status.source === "mjpeg_copy"
+          ? "MJPEG packet copy"
+          : "camera source pending";
+  $("g-streamer-status").textContent =
+    "GStreamer RTSP service: " +
+    (status.state || "starting") +
+    (status.service_active
+      ? " · always on · " + source
+      : " · service unavailable");
+}
+
 async function refreshGStreamer() {
   try {
     const data = await request("/api/live-status");
-    const status = data.g_streamer_status || {};
-    const source =
-      status.source === "native_h264_csi"
-        ? "CSI hardware H.264 stream copy"
-        : status.source === "native_h264"
-          ? "native H.264 stream copy"
-          : status.source === "mjpeg_copy"
-            ? "MJPEG packet copy"
-            : "camera source pending";
-    $("g-streamer-status").textContent =
-      "GStreamer RTSP service: " +
-      (status.state || "starting") +
-      (status.service_active
-        ? " · always on · " + source
-        : " · service unavailable");
+    renderGStreamerStatus(data.g_streamer_status || {});
   } catch (error) {
     $("g-streamer-status").textContent =
       "GStreamer RTSP status unavailable: " + error.message;
@@ -239,6 +242,7 @@ async function refreshStatistics(data = null) {
         : null,
       signal = wifi.signal_dbm,
       gStreamer = d.g_streamer_status || {};
+    renderGStreamerStatus(gStreamer);
     const bars = !wifi.connected
       ? 0
       : signal === null || signal === undefined
