@@ -8,6 +8,7 @@ import json
 import os
 import signal
 import subprocess
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -121,7 +122,7 @@ def camera_present() -> bool | None:
     """Return None when discovery failed; do not mistake a failed probe for no camera."""
     try:
         result = subprocess.run(
-            ["/usr/local/bin/petcam-camera", "discover"],
+            [sys.executable, "-m", "petcam.infrastructure.camera.cli", "discover"],
             capture_output=True, text=True, timeout=30, check=False,
         )
         if result.returncode:
