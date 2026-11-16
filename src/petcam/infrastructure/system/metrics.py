@@ -51,9 +51,12 @@ def resource_metrics():
 
 def installed_version(application_file):
     """Read the VERSION file belonging to the active, resolved application release."""
-    version_file = Path(application_file).resolve().parent.parent / "VERSION"
-    try:
-        version = version_file.read_text(encoding="utf-8").strip()
+    source = Path(application_file).resolve()
+    for parent in source.parents:
+        version_file = parent / "VERSION"
+        try:
+            version = version_file.read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
         return version or None
-    except OSError:
-        return None
+    return None

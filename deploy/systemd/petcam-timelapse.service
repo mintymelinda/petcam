@@ -5,7 +5,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/petcam/current/lib/timelapse.py
+Environment=PYTHONPATH=/opt/petcam/current/lib
+ExecStart=/usr/bin/python3 -m petcam.features.timelapse.worker
 Restart=on-failure
 RestartSec=5
 Nice=10

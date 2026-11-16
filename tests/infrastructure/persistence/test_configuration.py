@@ -1,0 +1,371 @@
+import contextlib
+import io
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
+
+from petcam.infrastructure.persistence import configuration as MODULE
+
+
+class ConfigValidationTests(unittest.TestCase):
+    def test_existing_default_config_is_compatible(self):
+        values = {
+            "SOURCE": "auto",
+            "DEVICE": "",
+            "USB_PHYSICAL_PATH": "",
+            "CSI_DEVICE_PATH": "",
+            "CAMERA": "auto",
+            "FORMAT": "auto",
+            "RESOLUTION": "auto",
+            "FPS": "auto",
+            "CSI_QUALITY": "70",
+            "PORT": "8081",
+        }
+        self.assertEqual(MODULE.validate_config(values), values)
+
+    def test_parser_accepts_comments_and_existing_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "petcam.conf"
+            path.write_text(
+                "# Existing PetCam settings\nSOURCE=auto\nDEVICE=\nCAMERA=auto\n"
+                "FORMAT=auto\nRESOLUTION=auto\nFPS=auto\nCSI_QUALITY=70\nPORT=8081\n"
+            )
+            self.assertEqual(MODULE.parse_config(path)["PORT"], "8081")
+
+    def test_cli_apply_uses_transactional_apply(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate_path = Path(directory) / "candidate.conf"
+            candidate_path.write_text("SOURCE=csi\nCAMERA=auto\nFORMAT=auto\nFPS=30.0\n")
+            with mock.patch.object(MODULE.sys, "argv", ["petcam-config", "apply", str(candidate_path)]), \
+                    mock.patch.object(MODULE, "apply_config", return_value={"SOURCE": "csi"}) as apply, \
+                    contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(MODULE.main(), 0)
+            apply.assert_called_once_with(MODULE.parse_config(candidate_path, check_hardware=True))
+
+    def test_parser_rejects_missing_candidate_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing.conf"
+            with self.assertRaisesRegex(MODULE.ConfigError, "does not exist"):
+                MODULE.parse_config(missing)
+
+    def test_parser_rejects_malformed_duplicate_and_unknown_keys(self):
+        cases = [
+            ("SOURCE=auto\nnot-a-setting\n", "expected KEY=VALUE"),
+            ("SOURCE=auto\nSOURCE=usb\n", "duplicate configuration key"),
+            ("SOURCE=auto\nUNRECOGNIZED=yes\n", "unknown configuration key"),
+            ("SOURCE=$(touch /tmp/pwned)\n", "shell syntax is not allowed"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "petcam.conf"
+            for content, expected in cases:
+                with self.subTest(content=content):
+                    path.write_text(content)
+                    with self.assertRaisesRegex(MODULE.ConfigError, expected):
+                        MODULE.parse_config(path)
+
+    def test_rejects_invalid_enums_ranges_and_reserved_ports(self):
+        invalid = [
+            ({"SOURCE": "network"}, "SOURCE must be"),
+            ({"FORMAT": "H265"}, "FORMAT must be"),
+            ({"RESOLUTION": "0x720"}, "dimensions"),
+            ({"FPS": "0"}, "FPS must be greater"),
+            ({"FPS": "241"}, "FPS must be greater"),
+            ({"FPS": "29.97"}, "whole number"),
+            ({"CSI_QUALITY": "101"}, "CSI_QUALITY"),
+            ({"PORT": "8080"}, "reserved"),
+            ({"PORT": "80"}, "PORT must be"),
+        ]
+        for updates, expected in invalid:
+            with self.subTest(updates=updates):
+                with self.assertRaisesRegex(MODULE.ConfigError, expected):
+                    MODULE.validate_config({**MODULE.DEFAULTS, **updates})
+
+    def test_h264_is_valid_only_for_usb_capture(self):
+        usb = MODULE.validate_config({
+            **MODULE.DEFAULTS, "SOURCE": "usb", "FORMAT": "H264",
+            "RESOLUTION": "1920x1080", "FPS": "30",
+        })
+        self.assertEqual(usb["FORMAT"], "H264")
+        with self.assertRaisesRegex(MODULE.ConfigError, "requires SOURCE=usb"):
+            MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "csi", "FORMAT": "H264"})
+
+    def test_validates_stable_physical_camera_paths_and_source_compatibility(self):
+        usb = MODULE.validate_config({
+            **MODULE.DEFAULTS,
+            "SOURCE": "usb",
+            "USB_PHYSICAL_PATH": "/sys/devices/platform/soc/usb1/1-1/1-1.2",
+        })
+        self.assertEqual(usb["USB_PHYSICAL_PATH"], "/sys/devices/platform/soc/usb1/1-1/1-1.2")
+        csi = MODULE.validate_config({
+            **MODULE.DEFAULTS,
+            "SOURCE": "csi",
+            "CSI_DEVICE_PATH": "/base/soc/i2c0mux/i2c@1/imx708@1a",
+        })
+        self.assertEqual(csi["CSI_DEVICE_PATH"], "/base/soc/i2c0mux/i2c@1/imx708@1a")
+        for updates in (
+            {"SOURCE": "auto", "USB_PHYSICAL_PATH": "/sys/devices/platform/usb1"},
+            {"SOURCE": "csi", "USB_PHYSICAL_PATH": "/sys/devices/platform/usb1"},
+            {"SOURCE": "usb", "USB_PHYSICAL_PATH": "/sys/devices/platform/usb1", "DEVICE": "/dev/video0"},
+            {"SOURCE": "csi", "CSI_DEVICE_PATH": "/base/soc/i2c@1", "CAMERA": "0"},
+            {"SOURCE": "usb", "CSI_DEVICE_PATH": "/base/soc/i2c@1"},
+            {"SOURCE": "usb", "USB_PHYSICAL_PATH": "/sys/devices/$(touch-pwned)"},
+            {"SOURCE": "csi", "CSI_DEVICE_PATH": "/base/soc/$(touch-pwned)"},
+        ):
+            with self.subTest(updates=updates):
+                with self.assertRaises(MODULE.ConfigError):
+                    MODULE.validate_config({**MODULE.DEFAULTS, **updates})
+
+    def test_stable_usb_path_must_match_a_discovered_physical_camera(self):
+        values = {
+            **MODULE.DEFAULTS,
+            "SOURCE": "usb",
+            "USB_PHYSICAL_PATH": "/sys/devices/platform/soc/usb1/1-1/1-1.2",
+        }
+        result = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"usb_devices": [{"physical_path": values["USB_PHYSICAL_PATH"]}]}),
+            stderr="",
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            self.assertEqual(MODULE.validate_config(values, check_hardware=True)["USB_PHYSICAL_PATH"], values["USB_PHYSICAL_PATH"])
+        result.stdout = json.dumps({"usb_devices": []})
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(MODULE.ConfigError, "physical camera path is not available"):
+                MODULE.validate_config(values, check_hardware=True)
+
+    def test_stable_csi_path_must_match_a_discovered_camera(self):
+        values = {
+            **MODULE.DEFAULTS,
+            "SOURCE": "csi",
+            "CSI_DEVICE_PATH": "/base/soc/i2c0mux/i2c@1/imx708@1a",
+        }
+        result = SimpleNamespace(
+            returncode=0,
+            stdout=json.dumps({"csi_cameras": [{"index": 0, "device_path": values["CSI_DEVICE_PATH"]}]}),
+            stderr="",
+        )
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            self.assertEqual(MODULE.validate_config(values, check_hardware=True)["CSI_DEVICE_PATH"], values["CSI_DEVICE_PATH"])
+        result.stdout = json.dumps({"csi_cameras": []})
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(MODULE.ConfigError, "physical device path is not available"):
+                MODULE.validate_config(values, check_hardware=True)
+
+    def test_csi_allows_fractional_fps_and_usb_requires_whole_fps(self):
+        csi = MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "csi", "FPS": "56.03"})
+        self.assertEqual(csi["FPS"], "56.03")
+        usb = MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "usb", "FPS": "30.0"})
+        self.assertEqual(usb["FPS"], "30")
+        with self.assertRaisesRegex(MODULE.ConfigError, "whole number"):
+            MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "usb", "FPS": "29.97"})
+
+    def test_unavailable_device_is_rejected_before_apply(self):
+        values = {**MODULE.DEFAULTS, "SOURCE": "usb", "DEVICE": "/dev/video99"}
+        with mock.patch.object(MODULE.Path, "exists", return_value=False):
+            with self.assertRaisesRegex(MODULE.ConfigError, "unavailable"):
+                MODULE.validate_config(values, check_hardware=True)
+
+    def test_explicit_csi_camera_must_be_discovered(self):
+        values = {**MODULE.DEFAULTS, "SOURCE": "csi", "CAMERA": "1"}
+        result = SimpleNamespace(returncode=0, stdout=json.dumps({"csi_cameras": [{"index": 1}]}), stderr="")
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            self.assertEqual(MODULE.validate_config(values, check_hardware=True)["CAMERA"], "1")
+        result.stdout = json.dumps({"csi_cameras": [{"index": 0}]})
+        with mock.patch.object(MODULE.subprocess, "run", return_value=result):
+            with self.assertRaisesRegex(MODULE.ConfigError, "not available"):
+                MODULE.validate_config(values, check_hardware=True)
+
+
+class TransactionalApplyTests(unittest.TestCase):
+    def setUp(self):
+        self.directory = tempfile.TemporaryDirectory()
+        self.root = Path(self.directory.name)
+        self.config = self.root / "petcam.conf"
+        self.last_good = self.root / "petcam.conf.last-good"
+        self.original = (
+            b"# existing settings\nSOURCE=auto\nDEVICE=\nCAMERA=auto\nFORMAT=auto\n"
+            b"RESOLUTION=auto\nFPS=auto\nCSI_QUALITY=70\nPORT=8081\n"
+        )
+        self.config.write_bytes(self.original)
+
+    def tearDown(self):
+        self.directory.cleanup()
+
+    def updates(self):
+        return {"SOURCE": "csi", "CAMERA": "auto", "RESOLUTION": "640x480", "FPS": "30.0"}
+
+    def test_invalid_active_config_can_be_repaired_from_last_good(self):
+        self.config.write_text("SOURCE=invalid\nUNKNOWN=value\n")
+        self.last_good.write_bytes(self.original)
+        result = MODULE.apply_config(
+            self.updates(), self.config, self.last_good,
+            restart=mock.Mock(), ready=mock.Mock(return_value=True),
+        )
+        self.assertEqual(result["SOURCE"], "csi")
+        self.assertEqual(MODULE.parse_config(self.config)["SOURCE"], "csi")
+
+    def test_config_lock_reports_an_active_transaction(self):
+        lock_path = MODULE.ensure_config_lock(self.config)
+        self.assertFalse(MODULE.configuration_change_in_progress(self.config))
+        with lock_path.open("r+") as lock_file:
+            MODULE.fcntl.flock(lock_file.fileno(), MODULE.fcntl.LOCK_EX)
+            try:
+                self.assertTrue(MODULE.configuration_change_in_progress(self.config))
+            finally:
+                MODULE.fcntl.flock(lock_file.fileno(), MODULE.fcntl.LOCK_UN)
+        self.assertFalse(MODULE.configuration_change_in_progress(self.config))
+
+    def test_config_transaction_guard_holds_exclusive_lock_for_scope(self):
+        with MODULE.config_transaction_guard(self.config) as acquired:
+            self.assertTrue(acquired)
+            self.assertTrue(MODULE.configuration_change_in_progress(self.config))
+        self.assertFalse(MODULE.configuration_change_in_progress(self.config))
+
+    def test_native_h264_readiness_requires_rtsp_play_and_h264_rtp_packet(self):
+        sdp = (
+            "v=0\r\n"
+            "m=video 0 RTP/AVP 96\r\n"
+            "a=rtpmap:96 H264/90000\r\n"
+            "a=control:trackID=0\r\n"
+        ).encode("ascii")
+        rtp = bytes([0x80, 96, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0x65])
+        interleaved = b"$" + bytes([0]) + len(rtp).to_bytes(2, "big") + rtp
+        responses = (
+            b"RTSP/1.0 200 OK\r\nCSeq: 1\r\n"
+            b"Content-Base: rtsp://127.0.0.1:8554/petcam/\r\n"
+            + f"Content-Length: {len(sdp)}\r\n\r\n".encode("ascii") + sdp
+            + b"RTSP/1.0 200 OK\r\nCSeq: 2\r\nSession: test-session\r\n"
+            b"Transport: RTP/AVP/TCP;unicast;interleaved=0-1\r\nContent-Length: 0\r\n\r\n"
+            + b"RTSP/1.0 200 OK\r\nCSeq: 3\r\nSession: test-session\r\n"
+            b"Content-Length: 0\r\n\r\n" + interleaved
+        )
+
+        class FakeSocket:
+            def __init__(self):
+                self.remaining = bytearray(responses)
+                self.requests = []
+                self.closed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *_args):
+                self.closed = True
+
+            def settimeout(self, _timeout):
+                pass
+
+            def sendall(self, data):
+                self.requests.append(data.decode("ascii"))
+
+            def recv(self, size):
+                chunk = bytes(self.remaining[:size])
+                del self.remaining[:size]
+                return chunk
+
+        connection = FakeSocket()
+        with mock.patch.object(MODULE.socket, "create_connection", return_value=connection):
+            self.assertTrue(MODULE.wait_for_native_h264(timeout=1))
+        requests = "".join(connection.requests)
+        self.assertIn("DESCRIBE ", requests)
+        self.assertIn("SETUP rtsp://127.0.0.1:8554/petcam/trackID=0", requests)
+        self.assertIn("Transport: RTP/AVP/TCP;unicast;interleaved=0-1", requests)
+        self.assertIn("PLAY rtsp://127.0.0.1:8554/petcam", requests)
+        self.assertTrue(connection.closed)
+
+
+    def test_configured_capture_readiness_uses_native_h264_for_h264_mode(self):
+        ready = mock.Mock(return_value=True)
+        with mock.patch.object(MODULE, "wait_for_native_h264", return_value=True) as h264_ready:
+            self.assertTrue(MODULE.wait_for_configured_capture(
+                {"FORMAT": "H264", "PORT": "8081"}, ready
+            ))
+        h264_ready.assert_called_once_with()
+        ready.assert_not_called()
+
+    def test_auto_mode_uses_rtsp_readiness_when_native_h264_was_selected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            marker = Path(directory) / "camera-status.json"
+            marker.write_text('{"native_h264": true}', encoding="utf-8")
+            ready = mock.Mock(return_value=True)
+            with mock.patch.object(MODULE, "CAMERA_STATUS_PATH", marker):
+                with mock.patch.object(MODULE, "wait_for_native_h264", return_value=True) as h264_ready:
+                    self.assertTrue(MODULE.wait_for_configured_capture(
+                        {"FORMAT": "auto", "PORT": "8081"}, ready
+                    ))
+            h264_ready.assert_called_once_with()
+            ready.assert_not_called()
+
+    def test_restart_capture_uses_shared_systemctl_adapter(self):
+        completed = mock.Mock(returncode=0, stderr="")
+        with mock.patch.object(MODULE.process_control, "run_systemctl", return_value=completed) as run:
+            MODULE.restart_capture()
+        run.assert_called_once_with(
+            "restart", "petcam-stream.service", runner=MODULE.subprocess.run,
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+
+    def test_successful_apply_commits_and_updates_last_known_good(self):
+        restart = mock.Mock()
+        ready = mock.Mock(return_value=True)
+        result = MODULE.apply_config(
+            self.updates(), self.config, self.last_good, restart=restart, ready=ready
+        )
+        self.assertEqual(result["SOURCE"], "csi")
+        self.assertEqual(MODULE.parse_config(self.config)["RESOLUTION"], "640x480")
+        self.assertEqual(MODULE.parse_config(self.last_good)["RESOLUTION"], "640x480")
+        restart.assert_called_once()
+        ready.assert_called_once_with(8081)
+
+    def test_failed_stream_readiness_restores_previous_config_and_restarts_it(self):
+        restart = mock.Mock()
+        ready = mock.Mock(side_effect=[False, True])
+        with self.assertRaisesRegex(MODULE.ConfigApplyError, "previous settings were restored and the stream is healthy"):
+            MODULE.apply_config(
+                self.updates(), self.config, self.last_good, restart=restart, ready=ready
+            )
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual(self.last_good.read_bytes(), self.original)
+        self.assertEqual(restart.call_count, 2)
+        self.assertEqual(ready.call_args_list, [mock.call(8081), mock.call(8081)])
+
+    def test_restart_failure_restores_previous_config(self):
+        restart = mock.Mock(side_effect=[RuntimeError("backend failed to start"), None])
+        ready = mock.Mock(return_value=True)
+        with self.assertRaisesRegex(MODULE.ConfigApplyError, "backend failed to start"):
+            MODULE.apply_config(
+                self.updates(), self.config, self.last_good, restart=restart, ready=ready
+            )
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual(restart.call_count, 2)
+        ready.assert_called_once_with(8081)
+
+    def test_failed_rollback_preserves_the_previous_last_known_good_file(self):
+        known_good = b"SOURCE=usb\nDEVICE=/dev/video0\n"
+        self.last_good.write_bytes(known_good)
+        restart = mock.Mock(side_effect=[None, RuntimeError("rollback restart failed")])
+        ready = mock.Mock(return_value=False)
+        with self.assertRaisesRegex(MODULE.ConfigApplyError, "restarting them failed"):
+            MODULE.apply_config(
+                self.updates(), self.config, self.last_good, restart=restart, ready=ready
+            )
+        self.assertEqual(self.config.read_bytes(), self.original)
+        self.assertEqual(self.last_good.read_bytes(), known_good)
+
+    def test_invalid_candidate_does_not_write_or_restart(self):
+        restart = mock.Mock()
+        ready = mock.Mock()
+        with self.assertRaises(MODULE.ConfigError):
+            MODULE.apply_config(
+                {"SOURCE": "invalid"}, self.config, self.last_good, restart=restart, ready=ready
+            )
+        self.assertEqual(self.config.read_bytes(), self.original)
+        restart.assert_not_called()
+        ready.assert_not_called()
+
+
+if __name__ == "__main__":
+    unittest.main()
