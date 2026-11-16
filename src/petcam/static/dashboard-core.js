@@ -9,5 +9,3 @@ const pendingCameraControlChanges = new Map();
 let advancedPollHandle = null,
   advancedApplyHandle = null;
 const advancedDialog = $("advanced-camera-dialog");
-
-
