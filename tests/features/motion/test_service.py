@@ -160,24 +160,12 @@ class MotionDetectionTests(unittest.TestCase):
             self.assertEqual(result["event_count"], 1)
             self.assertEqual(result["cpu_percent"], 1.2)
 
-    def test_worker_fetches_one_frame_and_closes_the_stream_connection(self):
-        class Response:
-            def __init__(self):
-                self.closed = False
-                self.parts = [b"boundary\r\n" + jpeg("green")]
-            def __enter__(self):
-                return self
-            def __exit__(self, *_args):
-                self.closed = True
-            def read1(self, _size):
-                return self.parts.pop(0) if self.parts else b""
-        response = Response()
-        with mock.patch.object(MODULE.urllib.request, "urlopen", return_value=response) as opened:
-            frame = MODULE.read_stream_frame("http://127.0.0.1:8081/stream")
-        self.assertTrue(frame.startswith(b"\xff\xd8"))
-        self.assertTrue(frame.endswith(b"\xff\xd9"))
-        self.assertTrue(response.closed)
-        self.assertEqual(opened.call_args.args[0].full_url, "http://127.0.0.1:8081/stream")
+    def test_worker_reads_from_the_shared_rtsp_sampler(self):
+        expected = jpeg("green")
+        with mock.patch.object(MODULE, "read_latest_frame", return_value=expected) as read:
+            self.assertEqual(MODULE.read_stream_frame(), expected)
+        read.assert_called_once_with()
+
 
     def test_benchmark_reports_cpu_and_peak_memory(self):
         metrics = MODULE._metrics(__import__("time").monotonic(), __import__("time").process_time())
@@ -185,7 +173,7 @@ class MotionDetectionTests(unittest.TestCase):
         self.assertGreater(metrics["peak_rss_kib"], 0)
 
     def test_benchmark_reports_camera_disconnect_as_an_error(self):
-        with mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=OSError("camera disconnected")):
+        with mock.patch.object(MODULE, "read_latest_frame", side_effect=OSError("camera disconnected")):
             with self.assertRaisesRegex(OSError, "camera disconnected"):
                 MODULE.benchmark(10)
 

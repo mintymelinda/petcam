@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Low-resource motion detection using sampled frames from the active MJPEG stream."""
+"""Low-resource motion detection using frames from the shared RTSP sampler."""
 import argparse
 from datetime import datetime, timezone
 from io import BytesIO
@@ -9,8 +9,6 @@ import resource
 import shutil
 import signal
 import time
-import urllib.error
-import urllib.request
 from pathlib import Path
 
 from PIL import Image, ImageChops
@@ -22,14 +20,14 @@ from ...domain.motion.policy import (
     pixel_delta_threshold,
     validate_config,
 )
-from ...infrastructure.persistence.frames import capture_frame, jpeg_frames, prune_frames
+from ...infrastructure.persistence.frames import capture_frame, prune_frames
+from ...infrastructure.streaming.sampler import read_latest_frame
 
 BASE = Path("/var/lib/petcam/motion")
 CONFIG = BASE / "config.json"
 STATE = BASE / "status.json"
 EVENTS = BASE / "events.json"
 FRAMES = BASE / "events"
-STREAM_URL = "http://127.0.0.1:8081/stream"
 _running = True
 
 
@@ -171,16 +169,12 @@ def _metrics(started, cpu_started):
     }
 
 
-def read_stream_frame(url=STREAM_URL):
-    request = urllib.request.Request(url, headers={"User-Agent": "PetCam-Motion/1"})
-    with urllib.request.urlopen(request, timeout=10) as response:
-        frame = next(jpeg_frames(response), None)
-    if frame is None:
-        raise OSError("The live stream closed before a JPEG frame arrived.")
-    return frame
+def read_stream_frame():
+    """Return the latest fresh JPEG from the shared RTSP sampler."""
+    return read_latest_frame()
 
 
-def benchmark(duration_seconds=120, url=STREAM_URL, sample_interval=2):
+def benchmark(duration_seconds=120, sample_interval=2):
     if not 10 <= duration_seconds <= 3600:
         raise ValueError("Benchmark duration must be between 10 and 3600 seconds.")
     config = validate_config({"sample_interval_seconds": sample_interval})
@@ -189,7 +183,7 @@ def benchmark(duration_seconds=120, url=STREAM_URL, sample_interval=2):
     cpu_started = time.process_time()
     samples = 0
     while time.monotonic() - started < duration_seconds:
-        detector.sample(read_stream_frame(url))
+        detector.sample(read_stream_frame())
         samples += 1
         remaining = duration_seconds - (time.monotonic() - started)
         if remaining > 0:
@@ -292,7 +286,7 @@ def run():
                 metrics_started = time.monotonic()
                 cpu_started = time.process_time()
             time.sleep(config["sample_interval_seconds"])
-        except (OSError, urllib.error.URLError, ValueError) as error:
+        except (OSError, ValueError) as error:
             write_state({"state": "camera_unavailable", "last_error": str(error)})
             last_state = "camera_unavailable"
             detector = None

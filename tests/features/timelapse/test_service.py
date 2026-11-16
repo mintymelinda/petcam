@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from petcam.features.timelapse import service as MODULE
+from petcam.infrastructure.persistence.frames import jpeg_frames
 
 
 class TimelapseTests(unittest.TestCase):
@@ -118,7 +119,7 @@ class TimelapseTests(unittest.TestCase):
                 self.parts = [b"boundary\r\n\xff", b"\xd8one\xff", b"\xd9boundary\xff\xd8two\xff\xd9"]
             def read(self, size):
                 return self.parts.pop(0) if self.parts else b""
-        self.assertEqual(list(MODULE.jpeg_frames(Response())), [b"\xff\xd8one\xff\xd9", b"\xff\xd8two\xff\xd9"])
+        self.assertEqual(list(jpeg_frames(Response())), [b"\xff\xd8one\xff\xd9", b"\xff\xd8two\xff\xd9"])
 
     def test_storage_cap_prunes_oldest_frames(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,10 +155,19 @@ class TimelapseTests(unittest.TestCase):
             self.assertEqual(result, {"frames": 0, "storage_bytes": 0})
             self.assertFalse((root / "incomplete.jpg.tmp").exists())
 
+    def test_capture_from_stream_uses_shared_rtsp_frame(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = MODULE.validate_config({"jpeg_quality": 0})
+            frame = b"\xff\xd8shared-frame\xff\xd9"
+            with mock.patch.object(MODULE, "read_latest_frame", return_value=frame) as read:
+                path = MODULE.capture_from_stream(config, directory)
+            read.assert_called_once_with()
+            self.assertEqual(path.read_bytes(), frame)
+
     def test_camera_disconnect_is_reported_without_creating_a_frame(self):
         with tempfile.TemporaryDirectory() as directory:
             config = MODULE.validate_config({"jpeg_quality": 0})
-            with mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=OSError("camera disconnected")):
+            with mock.patch.object(MODULE, "read_latest_frame", side_effect=OSError("camera disconnected")):
                 with self.assertRaisesRegex(OSError, "camera disconnected"):
                     MODULE.capture_from_stream(config, directory)
             self.assertEqual(MODULE.storage_status(directory)["frames"], 0)
