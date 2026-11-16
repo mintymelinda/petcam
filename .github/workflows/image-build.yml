@@ -56,10 +56,29 @@ jobs:
           test -s deploy/image/stages/stage-petcam/01-petcam/01-packages
           test -s deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
 
+      - name: Check out cache-enabled pi-gen action
+        uses: actions/checkout@v5
+        with:
+          repository: usimd/pi-gen-action
+          ref: d075c37c5eed90bf0325858ec2272e84200a5efe
+          path: .github/actions/pi-gen-action
+          persist-credentials: false
+
+      - name: Set up Node.js for pi-gen action packaging
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Package cache-enabled pi-gen action
+        working-directory: .github/actions/pi-gen-action
+        run: |
+          npm ci
+          npm run package
+
       - name: Build Raspberry Pi OS image
         id: image
-        # Pin the first pi-gen-action revision that includes work-directory caching.
-        uses: usimd/pi-gen-action@d075c37c5eed90bf0325858ec2272e84200a5efe
+        # Build the pinned source revision because cache support is not in the v1.11.0 release.
+        uses: ./.github/actions/pi-gen-action
         with:
           image-name: petcam
           hostname: petcam
