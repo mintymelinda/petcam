@@ -225,8 +225,8 @@ def is_service_active(unit):
 
 
 def set_rtmp_service(action):
-    result = process_control.run_systemctl(
-        action, "petcam-rtmp.service",
+    result = process_control.run_command(
+        rtmp_service_command(action),
         capture_output=True, text=True, timeout=30, check=False,
     )
     if result.returncode:
