@@ -28,16 +28,15 @@ def test_transaction_restores_previous_config_and_services_on_failure():
         calls.append(command)
         return next(results)
 
-    updated = apply_config_transaction(
-        lambda config: saved.append(config) or config,
-        {"enabled": False},
-        {"enabled": True},
-        [(["systemctl", "restart", "new.service"], 20, "apply failed")],
-        [(["systemctl", "restart", "old.service"], 20, "rollback failed")],
-        run,
-    )
-
-    assert updated == {"enabled": True}
+    with pytest.raises(RuntimeError, match="new service config failed"):
+        apply_config_transaction(
+            lambda config: saved.append(config) or config,
+            {"enabled": False},
+            {"enabled": True},
+            [(["systemctl", "restart", "new.service"], 20, "apply failed")],
+            [(["systemctl", "restart", "old.service"], 20, "rollback failed")],
+            run,
+        )
     assert saved == [{"enabled": True}, {"enabled": False}]
     assert calls == [["systemctl", "restart", "new.service"], ["systemctl", "restart", "old.service"]]
 

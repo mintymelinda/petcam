@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from petcam.api import application as MODULE
-from petcam.api import management_routes
+from petcam.api import auth_routes, management_routes
 
 DASHBOARD_SCRIPTS = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
 DASHBOARD_JS = "\\n".join(
@@ -110,7 +110,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/petcam/camera_service.py").read_text())
+        self.assertIn('{"H264"}', Path("src/petcam/application/camera_inventory.py").read_text())
         self.assertIn("syncOutputModeControls", PAGE_AND_JS)
         self.assertIn("data-browser-feed-link", PAGE_AND_JS)
         self.assertIn("always-on RTSP service serves H.264 directly", PAGE_AND_JS)
@@ -260,8 +260,10 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("/api/setup/status", PAGE_AND_JS)
         self.assertIn("/api/setup", PAGE_AND_JS)
         self.assertIn("SSH is not required", PAGE_AND_JS)
-        self.assertIn("initialize_password", management_routes.handle_post.__code__.co_names)
-        self.assertIn("is_configured", management_routes.handle_get.__code__.co_names)
+        self.assertIn("handle_public_post", management_routes.handle_post.__code__.co_names)
+        self.assertIn("initialize_password", auth_routes.handle_public_post.__code__.co_names)
+        self.assertIn("handle_get", management_routes.handle_get.__code__.co_names)
+        self.assertIn("is_configured", auth_routes.handle_get.__code__.co_names)
 
     def test_first_run_setup_endpoint_creates_session_and_cookie(self):
         payload = json.dumps({

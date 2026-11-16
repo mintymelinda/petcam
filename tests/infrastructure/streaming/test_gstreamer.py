@@ -85,7 +85,7 @@ class GStreamerOutputTests(unittest.TestCase):
 
 
     def test_systemd_service_is_pulled_in_with_camera_capture(self):
-        root = Path(__file__).parents[1] / "deploy" / "systemd"
+        root = Path(__file__).parents[3] / "deploy" / "systemd"
         unit = (root / "petcam-g-streamer-rtsp.service").read_text(encoding="utf-8")
         drop_in = (
             root / "petcam-stream.service.d" / "10-gstreamer-rtsp.conf"
