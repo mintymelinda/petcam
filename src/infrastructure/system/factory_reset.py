@@ -59,9 +59,11 @@ MOTION_DEFAULTS = {
     "max_events": 100,
 }
 SERVICES = (
-    "petcam-feature-services.service", "petcam-motion.service",
-    "petcam-timelapse.service", "petcam-home-assistant.service",
-    "petcam-light-sensor.service", "petcam-web.service",
+    "petcam-g-streamer-rtsp.service", "petcam-rtsp-sampler.service",
+    "petcam-setup.service", "petcam-feature-services.service",
+    "petcam-motion.service", "petcam-timelapse.service",
+    "petcam-home-assistant.service", "petcam-light-sensor.service",
+    "petcam-web.service",
 )
 
 
@@ -80,15 +82,7 @@ def reset():
     if os.geteuid() != 0:
         raise PermissionError("Factory reset must run as root.")
 
-    # Stop every PetCam worker before clearing its configuration and data.
-    profiles = sorted((ETC / "cameras.d").glob("*.conf"))
-    for profile in profiles:
-        profile_id = profile.stem
-        if profile_id and all(c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in profile_id):
-            subprocess.run(
-                process_control.systemctl_command("disable", "--now", process_control.stream_instance_unit(profile_id)),
-                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+    # Stop all managed PetCam services before clearing configuration and data.
     for service in SERVICES:
         subprocess.run(
             process_control.systemctl_command("stop", service),
