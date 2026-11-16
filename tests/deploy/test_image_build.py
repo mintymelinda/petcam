@@ -40,7 +40,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("enable-cloud-init: 0", workflow)
         self.assertIn("enable-ssh: 0", workflow)
         self.assertIn("password: ''", workflow)
-        self.assertIn("disable-first-boot-user-rename: 1", workflow)
+        self.assertIn("disable-first-boot-user-rename: 0", workflow)
         self.assertIn("release: trixie", workflow)
         self.assertIn("stage0 stage1 stage2 ./deploy/image/stages/stage-petcam", workflow)
         self.assertIn("01-petcam/02-run-chroot.sh", workflow)
