@@ -22,7 +22,7 @@ class NetworkDiagnosticsTests(unittest.TestCase):
                     {"family": "inet", "local": "192.168.1.20", "scope": "global"}
                 ]}]),
                 json.dumps([{"dev": "wlan0", "gateway": "192.168.1.1"}]),
-                "State Recv-Q Send-Q Local Address:Port Peer Address:Port\nLISTEN 0 128 0.0.0.0:8080 0.0.0.0:*\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:8081 0.0.0.0:*\n",
+                "State Recv-Q Send-Q Local Address:Port Peer Address:Port\nLISTEN 0 128 0.0.0.0:8554 0.0.0.0:*\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:8081 0.0.0.0:*\n",
             ]),
             mock.patch.object(MODULE, "probe_http", return_value={"reachable": True, "status": 200, "frame_byte_received": True}),
         ]
@@ -33,12 +33,11 @@ class NetworkDiagnosticsTests(unittest.TestCase):
         for patcher in reversed(self.common):
             patcher.stop()
 
-    def test_healthy_operation_reports_all_local_layers_and_obs_urls(self):
+    def test_healthy_operation_reports_capture_manager_and_rtsp_layers(self):
         report = MODULE.collect_diagnostics()
-        self.assertEqual(report["obs_browser_source_urls"][0], "http://petcam.local:8080/stream")
         self.assertTrue(report["layers"]["capture_backend"]["healthy"])
         self.assertTrue(report["layers"]["manager_https"]["reachable"])
-        self.assertTrue(report["layers"]["obs_stream_proxy"]["reachable"])
+        self.assertTrue(report["layers"]["rtsp_server"]["reachable"])
         self.assertTrue(report["layers"]["hostname_resolution"]["resolved"])
         self.assertTrue(report["layers"]["network_link"]["healthy"])
         self.assertTrue(report["layers"]["default_route"]["available"])
@@ -61,22 +60,11 @@ class NetworkDiagnosticsTests(unittest.TestCase):
         self.assertTrue(any("network interface" in item for item in report["problems"]))
         self.assertTrue(any("default network route" in item for item in report["problems"]))
 
-    def test_failed_obs_proxy_is_distinguished_from_healthy_backend(self):
-        def probe(url, **kwargs):
-            if ":8080/" in url:
-                return {"reachable": False, "status": None}
-            return {"reachable": True, "status": 200, "frame_byte_received": True}
-        with mock.patch.object(MODULE, "probe_http", side_effect=probe):
-            report = MODULE.collect_diagnostics()
-        self.assertTrue(report["layers"]["capture_backend"]["healthy"])
-        self.assertFalse(report["layers"]["obs_stream_proxy"]["reachable"])
-        self.assertTrue(any("OBS stream proxy" in item for item in report["problems"]))
-
     def test_custom_backend_port_is_used_for_probe_and_listener_check(self):
         with mock.patch.object(MODULE, "parse_config", return_value={"PORT": "8082"}), \
                 mock.patch.object(MODULE, "command_output", side_effect=[
                     "[]", "[]",
-                    "State Recv-Q Send-Q Local Address:Port Peer Address:Port\nLISTEN 0 128 0.0.0.0:8080 0.0.0.0:*\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:8082 0.0.0.0:*\n",
+                    "State Recv-Q Send-Q Local Address:Port Peer Address:Port\nLISTEN 0 128 0.0.0.0:8554 0.0.0.0:*\nLISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\nLISTEN 0 128 127.0.0.1:8082 0.0.0.0:*\n",
                 ]), \
                 mock.patch.object(MODULE, "probe_http", return_value={"reachable": True, "status": 200, "frame_byte_received": True}):
             report = MODULE.collect_diagnostics()

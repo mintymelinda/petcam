@@ -26,12 +26,6 @@ def handle_get(handler, services):
     for routes in (camera_routes, feature_routes, diagnostics_routes):
         if routes.handle_get(handler, services):
             return
-    if path == "/stream":
-        try:
-            services.proxy_stream(handler, int(services.parse_config(services.CONFIG)["PORT"]))
-        except Exception as error:
-            handler.send_json(503, {"error": str(error)})
-        return
     handler.send_error(404)
 
 

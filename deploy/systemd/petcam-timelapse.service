@@ -1,6 +1,6 @@
 [Unit]
 Description=PetCam timelapse capture from the active MJPEG stream
-After=network-online.target remote-fs.target petcam-stream.service petcam-web.service
+After=network-online.target remote-fs.target petcam-stream.service
 Wants=network-online.target
 
 [Service]

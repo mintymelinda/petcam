@@ -23,7 +23,7 @@ from ..persistence.configuration import parse_config
 CONFIG_FILE = Path("/etc/petcam/petcam.conf")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
 MANAGER_PORT = 8443
-OBS_PORT = 8080
+RTSP_PORT = 8554
 DEFAULT_BACKEND_PORT = 8081
 SECRET_LINE = re.compile(
     r"(?i)(\b[\w.-]*(?:password|passwd|token|secret|authorization|cookie|credential|"
@@ -99,7 +99,7 @@ def _parse_default_routes(raw: str) -> list[dict[str, str]]:
 
 
 def _listener_report(raw: str, ports: tuple[int, ...] | None = None) -> dict[str, list[dict[str, str]]]:
-    wanted = {str(port) for port in (ports or (MANAGER_PORT, OBS_PORT, DEFAULT_BACKEND_PORT))}
+    wanted = {str(port) for port in (ports or (MANAGER_PORT, RTSP_PORT, DEFAULT_BACKEND_PORT))}
     result = {port: [] for port in sorted(wanted)}
     lines = raw.splitlines()
     for line in lines[1:]:
@@ -182,7 +182,7 @@ def collect_diagnostics() -> dict[str, Any]:
     addresses = _addresses_from_ip(command_output(["ip", "-j", "address", "show"]))
     routes = _parse_default_routes(command_output(["ip", "-j", "route", "show", "default"]))
     raw_listeners = _listener_report(
-        command_output(["ss", "-ltn"]), (MANAGER_PORT, OBS_PORT, backend_port)
+        command_output(["ss", "-ltn"]), (MANAGER_PORT, RTSP_PORT, backend_port)
     )
     listeners = {
         "healthy": all(bool(entries) for entries in raw_listeners.values()),
@@ -197,16 +197,6 @@ def collect_diagnostics() -> dict[str, Any]:
     backend_stream = probe_http(backend_url + "/stream", timeout=5, stream=True)
     manager_url = f"https://127.0.0.1:{MANAGER_PORT}/"
     manager = probe_http(manager_url, timeout=3, tls=True)
-    obs_url = f"http://127.0.0.1:{OBS_PORT}/stream"
-    obs_stream = probe_http(obs_url, timeout=5, stream=True)
-
-    obs_urls = [f"http://{mdns_name}:{OBS_PORT}/stream"]
-    for item in addresses:
-        if item["family"] == "inet" and item["scope"] != "host":
-            candidate = f"http://{item['address']}:{OBS_PORT}/stream"
-            if candidate not in obs_urls:
-                obs_urls.append(candidate)
-
     health = _read_health()
     layers = {
         "configuration": {"healthy": config_valid, "detail": "Valid" if config_valid else config_error},
@@ -220,7 +210,7 @@ def collect_diagnostics() -> dict[str, Any]:
             "mjpeg": backend_stream,
         },
         "manager_https": manager,
-        "obs_stream_proxy": obs_stream,
+        "rtsp_server": {"reachable": listeners["ports"][str(RTSP_PORT)]["listening"]},
         "hostname_resolution": {
             "name": mdns_name,
             "resolved": bool(mdns_addresses),
@@ -242,8 +232,8 @@ def collect_diagnostics() -> dict[str, Any]:
         problems.append("The loopback capture backend is unavailable or is not producing MJPEG frames.")
     if not manager["reachable"]:
         problems.append("The local HTTPS management listener is unavailable.")
-    if not obs_stream["reachable"]:
-        problems.append("The local OBS stream proxy is unavailable or is not producing frames.")
+    if not listeners["ports"][str(RTSP_PORT)]["listening"]:
+        problems.append(f"The RTSP server is not listening on port {RTSP_PORT}.")
     if not mdns_addresses:
         problems.append(f"mDNS name {mdns_name} did not resolve on the Pi.")
     if not layers["network_link"]["healthy"]:
@@ -251,7 +241,7 @@ def collect_diagnostics() -> dict[str, Any]:
     if not routes:
         problems.append("No default network route was found.")
     for port, label in (
-        (str(OBS_PORT), "OBS stream"),
+        (str(RTSP_PORT), "RTSP server"),
         (str(backend_port), "capture backend"),
         (str(MANAGER_PORT), "HTTPS manager"),
     ):
@@ -262,7 +252,6 @@ def collect_diagnostics() -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "hostname": hostname,
         "backend_port": backend_port,
-        "obs_browser_source_urls": obs_urls,
         "layers": layers,
         "problems": problems,
         "remote_client_tested": False,

@@ -173,11 +173,11 @@ class MotionDetectionTests(unittest.TestCase):
                 return self.parts.pop(0) if self.parts else b""
         response = Response()
         with mock.patch.object(MODULE.urllib.request, "urlopen", return_value=response) as opened:
-            frame = MODULE.read_stream_frame("http://127.0.0.1:8080/stream")
+            frame = MODULE.read_stream_frame("http://127.0.0.1:8081/stream")
         self.assertTrue(frame.startswith(b"\xff\xd8"))
         self.assertTrue(frame.endswith(b"\xff\xd9"))
         self.assertTrue(response.closed)
-        self.assertEqual(opened.call_args.args[0].full_url, "http://127.0.0.1:8080/stream")
+        self.assertEqual(opened.call_args.args[0].full_url, "http://127.0.0.1:8081/stream")
 
     def test_benchmark_reports_cpu_and_peak_memory(self):
         metrics = MODULE._metrics(__import__("time").monotonic(), __import__("time").process_time())

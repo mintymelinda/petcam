@@ -36,7 +36,7 @@ def storage_status(directory=None):
     return persist_storage_status(directory or FRAMES)
 
 
-STREAM_URL = "http://127.0.0.1:8080/stream"
+STREAM_URL = "http://127.0.0.1:8081/stream"
 _running = True
 
 

@@ -50,7 +50,7 @@ class GStreamerOutputTests(unittest.TestCase):
                 "fps": "30",
             })
 
-    def test_mjpeg_browser_stream_can_be_packetized_without_decoding(self):
+    def test_mjpeg_rtsp_pipeline_can_be_packetized_without_decoding(self):
         pipeline = MODULE.build_gstreamer_launch({"native_h264": False})
         self.assertIn("souphttpsrc", pipeline)
         self.assertIn("multipartdemux", pipeline)

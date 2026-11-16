@@ -70,7 +70,6 @@ function initializeDashboard() {
   $("refresh").onclick = refresh;
   $("camera").onchange = () => {
     fillModes();
-    syncOutputModeControls();
   };
   $("apply").onclick = async () => {
     const c = inventory[+$("camera").value],
@@ -100,8 +99,8 @@ function initializeDashboard() {
       await refreshGStreamer();
       $("message").textContent =
         mode.format === "H264"
-          ? "H.264 capture enabled. the RTSP service is serving H.264; the HTTP Browser Source is disabled."
-          : "Camera settings saved. The live preview has been reconnected.";
+          ? "H.264 capture enabled. The RTSP service is serving H.264."
+          : "Camera settings saved. The RTSP stream has been restarted.";
     } catch (e) {
       $("message").textContent = e.message;
     } finally {

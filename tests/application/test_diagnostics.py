@@ -3,14 +3,12 @@ from petcam.application.diagnostics import live_snapshot
 
 def test_live_snapshot_combines_all_diagnostic_adapters_without_mutation():
     capture = {"state": "running"}
-    stream = {"clients": 2}
     network = {"type": "wired"}
     system = {"cpu_percent": 12.5}
     rtsp = {"state": "publishing"}
 
     result = live_snapshot(
         capture_status=capture,
-        stream_metrics=stream,
         network_status=network,
         system_metrics=system,
         rtsp_status=rtsp,
@@ -20,7 +18,6 @@ def test_live_snapshot_combines_all_diagnostic_adapters_without_mutation():
     assert result == {
         "capture_status": capture,
         "capture_status_updated_at": 123.5,
-        "stream_metrics": stream,
         "network_status": network,
         "system_metrics": system,
         "g_streamer_status": rtsp,

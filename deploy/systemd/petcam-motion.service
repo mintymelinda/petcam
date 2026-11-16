@@ -1,7 +1,7 @@
 [Unit]
 Description=PetCam low-resource motion detection and event snapshots
-After=network-online.target petcam-stream.service petcam-web.service
-Wants=network-online.target petcam-web.service
+After=network-online.target petcam-stream.service
+Wants=network-online.target
 
 [Service]
 Type=simple

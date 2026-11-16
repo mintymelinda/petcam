@@ -44,7 +44,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(saved, [candidate, previous])
         self.assertEqual(run.call_count, 4)
 
-    def test_manager_page_uses_configured_device_hostname_for_stream_urls(self):
+    def test_manager_page_uses_configured_device_hostname_for_rtsp_endpoint(self):
         class Request:
             path = "/"
 
@@ -67,7 +67,7 @@ class WebManagerTests(unittest.TestCase):
             MODULE.Handler.do_GET(request)
         page = request.wfile.getvalue().decode()
         self.assertEqual(request.status, 200)
-        self.assertIn("http://kittycam.local:8080/", page)
+        self.assertNotIn(":8080/", page)
         self.assertIn("rtsp://kittycam.local:8554/petcam", page)
         self.assertNotIn("petcam.local", page)
         self.assertNotIn("__PETCAM_HOST__", page)
@@ -79,7 +79,7 @@ class WebManagerTests(unittest.TestCase):
             self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.example.net")
     def test_management_page_uses_the_four_tab_layout(self):
         self.assertIn("Refresh", PAGE_AND_JS)
-        self.assertIn("Browser Source", PAGE_AND_JS)
+        self.assertNotIn("Browser Source", PAGE_AND_JS)
         self.assertIn('role="tablist"', PAGE_AND_JS)
         tab_order = [PAGE_AND_JS.index('data-tab="camera"'), PAGE_AND_JS.index('data-tab="timelapse"'),
                      PAGE_AND_JS.index('data-tab="motion"'), PAGE_AND_JS.index('data-tab="system"')]
@@ -111,16 +111,13 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
         self.assertIn('{"H264"}', Path("src/application/camera_inventory.py").read_text())
-        self.assertIn("syncOutputModeControls", PAGE_AND_JS)
-        self.assertIn("data-browser-feed-link", PAGE_AND_JS)
-        self.assertIn("always-on RTSP service serves H.264 directly", PAGE_AND_JS)
+        self.assertIn("RTSP service serves the camera stream directly", PAGE_AND_JS)
         self.assertNotIn("rtmp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
         self.assertNotIn("rtmp-server-url", PAGE_AND_JS)
         self.assertNotIn("rtmp-stream-key", PAGE_AND_JS)
         self.assertIn('id="g-streamer-url"', PAGE_AND_JS)
         self.assertIn('id="g-streamer-url" type="text"', PAGE_AND_JS)
-        self.assertIn('MJPEG delivered FPS', PAGE_AND_JS)
         self.assertIn('Network Up / Down', PAGE_AND_JS)
         self.assertIn('Wi-Fi signal', PAGE_AND_JS)
         self.assertIn("signal >= -50", PAGE_AND_JS)
@@ -152,16 +149,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(status["active_resolution"], "1920x1080")
         self.assertEqual(status["capture_mode"], "native_h264_csi")
 
-    def test_browser_source_shows_camera_connection_status_and_retries(self):
-        page = Path("src/static/browser-source.html").read_text(encoding="utf-8")
-        script = Path("src/static/browser-source.js").read_text(encoding="utf-8")
-        self.assertIn('id="status">Connecting to PetCam camera...', page)
-        self.assertIn('<script src="/browser-source.js" defer></script>', page)
-        self.assertIn('image.addEventListener("load", handleStreamLoad)', script)
-        self.assertIn('image.addEventListener("error", handleStreamError)', script)
-        self.assertIn("window.setTimeout(retryStream, RETRY_DELAY_MS)", script)
-        self.assertIn('image.src = "/stream?retry=" + Date.now()', script)
-
     def test_dashboard_javascript_modules_are_external_and_served_without_authentication(self):
         for name in ("dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js"):
             with self.subTest(asset=name):
@@ -189,42 +176,16 @@ class WebManagerTests(unittest.TestCase):
 
         self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
 
-    def test_browser_source_javascript_is_served_on_stream_port(self):
-        script = Path("src/static/browser-source.js").read_text(encoding="utf-8")
-        class Request:
-            path = "/browser-source.js"
-            def __init__(self):
-                self.wfile = io.BytesIO()
-                self.response_headers = []
-            def send_response(self, status):
-                self.status = status
-            def send_header(self, name, value):
-                self.response_headers.append((name, value))
-            def end_headers(self):
-                pass
-            def send_error(self, status, message=None):
-                self.status = status
-        request = Request()
-        MODULE.StreamHandler.do_GET(request)
-        self.assertEqual(request.status, 200)
-        self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
-        self.assertEqual(request.wfile.getvalue().decode(), script)
+    def test_browser_http_stream_pipeline_is_removed_and_rtsp_remains(self):
+        self.assertFalse(hasattr(MODULE, "StreamHandler"))
+        self.assertFalse(hasattr(MODULE, "proxy_stream"))
+        source = Path(MODULE.__file__).read_text(encoding="utf-8")
+        self.assertNotIn("streaming_routes", source)
+        self.assertNotIn("browser-source", MODULE.STATIC_ASSETS)
+        dashboard = Path("src/static/dashboard.html").read_text(encoding="utf-8")
+        self.assertNotIn("data-browser-feed-link", dashboard)
+        self.assertIn("g-streamer-url", dashboard)
 
-    def test_stream_proxy_returns_503_when_camera_stream_is_unavailable(self):
-        class Request:
-            path = "/stream"
-            def __init__(self):
-                self.errors = []
-            def send_error(self, status, message):
-                self.errors.append((status, message))
-
-        request = Request()
-        with mock.patch.object(MODULE, "register_stream_client", return_value="client"), \
-                mock.patch.object(MODULE, "unregister_stream_client"), \
-                mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=MODULE.urllib.error.URLError("connection refused")):
-            MODULE.proxy_stream(request, 8081)
-        self.assertEqual(request.errors[0][0], 503)
-        self.assertIn("unavailable", request.errors[0][1].lower())
 
     def test_g_streamer_status_treats_systemd_timeout_as_stopped(self):
         with mock.patch.object(MODULE.subprocess, "run", side_effect=MODULE.subprocess.TimeoutExpired("systemctl", 1)):
@@ -509,73 +470,6 @@ class WebManagerTests(unittest.TestCase):
             MODULE._camera_inventory_cache = None
             MODULE._camera_inventory_cache_at = 0.0
 
-    def test_stream_proxy_reconnects_upstream_without_ending_obs_response(self):
-        class Upstream:
-            status = 200
-            headers = {"Content-Type": "multipart/x-mixed-replace; boundary=frame"}
-
-            def __init__(self, chunks):
-                self.chunks = iter(chunks)
-                self.read1_calls = 0
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, *_args):
-                return False
-
-            def read1(self, _size):
-                self.read1_calls += 1
-                return next(self.chunks)
-
-            def read(self, _size):
-                raise AssertionError("proxy should prefer incremental read1")
-
-        class CountingWriter(io.BytesIO):
-            flush_calls = 0
-            writes = 0
-
-            def write(self, payload):
-                self.writes += 1
-                if self.writes > 2:
-                    raise BrokenPipeError("OBS disconnected")
-                return super().write(payload)
-
-            def flush(self):
-                self.flush_calls += 1
-                super().flush()
-
-        class Handler:
-            def __init__(self):
-                self.path = "/stream"
-                self.wfile = CountingWriter()
-                self.headers_sent = []
-
-            def send_response(self, status):
-                self.status = status
-
-            def send_header(self, name, value):
-                self.headers_sent.append((name, value))
-
-            def end_headers(self):
-                pass
-
-        first = Upstream((b"frame-one", b""))
-        second = Upstream((b"frame-two", b"frame-three"))
-        handler = Handler()
-        with mock.patch.object(MODULE.urllib.request, "urlopen", side_effect=(first, second)) as open_stream, mock.patch.object(MODULE.time, "sleep"):
-            MODULE.proxy_stream(handler, 8081)
-        self.assertEqual(handler.status, 200)
-        self.assertEqual(handler.wfile.getvalue(), b"frame-oneframe-two")
-        self.assertEqual(open_stream.call_count, 2)
-        self.assertEqual(first.read1_calls, 2)
-        self.assertEqual(second.read1_calls, 2)
-        self.assertEqual(handler.wfile.flush_calls, 0)
-        self.assertEqual(
-            [value for name, value in handler.headers_sent if name == "Content-Type"],
-            ["multipart/x-mixed-replace; boundary=frame"],
-        )
-
     def test_camera_inventory_exposes_stable_identity_metadata(self):
         with mock.patch.object(
             MODULE, "discover_devices",
@@ -603,31 +497,15 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("activeConfig", PAGE_AND_JS)
         self.assertNotIn("refreshLivePreview", PAGE_AND_JS)
         self.assertNotIn("dashboard-preview", PAGE_AND_JS)
-        self.assertIn("MJPEG delivered FPS", PAGE_AND_JS)
         self.assertIn("GStreamer RTSP FPS", PAGE_AND_JS)
         self.assertIn("gStreamer.service_active", PAGE_AND_JS)
         self.assertIn("gStreamer.state", PAGE_AND_JS)
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn('id="g-streamer-url"', PAGE_AND_JS)
         self.assertIn('id="g-streamer-url" type="text"', PAGE_AND_JS)
-        self.assertIn('http://__PETCAM_HOST__:8080/', PAGE_AND_JS)
         self.assertNotIn('id="live-preview"', PAGE_AND_JS)
         self.assertNotIn('rtmp-encoder', PAGE_AND_JS)
         self.assertIn("saved camera settings are selected", PAGE_AND_JS)
-
-    def test_browser_source_is_rejected_when_h264_capture_is_active(self):
-        class Request:
-            path = "/"
-            def __init__(self):
-                self.errors = []
-            def send_error(self, status, message):
-                self.errors.append((status, message))
-
-        request = Request()
-        with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}):
-            MODULE.StreamHandler.do_GET(request)
-        self.assertEqual(request.errors[0][0], 503)
-        self.assertIn("Use the RTSP endpoint", request.errors[0][1])
 
     def test_camera_page_displays_measured_capture_rate_separately_from_configured_fps(self):
         self.assertIn("Actual captured rate:", PAGE_AND_JS)
@@ -636,7 +514,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("actual ", PAGE_AND_JS)
         self.assertIn("setInterval(refreshLiveStatus, 5000)", PAGE_AND_JS)
         self.assertIn("Capture status refreshes every 5 seconds", PAGE_AND_JS)
-        self.assertIn("forwarded JPEG FPS", PAGE_AND_JS)
         self.assertIn('id="capture-status-freshness"', PAGE_AND_JS)
 
     def test_system_tab_displays_the_installed_application_version_without_dead_telemetry_nodes(self):
@@ -669,27 +546,6 @@ class WebManagerTests(unittest.TestCase):
             self.assertGreater(metrics["memory_total_mb"], 0)
             self.assertGreaterEqual(metrics["memory_used_mb"], 0)
             self.assertLessEqual(metrics["memory_used_mb"], metrics["memory_total_mb"])
-
-    def test_stream_metrics_count_jpeg_frames_across_chunk_boundaries(self):
-        client_id = MODULE.register_stream_client("browser_source")
-        parser_state = {
-            "previous_byte": None,
-            "in_jpeg": False,
-            "last_frame_monotonic": None,
-        }
-        try:
-            MODULE.record_stream_chunk(client_id, b"\xff\xd8first\xff", parser_state)
-            MODULE.record_stream_chunk(client_id, b"\xd9\xff\xd8second\xff\xd9", parser_state)
-            snapshot = MODULE.stream_metrics_snapshot()
-            self.assertEqual(snapshot["active_clients"], 1)
-            self.assertEqual(snapshot["clients"][0]["frames"], 2)
-            self.assertIn("window_fps", snapshot["clients"][0])
-            self.assertIn("max_frame_gap_ms", snapshot["clients"][0])
-            self.assertIn("average_frame_interval_ms", snapshot["clients"][0])
-            self.assertEqual(snapshot["clients"][0]["source"], "browser_source")
-            self.assertGreater(snapshot["clients"][0]["bytes"], 0)
-        finally:
-            MODULE.unregister_stream_client(client_id)
 
     def test_camera_performance_warning_uses_single_capture_budget(self):
         self.assertIn("projectedPixelRate", PAGE_AND_JS)

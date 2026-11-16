@@ -129,14 +129,8 @@ async function refreshDiagnostics() {
           .map(([k]) => k.replaceAll("_", " ") + ": attention needed")
           .join(" · ")
       : "Local camera, listener, and network checks look healthy.";
-    const urls = (d.obs_browser_source_urls || []).join("\n");
     $("diagnostic-details").textContent =
-      "OBS URL(s): " +
-      urls +
-      "\n" +
-      (d.problems || []).join("\n") +
-      "\n" +
-      d.remote_client_note;
+      (d.problems || []).join("\n") + "\n" + d.remote_client_note;
   } catch (e) {
     $("diagnostic-summary").textContent =
       "Diagnostics unavailable: " + e.message;
