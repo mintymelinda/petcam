@@ -104,11 +104,17 @@ def run_capture(config: dict) -> int:
         _write_marker(marker)
         if native_h264:
             logging.info("USB camera %s exposes native H.264 at %s %s FPS", selected["device"], resolution, fps)
+            stopping = [False]
+            def stop_native(_signum, _frame):
+                stopping[0] = True
+            signal.signal(signal.SIGTERM, stop_native)
+            signal.signal(signal.SIGINT, stop_native)
             try:
-                while True:
+                while not stopping[0]:
                     signal.pause()
             finally:
                 _remove_marker()
+            return 0
         command = [
             "ustreamer", "--device", selected["device"], "--host", "127.0.0.1",
             "--port", "8081", "--format", selected["format"],
