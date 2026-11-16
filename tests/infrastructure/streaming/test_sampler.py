@@ -63,7 +63,10 @@ def test_unix_socket_client_receives_the_latest_frame(tmp_path):
 
 def test_unix_socket_client_reports_missing_or_stale_frame(tmp_path):
     path = tmp_path / "sampler.sock"
-    buffer = MODULE.LatestFrameBuffer()
+    now = [100.0]
+    buffer = MODULE.LatestFrameBuffer(clock=lambda: now[0])
+    buffer.publish(JPEG)
+    now[0] += MODULE.MAX_FRAME_AGE_SECONDS + 0.1
     server = MODULE.FrameServer(path, buffer)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()

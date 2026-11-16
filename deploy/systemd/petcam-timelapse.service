@@ -1,5 +1,5 @@
 [Unit]
-Description=PetCam timelapse capture from the active MJPEG stream
+Description=PetCam timelapse capture from the shared RTSP sampler
 After=network-online.target remote-fs.target petcam-stream.service petcam-rtsp-sampler.service
 Wants=network-online.target petcam-rtsp-sampler.service
 
