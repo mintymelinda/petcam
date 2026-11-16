@@ -6,6 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from petcam.infrastructure.streaming import gstreamer as MODULE
+from petcam.infrastructure.system.supervisor import workers
 
 
 class GStreamerOutputTests(unittest.TestCase):
@@ -84,17 +85,10 @@ class GStreamerOutputTests(unittest.TestCase):
             self.assertFalse(MODULE.native_h264_available(marker_path=marker))
 
 
-    def test_systemd_service_is_pulled_in_with_camera_capture(self):
-        root = Path(__file__).parents[3] / "deploy" / "systemd"
-        unit = (root / "petcam-g-streamer-rtsp.service").read_text(encoding="utf-8")
-        sampler = (root / "petcam-rtsp-sampler.service").read_text(encoding="utf-8")
-        self.assertIn("Wants=network-online.target petcam-rtsp-sampler.service", unit)
-        self.assertIn("WantedBy=multi-user.target", unit)
-        self.assertIn("After=network-online.target petcam-g-streamer-rtsp.service", sampler)
-        self.assertIn("Wants=network-online.target petcam-g-streamer-rtsp.service", sampler)
-        self.assertNotIn("petcam-stream.service", unit)
-        self.assertNotIn("ConditionPathExists", unit)
-
+    def test_supervisor_owns_streaming_workers_without_unit_files(self):
+        names = {worker.name for worker in workers()}
+        self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
+        self.assertFalse((Path(__file__).parents[3] / "deploy" / "systemd").exists())
 
 
 if __name__ == "__main__":

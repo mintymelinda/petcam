@@ -49,21 +49,26 @@ def read_enabled(path: Path, *, default: bool = False) -> bool:
         raw = path.read_text(encoding="utf-8")
     except OSError:
         return default
+    legacy = False
     try:
         payload = json.loads(raw)
     except ValueError:
-        payload = dict(
-            line.split("=", 1) for line in raw.splitlines()
-            if "=" in line and not line.lstrip().startswith("#")
-        )
+        legacy = True
+        payload = {}
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            payload[key.strip()] = value.strip()
     if not isinstance(payload, dict):
         return default
     for key in ("enabled", "ENABLED", "MQTT_ENABLED"):
         value = payload.get(key)
         if isinstance(value, bool):
             return value
-        if isinstance(value, str):
-            return value.strip().lower() in ("1", "true", "yes", "on")
+        if legacy and isinstance(value, str):
+            return value.lower() in ("1", "true", "yes", "on")
     return default
 
 

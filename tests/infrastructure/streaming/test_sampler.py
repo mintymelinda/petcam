@@ -133,17 +133,11 @@ def test_gstreamer_runtime_rejects_missing_h264_decoder():
             MODULE.check_gstreamer_runtime()
 
 
-def test_sampler_systemd_unit_orders_after_rtsp_and_creates_local_ipc():
+def test_supervisor_owns_rtsp_sampler_and_streamer_without_unit_files():
     from pathlib import Path
+    from petcam.infrastructure.system.supervisor import workers
 
-    root = Path(__file__).parents[3] / "deploy" / "systemd"
-    unit = (root / "petcam-rtsp-sampler.service").read_text(encoding="utf-8")
-    rtsp_unit = (root / "petcam-g-streamer-rtsp.service").read_text(encoding="utf-8")
-    motion_unit = (root / "petcam-motion.service").read_text(encoding="utf-8")
-    timelapse_unit = (root / "petcam-timelapse.service").read_text(encoding="utf-8")
-    assert "After=network-online.target petcam-g-streamer-rtsp.service" in unit
-    assert "Wants=network-online.target petcam-g-streamer-rtsp.service" in unit
-    assert "Wants=network-online.target petcam-rtsp-sampler.service" in rtsp_unit
-    assert "petcam-rtsp-sampler.service" in motion_unit
-    assert "petcam-rtsp-sampler.service" in timelapse_unit
-    assert "WantedBy=multi-user.target" in unit
+    names = {worker.name for worker in workers()}
+    assert "gstreamer-rtsp" in names
+    assert "rtsp-sampler" in names
+    assert not (Path(__file__).parents[3] / "deploy" / "systemd").exists()
