@@ -63,6 +63,35 @@ class CameraSelectionTests(unittest.TestCase):
         self.assertEqual(result["CSI_DEVICE_PATH"], cameras[0]["device_path"])
         self.assertEqual(result["FORMAT"], "auto")
 
+    def test_usb_selection_accepts_fractional_hardware_frame_rate(self):
+        cameras = [{
+            "kind": "usb",
+            "id": "usb-fractional",
+            "device": "/dev/video0",
+            "physical_path": "",
+            "modes": [{
+                "width": 1920,
+                "height": 1080,
+                "format": "MJPG",
+                "fps": [29.97],
+            }],
+        }]
+        result = resolve_camera_selection(
+            {
+                "kind": "usb",
+                "camera_id": "usb-fractional",
+                "mode": {
+                    "width": 1920,
+                    "height": 1080,
+                    "format": "MJPG",
+                    "fps": 29.97,
+                },
+            },
+            discover_cameras=lambda: cameras,
+            mode_supports_fps=lambda mode, fps: fps in mode["fps"],
+        )
+        self.assertEqual(result["FPS"], "29.97")
+
     def test_stale_camera_is_rejected(self):
         with self.assertRaisesRegex(ValueError, "no longer available"):
             resolve_camera_selection(

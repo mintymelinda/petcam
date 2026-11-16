@@ -1,3 +1,6 @@
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -41,9 +44,25 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertIs(MODULE.camera_identity, camera_capabilities.camera_identity)
         self.assertIs(MODULE.parse_modes, camera_capabilities.parse_modes)
         self.assertIs(MODULE.select_mode, camera_modes.select_mode)
-        self.assertIs(MODULE.PIXEL_BUDGETS, camera_modes.PIXEL_BUDGETS)
         self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
         self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
+
+    def test_auto_selection_uses_first_hardware_mode_and_its_advertised_max_fps(self):
+        devices = [{
+            "device": "/dev/video0",
+            "modes": MODULE.parse_modes(SAMPLE),
+        }]
+        output = io.StringIO()
+        with (
+            patch.object(MODULE.sys, "argv", ["petcam-camera", "select"]),
+            patch.object(MODULE, "read_model", return_value="Test camera host"),
+            patch.object(MODULE, "discover_devices", return_value=devices),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        selected = json.loads(output.getvalue())
+        self.assertEqual(selected["format"], "MJPEG")
+        self.assertEqual(selected["fps"], "60")
 
     def test_parses_formats_resolutions_and_frame_rates(self):
         modes = MODULE.parse_modes(SAMPLE)
@@ -55,30 +74,12 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertTrue(MODULE.mode_supports_fps(modes[0], 30))
         self.assertFalse(MODULE.mode_supports_fps(modes[0], 45))
 
-    def test_native_h264_selector_uses_only_advertised_h264_modes(self):
-        devices = [{
-            "device": "/dev/video2",
-            "modes": [
-                {"format": "MJPG", "width": 1280, "height": 720, "fps": [30.0]},
-                {"format": "H264", "width": 1920, "height": 1080, "fps": [30.0]},
-            ],
-        }]
-        selected = MODULE.select_native_h264_mode(devices)
-        self.assertEqual(selected, {
-            "device": "/dev/video2", "resolution": "1920x1080",
-            "fps": 30, "format": "H264",
-        })
-        self.assertIsNone(MODULE.select_native_h264_mode([{
-            "device": "/dev/video3",
-            "modes": [{"format": "MJPG", "width": 640, "height": 480, "fps": [30.0]}],
-        }]))
-
-    def test_prefers_native_mjpeg_and_uses_least_demanding_when_over_budget(self):
+    def test_auto_selection_uses_first_hardware_advertised_mode_without_ranking(self):
         devices = [{"device": "/dev/video0", "modes": MODULE.parse_modes(SAMPLE)}]
-        device, mode, native = MODULE.select_mode(devices, "zero")
+        device, mode, native = MODULE.select_mode(devices)
         self.assertTrue(native)
         self.assertEqual(mode["format"], "MJPG")
-        self.assertEqual((mode["width"], mode["height"]), (1280, 720))
+        self.assertEqual((mode["width"], mode["height"]), (1920, 1080))
         self.assertEqual(device["device"], "/dev/video0")
 
     def test_native_mjpeg_is_mapped_to_ustreamer_passthrough_format(self):
@@ -132,14 +133,16 @@ class CameraDiscoveryTests(unittest.TestCase):
             ["H264"],
         )
 
-    def test_falls_back_to_supported_raw_format_and_ignores_unknown_fourcc(self):
+    def test_auto_selection_does_not_hide_hardware_formats_the_streamer_may_reject(self):
         raw_device = [{"device": "/dev/video1", "modes": [MODULE.parse_modes(SAMPLE)[2]]}]
-        device, mode, native = MODULE.select_mode(raw_device, "zero")
+        device, mode, native = MODULE.select_mode(raw_device)
         self.assertFalse(native)
         self.assertEqual(mode["format"], "YUYV")
         self.assertEqual(device["device"], "/dev/video1")
-        unsupported = [{"device": "/dev/video2", "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}]}]
-        self.assertIsNone(MODULE.select_mode(unsupported, "pi5"))
+        hardware_mode = [{"device": "/dev/video2", "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}]}]
+        selected_device, selected_mode, _native = MODULE.select_mode(hardware_mode)
+        self.assertEqual(selected_device["device"], "/dev/video2")
+        self.assertEqual(selected_mode["format"], "H264")
 
     def test_parses_stepwise_sizes_and_frame_intervals(self):
         output = """[0]: 'MJPG' (Motion-JPEG, compressed)
@@ -165,21 +168,22 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertEqual((cameras[0]["sensor_width"], cameras[0]["sensor_height"]), (4056, 3040))
         self.assertEqual(len(cameras[0]["modes"]), 4)
         selected = MODULE.select_csi_mode(
-            cameras, "pi5", requested_device_path=cameras[0]["device_path"]
+            cameras, requested_device_path=cameras[0]["device_path"]
         )
         self.assertEqual(selected["camera"], 0)
         self.assertEqual(selected["device_path"], cameras[0]["device_path"])
         self.assertAlmostEqual(cameras[0]["modes"][0]["fps"], 120.05)
 
-    def test_selects_csi_mode_within_board_budget_and_validates_overrides(self):
+    def test_csi_auto_selection_uses_first_advertised_mode_without_board_budget(self):
         cameras = MODULE.parse_csi_cameras(CSI_SAMPLE)
-        selected = MODULE.select_csi_mode(cameras, "zero")
-        self.assertTrue(selected["performance_warning"])
-        explicit = MODULE.select_csi_mode(cameras, "pi5", requested_camera=1, resolution="2304x1296", fps="56.03")
+        selected = MODULE.select_csi_mode(cameras)
+        self.assertEqual(selected["resolution"], "1332x990")
+        self.assertNotIn("performance_warning", selected)
+        explicit = MODULE.select_csi_mode(cameras, requested_camera=1, resolution="2304x1296", fps="56.03")
         self.assertEqual(explicit["sensor"], "imx708")
         self.assertEqual(explicit["resolution"], "2304x1296")
         with self.assertRaises(ValueError):
-            MODULE.select_csi_mode(cameras, "pi5", resolution="123x456")
+            MODULE.select_csi_mode(cameras, resolution="123x456")
 
     def test_hardware_h264_encoder_requires_codec_encode_node_and_h264_output(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -210,12 +214,7 @@ class CameraDiscoveryTests(unittest.TestCase):
             (dev / "video11").touch()
             self.assertFalse(MODULE.detect_hardware_h264_encoder(sysfs, dev)["available"])
 
-    def test_model_tiers(self):
-        self.assertEqual(MODULE.model_tier("Raspberry Pi Zero W Rev 1.1"), "zero")
-        self.assertEqual(MODULE.model_tier("Raspberry Pi Zero 2 W Rev 1.0"), "zero2")
-        self.assertEqual(MODULE.model_tier("Raspberry Pi 1 Model B+ Rev 1.2"), "pi1")
-        self.assertEqual(MODULE.model_tier("Raspberry Pi 2 Model B Rev 1.1"), "pi2")
-        self.assertEqual(MODULE.model_tier("Raspberry Pi 5 Model B Rev 1.0"), "pi5")
+
 
 
 if __name__ == "__main__":

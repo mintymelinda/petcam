@@ -5,32 +5,32 @@ from unittest import mock
 from petcam.infrastructure.camera import capture as MODULE
 
 
-def test_usb_camera_selection_prefers_native_h264_when_auto_is_requested():
+def test_usb_auto_selection_uses_first_hardware_mode_without_format_preference():
     discovery = mock.Mock(returncode=0, stdout=json.dumps({
         "usb_devices": [{"device": "/dev/video0"}], "csi_cameras": []
     }))
-    h264 = mock.Mock(returncode=0, stdout=json.dumps({
+    first_mode = mock.Mock(returncode=0, stdout=json.dumps({
         "device": "/dev/video0", "resolution": "1920x1080", "fps": 30, "format": "H264"
     }))
-    with mock.patch.object(MODULE.subprocess, "run", side_effect=[discovery, h264]) as run:
+    with mock.patch.object(MODULE.subprocess, "run", side_effect=[discovery, first_mode]) as run:
         source, selected = MODULE.select_backend({"SOURCE": "auto", "FORMAT": "auto"})
     assert source == "usb"
     assert selected["format"] == "H264"
-    assert run.call_args_list[1].args[0][-1] == "select-h264"
+    assert run.call_args_list[1].args[0][3] == "select"
 
 
-def test_usb_selection_falls_back_to_mjpeg():
+def test_usb_selection_does_not_silently_fallback_to_another_format():
     discovery = mock.Mock(returncode=0, stdout=json.dumps({
-        "usb_devices": [{"device": "/dev/video0"}], "csi_cameras": [{"index": 0}]
+        "usb_devices": [{"device": "/dev/video0"}], "csi_cameras": []
     }))
-    no_h264 = mock.Mock(returncode=1, stderr="no H264")
-    mjpeg = mock.Mock(returncode=0, stdout=json.dumps({
-        "device": "/dev/video0", "resolution": "1280x720", "fps": 30, "format": "MJPEG"
-    }))
-    with mock.patch.object(MODULE.subprocess, "run", side_effect=[discovery, no_h264, mjpeg]):
-        source, selected = MODULE.select_backend({"SOURCE": "auto", "FORMAT": "auto"})
-    assert source == "usb"
-    assert selected["format"] == "MJPEG"
+    unsupported = mock.Mock(returncode=1, stderr="selected hardware mode is unsupported by ustreamer")
+    with mock.patch.object(MODULE.subprocess, "run", side_effect=[discovery, unsupported]):
+        try:
+            MODULE.select_backend({"SOURCE": "auto", "FORMAT": "auto"})
+        except RuntimeError as error:
+            assert "selected hardware mode is unsupported" in str(error)
+        else:
+            raise AssertionError("Unsupported selected mode must be reported, not silently replaced")
 
 
 def test_usb_mjpeg_worker_runs_ustreamer_and_removes_its_marker(tmp_path):
@@ -72,15 +72,12 @@ def test_auto_selection_falls_back_to_csi_when_usb_modes_are_unsupported():
     discovery = mock.Mock(returncode=0, stdout=json.dumps({
         "usb_devices": [{"device": "/dev/video0"}], "csi_cameras": [{"index": 0}]
     }))
-    unsupported_h264 = mock.Mock(returncode=1, stderr="no H264")
-    unsupported_mjpeg = mock.Mock(returncode=1, stderr="no usable USB mode")
+    unsupported_usb = mock.Mock(returncode=1, stderr="no usable USB mode")
     csi = mock.Mock(returncode=0, stdout=json.dumps({
         "camera": 0, "resolution": "1920x1080", "fps": 30
     }))
-    no_encoder = mock.Mock(returncode=1, stdout=json.dumps({"available": False}))
     with mock.patch.object(
-        MODULE.subprocess, "run",
-        side_effect=[discovery, unsupported_h264, unsupported_mjpeg, csi, no_encoder],
+        MODULE.subprocess, "run", side_effect=[discovery, unsupported_usb, csi],
     ):
         source, selected = MODULE.select_backend({"SOURCE": "auto", "FORMAT": "auto"})
     assert source == "csi"

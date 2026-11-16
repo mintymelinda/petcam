@@ -109,9 +109,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("gStreamer.state", PAGE_AND_JS)
         self.assertIn('id="g-streamer-service"', PAGE_AND_JS)
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
-        self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
-        self.assertIn('{"H264"}', Path("src/petcam/application/camera_inventory.py").read_text())
-        self.assertIn("RTSP service serves the camera stream directly", PAGE_AND_JS)
+        self.assertIn("RTSP service will attempt to use this hardware mode", PAGE_AND_JS)
         self.assertNotIn("rtmp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
         self.assertNotIn("rtmp-server-url", PAGE_AND_JS)
@@ -325,7 +323,6 @@ class WebManagerTests(unittest.TestCase):
                 mock.patch.object(MODULE, "parse_config", return_value=previous_camera), \
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
-                mock.patch.object(MODULE, "check_gstreamer_runtime"), \
                 mock.patch.object(MODULE, "apply_config") as apply, \
                 mock.patch.object(MODULE, "restart_g_streamer_service") as restart:
             MODULE.save_selection({
@@ -335,25 +332,24 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(apply.call_args.args[0]["FORMAT"], "H264")
         restart.assert_called_once_with()
 
-    def test_h264_selection_is_rejected_when_mjpeg_consumers_are_enabled(self):
+    def test_h264_mode_is_selectable_without_application_feature_policy(self):
         camera = {
             "kind": "usb", "id": "usb-kiyo", "device": "/dev/video0",
             "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}],
         }
-        with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "parse_config", return_value=MODULE.parse_config()), \
-                mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": True}), \
-                mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
-                mock.patch.object(MODULE.Path, "is_file", return_value=True), \
-                mock.patch.object(MODULE.subprocess, "run", return_value=mock.Mock(returncode=1)), \
-                mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service"):
-            with self.assertRaisesRegex(ValueError, "Disable timelapse and motion detection"):
-                MODULE.save_selection({
-                    "kind": "usb", "camera_id": "usb-kiyo",
-                    "mode": {"format": "H264", "width": 1920, "height": 1080, "fps": 30},
-                })
-        apply.assert_not_called()
+        with (
+            mock.patch.object(MODULE, "camera_inventory", return_value=[camera]),
+            mock.patch.object(MODULE, "parse_config", return_value=MODULE.parse_config()),
+            mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": True}),
+            mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}),
+            mock.patch.object(MODULE, "apply_config") as apply,
+            mock.patch.object(MODULE, "restart_g_streamer_service"),
+        ):
+            MODULE.save_selection({
+                "kind": "usb", "camera_id": "usb-kiyo",
+                "mode": {"format": "H264", "width": 1920, "height": 1080, "fps": 30},
+            })
+        self.assertEqual(apply.call_args.args[0]["FORMAT"], "H264")
 
     def test_valid_selection_uses_transactional_config_apply(self):
         original = MODULE.camera_inventory
@@ -378,22 +374,22 @@ class WebManagerTests(unittest.TestCase):
         finally:
             MODULE.camera_inventory = original
 
-    def test_performance_override_is_forwarded_to_primary_configuration(self):
+    def test_high_demand_hardware_mode_is_saved_without_performance_override(self):
         camera = {
             "kind": "usb", "id": "usb-fast", "device": "/dev/video0",
-            "modes": [{"width": 1920, "height": 1080, "fps": [60], "format": "MJPG"}],
+            "modes": [{"width": 3840, "height": 2160, "fps": [60], "format": "YUYV"}],
         }
-        with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "model_tier", return_value="pi3"), \
-                mock.patch.object(MODULE, "PIXEL_BUDGETS", {"pi3": 1}), \
-                mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service"):
+        with (
+            mock.patch.object(MODULE, "camera_inventory", return_value=[camera]),
+            mock.patch.object(MODULE, "apply_config") as apply,
+            mock.patch.object(MODULE, "restart_g_streamer_service"),
+        ):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-fast",
-                "mode": {"width": 1920, "height": 1080, "fps": 60, "format": "MJPG"},
-                "allow_performance_override": True,
+                "mode": {"width": 3840, "height": 2160, "fps": 60, "format": "YUYV"},
             })
         self.assertEqual(apply.call_args.args[0]["FPS"], "60")
+        self.assertEqual(apply.call_args.args[0]["FORMAT"], "YUYV")
 
     def test_primary_usb_selection_persists_physical_topology(self):
         physical_path = "/sys/devices/platform/soc/usb1/1-1/1-1.2"
@@ -481,15 +477,8 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(len(cameras), 2)
         self.assertTrue(cameras[0]["stable_identity"])
         self.assertEqual(cameras[1]["id"], "csi-imx708-0")
-        self.assertIn(cameras[0]["hardware_tier"], MODULE.PIXEL_BUDGETS)
-        self.assertEqual(
-            cameras[0]["hardware_budget_pixels_per_second"],
-            MODULE.PIXEL_BUDGETS[cameras[0]["hardware_tier"]],
-        )
-        self.assertEqual(
-            cameras[1]["hardware_budget_pixels_per_second"],
-            cameras[0]["hardware_budget_pixels_per_second"],
-        )
+        self.assertNotIn("hardware_tier", cameras[0])
+        self.assertNotIn("hardware_budget_pixels_per_second", cameras[0])
 
     def test_camera_page_restores_saved_camera_and_mode_and_refreshes_preview(self):
         self.assertIn("activeCameraMatches", PAGE_AND_JS)
@@ -504,7 +493,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn('id="g-streamer-url" type="text"', PAGE_AND_JS)
         self.assertNotIn('id="live-preview"', PAGE_AND_JS)
         self.assertNotIn('rtmp-encoder', PAGE_AND_JS)
-        self.assertIn("saved camera settings are selected", PAGE_AND_JS)
+        self.assertIn("Hardware-advertised modes are available for selection", PAGE_AND_JS)
 
     def test_camera_page_displays_measured_capture_rate_separately_from_configured_fps(self):
         self.assertIn("Actual captured rate:", PAGE_AND_JS)
@@ -546,15 +535,11 @@ class WebManagerTests(unittest.TestCase):
             self.assertGreaterEqual(metrics["memory_used_mb"], 0)
             self.assertLessEqual(metrics["memory_used_mb"], metrics["memory_total_mb"])
 
-    def test_camera_performance_warning_uses_single_capture_budget(self):
-        self.assertIn("projectedPixelRate", PAGE_AND_JS)
-        self.assertIn("estimated_pixels_per_second", PAGE_AND_JS)
-        self.assertIn("exceeds_performance_budget", PAGE_AND_JS)
-        self.assertIn("performance_budget_pixels_per_second", PAGE_AND_JS)
-        self.assertIn("server-approved capture-mode catalog", MODULE.build_capture_modes.__doc__)
-        self.assertIn("pixels/second", PAGE_AND_JS)
-        self.assertNotIn("aggregate pixels/second", PAGE_AND_JS)
-        self.assertNotIn("primary_estimated_pixels_per_second", PAGE_AND_JS)
+    def test_camera_ui_does_not_apply_performance_budget_filtering(self):
+        self.assertNotIn("projectedPixelRate", PAGE_AND_JS)
+        self.assertNotIn("exceeds_performance_budget", PAGE_AND_JS)
+        self.assertNotIn("performance_budget_pixels_per_second", PAGE_AND_JS)
+        self.assertIn("Hardware-advertised mode selected", PAGE_AND_JS)
 
     def test_active_camera_config_returns_only_selection_fields(self):
         config = {
@@ -647,7 +632,6 @@ class WebManagerTests(unittest.TestCase):
         for mode in (
             {"width": 0, "height": 480, "fps": 30},
             {"width": 640, "height": 480, "fps": 0},
-            {"width": 640, "height": 480, "fps": 999},
         ):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 MODULE.save_selection({"kind": "csi", "camera": 0, "mode": mode})
@@ -859,45 +843,23 @@ auto_exposure 0x009a0901 (menu) : min=0 max=3 default=0 value=3 (Aperture Priori
         self.assertIn('document.createElement("select")', PAGE_AND_JS)
 
 class CaptureModeCatalogTests(unittest.TestCase):
-    def test_capture_mode_catalog_flattens_fps_and_computes_budget_on_server(self):
-        camera = {
-            "kind": "usb",
+    def test_camera_inventory_exposes_every_hardware_advertised_usb_mode(self):
+        usb_devices = [{
+            "device": "/dev/video0",
             "modes": [
-                {"format": "MJPG", "width": 1280, "height": 720, "fps": [15, 30]},
-                {"format": "H264", "width": 1920, "height": 1080, "fps": [30]},
+                {"format": "YUYV", "width": 3840, "height": 2160, "fps": [60]},
+                {"format": "MJPG", "width": 640, "height": 480, "fps": [30]},
             ],
-        }
-
-        modes = MODULE.build_capture_modes(camera, 20_000_000)
-
-        self.assertEqual(len(modes), 3)
-        self.assertEqual(
-            [(mode["width"], mode["height"], mode["fps"]) for mode in modes],
-            [(1280, 720, 15), (1280, 720, 30), (1920, 1080, 30)],
-        )
-        self.assertFalse(modes[0]["exceeds_performance_budget"])
-        self.assertTrue(modes[1]["exceeds_performance_budget"])
-        self.assertFalse(modes[2]["exceeds_performance_budget"])
-        self.assertEqual(modes[1]["estimated_pixels_per_second"], 27_648_000)
-        self.assertEqual(modes[1]["performance_budget_pixels_per_second"], 20_000_000)
-
-    def test_capture_mode_catalog_uses_csi_fps_range_and_preserves_fractional_rates(self):
-        camera = {
-            "kind": "csi",
-            "modes": [
-                {
-                    "width": 1640,
-                    "height": 1232,
-                    "fps": [20.0, 29.97],
-                    "fps_range": {"max": 30},
-                },
-            ],
-        }
-
-        modes = MODULE.build_capture_modes(camera, 100_000_000)
-
-        self.assertEqual([mode["fps"] for mode in modes], [20.0, 29.97])
-        self.assertTrue(all(not mode["exceeds_performance_budget"] for mode in modes))
+        }]
+        with (
+            mock.patch.object(MODULE, "discover_devices", return_value=usb_devices),
+            mock.patch.object(MODULE, "discover_csi_cameras", return_value=[]),
+        ):
+            cameras = MODULE.camera_inventory()
+        modes = cameras[0]["capture_modes"]
+        self.assertEqual([mode["format"] for mode in modes], ["YUYV", "MJPG"])
+        self.assertEqual(modes[0]["width"], 3840)
+        self.assertNotIn("exceeds_performance_budget", modes[0])
 
 
 class CameraIdentityTests(unittest.TestCase):

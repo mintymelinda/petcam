@@ -2,41 +2,15 @@
 function modesFor(camera) {
   return camera.capture_modes || [];
 }
-function projectedPixelRate(mode) {
-  return Number(mode.estimated_pixels_per_second || 0);
-}
-function exceedsPerformanceBudget(_camera, mode) {
-  return mode.exceeds_performance_budget === true;
-}
-function confirmPerformanceOverride(camera, mode) {
-  if (!exceedsPerformanceBudget(camera, mode)) return false;
-  const estimate = projectedPixelRate(mode),
-    budget = Number(mode.performance_budget_pixels_per_second || 0);
-  return confirm(
-    "Performance warning: this capture mode is estimated at " +
-      estimate.toLocaleString() +
-      " pixels/second, above the " +
-      camera.hardware_tier +
-      " device guideline of " +
-      budget.toLocaleString() +
-      " pixels/second. It may cause low frame rates, dropped frames, or an unresponsive camera stream. Use this mode anyway?",
-  );
-}
 function showSelectedModeWarning() {
-  const c = inventory[+$("camera").value],
+  const camera = inventory[+$("camera").value],
     raw = $("mode").value;
-  if (!c || !raw) return;
+  if (!camera || !raw) return;
   const mode = JSON.parse(raw);
-  if (exceedsPerformanceBudget(c, mode))
-    $("message").textContent =
-      "Performance warning: this capture mode exceeds the estimated " +
-      c.hardware_tier +
-      " device budget. You can still apply it after confirming the warning.";
-  else
-    $("message").textContent =
-      mode.format === "H264"
-        ? "H.264 selected. The RTSP service serves the camera stream directly."
-        : "Selected mode is within the estimated device performance budget.";
+  $("message").textContent =
+    mode.format === "H264"
+      ? "H.264 selected. The RTSP service will attempt to use this hardware mode."
+      : "Hardware-advertised mode selected. PetCam will attempt to use it.";
 }
 function activeCameraMatches(camera, config) {
   if (!config) return false;
@@ -60,15 +34,10 @@ function fillModes(preferred = null) {
   const camera = inventory[+$("camera").value];
   $("mode").replaceChildren();
   if (!camera) return;
-  let matched = false;
   for (const mode of modesFor(camera)) {
     const option = document.createElement("option");
     option.value = JSON.stringify(mode);
-    option.textContent =
-      `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}` +
-      (exceedsPerformanceBudget(camera, mode)
-        ? " · ⚠ above device estimate"
-        : "");
+    option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}`;
     if (
       preferred &&
       mode.width === preferred.width &&
@@ -77,23 +46,8 @@ function fillModes(preferred = null) {
       Math.abs(mode.fps - preferred.fps) < 0.1
     ) {
       option.selected = true;
-      matched = true;
     }
     $("mode").append(option);
-  }
-  if (preferred && !matched) {
-    const mode = {
-      format: preferred.format || "CSI",
-      width: preferred.width,
-      height: preferred.height,
-      fps: Number(preferred.fps),
-      exceeds_performance_budget: false,
-    };
-    const option = document.createElement("option");
-    option.value = JSON.stringify(mode);
-    option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format} (saved setting; not currently advertised)`;
-    option.selected = true;
-    $("mode").prepend(option);
   }
   $("mode").onchange = showSelectedModeWarning;
   showSelectedModeWarning();
@@ -306,7 +260,7 @@ async function refresh() {
     }
     if (!inventory.length)
       $("message").textContent =
-        "No supported cameras detected. Connect a USB or CSI camera and refresh.";
+        "No cameras detected. Connect a USB or CSI camera and refresh.";
     else {
       const selected = activeIndex >= 0 ? activeConfig : null;
       const selectedCamera = activeIndex >= 0 ? inventory[activeIndex] : null;
@@ -339,7 +293,7 @@ async function refresh() {
           : null;
       $("message").textContent =
         inventory.length +
-        " camera(s) found. Current saved camera settings are selected.";
+        " camera(s) found. Hardware-advertised modes are available for selection.";
       fillModes(preferred);
     }
     renderCaptureStatus();

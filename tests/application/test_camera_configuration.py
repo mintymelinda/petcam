@@ -3,18 +3,12 @@ import pytest
 from petcam.application import camera_configuration as application
 
 
-def dependencies(apply_config, *, timelapse_enabled=False):
+def dependencies(apply_config):
     return {
         "discover_cameras": lambda: [],
         "mode_supports_fps": lambda _mode, _fps: True,
-        "pixel_budgets": {"pi5": 100_000_000},
-        "model_tier": lambda _model: "pi5",
-        "read_model": lambda: "Raspberry Pi 5",
         "config_path": "/tmp/petcam.conf",
         "parse_config": lambda _path: {"SOURCE": "usb", "FORMAT": "MJPEG"},
-        "load_timelapse_config": lambda: {"enabled": timelapse_enabled},
-        "load_motion_config": lambda: {"enabled": False},
-        "check_gstreamer_runtime": lambda: None,
         "restart_g_streamer_service": lambda: None,
         "apply_config": apply_config,
     }
@@ -67,16 +61,16 @@ def test_save_selection_rolls_back_camera_when_rtsp_restart_fails(monkeypatch):
     assert saved == [values, previous]
 
 
-def test_h264_selection_rejects_enabled_mjpeg_consumers(monkeypatch):
+def test_hardware_mode_is_not_rejected_by_performance_or_feature_policy(monkeypatch):
     values = {
-        "SOURCE": "usb", "RESOLUTION": "1920x1080",
-        "FPS": "30", "FORMAT": "H264",
+        "SOURCE": "usb", "RESOLUTION": "3840x2160",
+        "FPS": "60", "FORMAT": "YUYV",
     }
     monkeypatch.setattr(application, "resolve_camera_selection", lambda *_a, **_k: values)
     applied = []
-    deps = dependencies(lambda config: applied.append(config) or config, timelapse_enabled=True)
+    deps = dependencies(lambda config: applied.append(config) or config)
 
-    with pytest.raises(ValueError, match="Disable timelapse and motion"):
-        application.save_selection({}, **deps)
+    result = application.save_selection({}, **deps)
 
-    assert applied == []
+    assert result == values
+    assert applied == [values]

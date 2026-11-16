@@ -12,9 +12,7 @@ import urllib.request
 from pathlib import Path
 
 from ...domain.camera.capabilities import (
-    NATIVE_H264_FORMATS,
     NATIVE_JPEG_FORMATS,
-    USTREAMER_FORMATS,
     camera_identity,
     mode_max_fps,
     mode_supports_fps,
@@ -31,12 +29,9 @@ from .discovery import (
     usb_parent_for_video_node,
 )
 from ...domain.camera.capture_modes import (
-    PIXEL_BUDGETS,
     filter_devices_by_format,
-    model_tier,
     select_csi_mode,
     select_mode,
-    select_native_h264_mode,
 )
 from ..persistence.configuration import parse_config
 from ..network.diagnostics import collect_diagnostics
@@ -44,7 +39,7 @@ from ..network.diagnostics import collect_diagnostics
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("discover", "select", "select-h264", "discover-csi", "select-csi", "h264-encoder", "status"))
+    parser.add_argument("command", choices=("discover", "select", "discover-csi", "select-csi", "h264-encoder", "status"))
     parser.add_argument("--device")
     parser.add_argument("--physical-path")
     parser.add_argument("--camera", type=int)
@@ -55,7 +50,6 @@ def main():
     args = parser.parse_args()
 
     model = read_model()
-    tier = model_tier(model)
     devices = discover_devices()
     if args.physical_path:
         devices = [item for item in devices if item.get("physical_path") == args.physical_path]
@@ -67,10 +61,10 @@ def main():
         ]
 
     if args.command == "discover":
-        print(json.dumps({"model": model, "tier": tier, "usb_devices": devices, "csi_cameras": discover_csi_cameras()}, indent=2))
+        print(json.dumps({"model": model, "usb_devices": devices, "csi_cameras": discover_csi_cameras()}, indent=2))
         return 0
     if args.command == "discover-csi":
-        print(json.dumps({"model": model, "tier": tier, "csi_cameras": discover_csi_cameras()}, indent=2))
+        print(json.dumps({"model": model, "csi_cameras": discover_csi_cameras()}, indent=2))
         return 0
     if args.command == "h264-encoder":
         result = detect_hardware_h264_encoder()
@@ -79,7 +73,7 @@ def main():
     if args.command == "select-csi":
         try:
             selected_csi = select_csi_mode(
-                discover_csi_cameras(), tier, args.camera, args.resolution, args.fps, args.device_path
+                discover_csi_cameras(), requested_camera=args.camera, resolution=args.resolution, fps=args.fps, requested_device_path=args.device_path
             )
         except ValueError as error:
             print(str(error), file=sys.stderr)
@@ -87,22 +81,11 @@ def main():
         if not selected_csi:
             print("No supported CSI camera or camera mode found. Check the ribbon cable and camera-stack detection.", file=sys.stderr)
             return 1
-        print(json.dumps({"backend": "csi", "model": model, "tier": tier, **selected_csi}))
-        return 0
-    if args.command == "select-h264":
-        try:
-            selected_h264 = select_native_h264_mode(devices, args.resolution, args.fps)
-        except ValueError as error:
-            print(str(error), file=sys.stderr)
-            return 2
-        if not selected_h264:
-            print("No native H.264 V4L2 capture mode is advertised.", file=sys.stderr)
-            return 1
-        print(json.dumps(selected_h264))
+        print(json.dumps({"backend": "csi", **selected_csi}))
         return 0
     if args.command == "select":
         devices = filter_devices_by_format(devices, args.format)
-        selected = select_mode(devices, tier)
+        selected = select_mode(devices)
         if not selected:
             print("No usable V4L2 capture device or supported mode found.", file=sys.stderr)
             return 1
@@ -113,37 +96,37 @@ def main():
                 print("Resolution must be 'auto' or WIDTHxHEIGHT.", file=sys.stderr)
                 return 2
             width_value, height_value = map(int, match.groups())
-            matching = [m for m in device["modes"] if m["format"] in USTREAMER_FORMATS and mode_supports_resolution(m, width_value, height_value)]
+            matching = [m for m in device["modes"] if m["format"] == mode["format"] and mode_supports_resolution(m, width_value, height_value)]
             if not matching:
                 print(f"Requested resolution {args.resolution} is not advertised by {device['device']}.", file=sys.stderr)
                 return 2
-            matching.sort(key=lambda m: (m["format"] not in NATIVE_JPEG_FORMATS, -mode_max_fps(m)))
             mode = matching[0]
             native = mode["format"] in NATIVE_JPEG_FORMATS
         width = args.resolution if args.resolution != "auto" else f'{mode["width"]}x{mode["height"]}'
-        fps = args.fps if args.fps != "auto" else "0"
+        if args.fps != "auto":
+            fps = args.fps
+        else:
+            default_fps = float(mode_max_fps(mode))
+            fps = str(int(default_fps)) if default_fps.is_integer() else str(default_fps)
         fmt = mode["format"]
         encoder = "HW" if fmt in NATIVE_JPEG_FORMATS else "CPU"
-        if args.fps != "auto" and (not args.fps.isdigit() or int(args.fps) < 1):
-            print("FPS must be 'auto' or a positive integer.", file=sys.stderr)
-            return 2
         if args.fps != "auto":
-            fps_value = int(args.fps)
+            try:
+                fps_value = float(args.fps)
+            except ValueError:
+                print("FPS must be 'auto' or a positive number.", file=sys.stderr)
+                return 2
+            if fps_value <= 0:
+                print("FPS must be 'auto' or a positive number.", file=sys.stderr)
+                return 2
             if (mode["fps"] or mode.get("fps_range")) and not mode_supports_fps(mode, fps_value):
                 print(f"Requested {fps_value} FPS is not advertised for {width} {fmt}.", file=sys.stderr)
                 return 2
-        selected_fps = int(fps) if fps != "0" else mode_max_fps(mode)
-        selected_width, selected_height = map(int, width.split("x"))
-        pixel_rate = selected_width * selected_height * selected_fps
-        warning = pixel_rate > PIXEL_BUDGETS[tier] or not native
         print(json.dumps({
             "device": device["device"], "resolution": width, "fps": fps,
             "format": ustreamer_format(fmt),
-            "encoder": encoder, "native_mjpeg": native, "model": model,
-            "tier": tier, "mode_fps": mode["fps"],
-            "estimated_pixels_per_second": pixel_rate,
-            "hardware_budget_pixels_per_second": PIXEL_BUDGETS[tier],
-            "performance_warning": warning,
+            "encoder": encoder, "native_mjpeg": native,
+            "mode_fps": mode["fps"],
         }))
         return 0
     # Runtime state is read from PetCam's own process inventory and camera marker.

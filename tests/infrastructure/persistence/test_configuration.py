@@ -69,11 +69,9 @@ class ConfigValidationTests(unittest.TestCase):
     def test_rejects_invalid_enums_ranges_and_reserved_ports(self):
         invalid = [
             ({"SOURCE": "network"}, "SOURCE must be"),
-            ({"FORMAT": "H265"}, "FORMAT must be"),
             ({"RESOLUTION": "0x720"}, "dimensions"),
             ({"FPS": "0"}, "FPS must be greater"),
-            ({"FPS": "241"}, "FPS must be greater"),
-            ({"FPS": "29.97"}, "whole number"),
+            ({"FORMAT": "YUYV;rm"}, "hardware format identifier"),
             ({"CSI_QUALITY": "101"}, "CSI_QUALITY"),
             ({"PORT": "8080"}, "reserved"),
             ({"PORT": "80"}, "PORT must be"),
@@ -154,13 +152,14 @@ class ConfigValidationTests(unittest.TestCase):
             with self.assertRaisesRegex(MODULE.ConfigError, "physical device path is not available"):
                 MODULE.validate_config(values, check_hardware=True)
 
-    def test_csi_allows_fractional_fps_and_usb_requires_whole_fps(self):
+    def test_usb_and_csi_accept_fractional_hardware_fps_and_unknown_fourcc(self):
         csi = MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "csi", "FPS": "56.03"})
         self.assertEqual(csi["FPS"], "56.03")
-        usb = MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "usb", "FPS": "30.0"})
-        self.assertEqual(usb["FPS"], "30")
-        with self.assertRaisesRegex(MODULE.ConfigError, "whole number"):
-            MODULE.validate_config({**MODULE.DEFAULTS, "SOURCE": "usb", "FPS": "29.97"})
+        usb = MODULE.validate_config({
+            **MODULE.DEFAULTS, "SOURCE": "usb", "FPS": "29.97", "FORMAT": "SBGGR10",
+        })
+        self.assertEqual(usb["FPS"], "29.97")
+        self.assertEqual(usb["FORMAT"], "SBGGR10")
 
     def test_unavailable_device_is_rejected_before_apply(self):
         values = {**MODULE.DEFAULTS, "SOURCE": "usb", "DEVICE": "/dev/video99"}

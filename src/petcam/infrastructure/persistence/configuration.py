@@ -36,10 +36,6 @@ DEFAULTS = {
     "CSI_QUALITY": "70",
     "PORT": "8081",
 }
-FORMATS = {
-    "MJPG", "MJPEG", "JPEG", "YUYV", "YVYU", "UYVY",
-    "YUV420", "YVU420", "RGB565", "RGB24", "GREY", "H264",
-}
 DEVICE_PATTERN = re.compile(r"^/dev/(?:video[0-9]+|v4l/by-id/[A-Za-z0-9._:+-]+)$")
 USB_PHYSICAL_PATH_PATTERN = re.compile(r"^/sys/devices/[A-Za-z0-9._:@/+\-]+$")
 CSI_DEVICE_PATH_PATTERN = re.compile(r"^/base/[A-Za-z0-9._:@/+\-]+$")
@@ -87,8 +83,8 @@ def validate_config(values: dict[str, Any], check_hardware: bool = False) -> dic
         raise ConfigError("A physical camera path requires SOURCE=usb or SOURCE=csi.")
 
     config["FORMAT"] = "auto" if config["FORMAT"].lower() == "auto" else config["FORMAT"].upper()
-    if config["FORMAT"] != "auto" and config["FORMAT"] not in FORMATS:
-        raise ConfigError(f"FORMAT must be auto or one of: {', '.join(sorted(FORMATS))}.")
+    if config["FORMAT"] != "auto" and not re.fullmatch(r"[A-Z0-9_]{1,16}", config["FORMAT"]):
+        raise ConfigError("FORMAT must be auto or a hardware format identifier.")
     if config["FORMAT"] == "H264" and config["SOURCE"] != "usb":
         raise ConfigError("H264 capture requires SOURCE=usb.")
 
@@ -98,20 +94,17 @@ def validate_config(values: dict[str, Any], check_hardware: bool = False) -> dic
         if not match:
             raise ConfigError("RESOLUTION must be auto or WIDTHxHEIGHT.")
         width, height = map(int, match.groups())
-        if not 1 <= width <= 10000 or not 1 <= height <= 10000:
-            raise ConfigError("RESOLUTION dimensions must be between 1 and 10000.")
+        if width < 1 or height < 1:
+            raise ConfigError("RESOLUTION dimensions must be positive.")
 
     fps = config["FPS"]
     if fps != "auto":
         if not NUMBER_PATTERN.fullmatch(fps):
             raise ConfigError("FPS must be auto or a positive number.")
         fps_value = float(fps)
-        if not 0 < fps_value <= 240:
-            raise ConfigError("FPS must be greater than 0 and no more than 240.")
-        if config["SOURCE"] != "csi":
-            if not fps_value.is_integer():
-                raise ConfigError("USB and automatic-source FPS must be a whole number.")
-            config["FPS"] = str(int(fps_value))
+        if fps_value <= 0:
+            raise ConfigError("FPS must be greater than 0.")
+        config["FPS"] = str(int(fps_value)) if fps_value.is_integer() else str(fps_value)
 
     if not config["CSI_QUALITY"].isdigit() or not 1 <= int(config["CSI_QUALITY"]) <= 100:
         raise ConfigError("CSI_QUALITY must be an integer from 1 to 100.")

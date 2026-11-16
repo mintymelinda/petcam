@@ -17,10 +17,10 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
     if kind not in ("usb", "csi") or not isinstance(width, int) or not isinstance(height, int):
         raise ValueError("Invalid camera selection")
     if not (
-        1 <= width <= 10000
-        and 1 <= height <= 10000
+        width > 0
+        and height > 0
         and isinstance(fps, (int, float))
-        and 0 < fps <= 240
+        and fps > 0
     ):
         raise ValueError("Invalid capture mode")
 
@@ -71,8 +71,6 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
         raise ValueError("Selected camera is no longer available.")
 
     if kind == "usb":
-        if not float(fps).is_integer():
-            raise ValueError("USB camera FPS must be a whole number")
         if not any(
             item["width"] == width
             and item["height"] == height
@@ -95,7 +93,7 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
             "CAMERA": "auto",
             "FORMAT": mode_format,
             "RESOLUTION": f"{width}x{height}",
-            "FPS": str(int(fps)),
+            "FPS": str(int(fps)) if float(fps).is_integer() else str(fps),
         }
 
     if not any(
