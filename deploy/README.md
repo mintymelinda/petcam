@@ -5,23 +5,40 @@ or virtual environment.
 
 ## Install runtime dependencies
 
-On Raspberry Pi OS / Debian:
+On Raspberry Pi OS / Debian, run the installer from the source checkout:
 
 ```sh
-sudo apt-get update
-sudo apt-get install -y python3 python3-pil python3-gi \
-  gir1.2-gst-rtsp-1.0 gir1.2-gst-rtsp-server-1.0 \
-  gstreamer1.0-tools gstreamer1.0-plugins-base \
-  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
-  gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils ustreamer \
-  ca-certificates openssl cron
+sudo ./deploy/install.sh
 ```
+
+The installer discovers `deploy/features/*/requirements.apt` manifests,
+validates package names, deduplicates packages across features, and installs
+the combined set. It does not contain a hand-maintained feature package list.
+
+### Adding a feature dependency
+
+Create a manifest alongside the feature:
+
+```text
+deploy/features/<feature-name>/requirements.apt
+```
+
+Declare one Debian package name per line. Blank lines and lines beginning
+with `#` are ignored. Repeated packages across manifests are installed only
+once. The installer discovers new feature manifests automatically; adding or
+changing a dependency does not require modifying `deploy/install.sh`.
+
+Feature-specific runtime configuration and enablement remain separate from
+dependency installation. The installer installs the dependencies declared by
+all features; the supervisor starts optional workers only when their persisted
+feature settings enable them.
 
 ## Configure and launch
 
-Keep the checkout at a stable path (the examples use /opt/petcam). Create
-/etc/petcam and /var/lib/petcam, copy the defaults from deploy/etc and deploy/var,
-then create the HTTPS certificate/key expected by the setup portal. Start:
+Keep the checkout at a stable path (the examples use /opt/petcam). The
+installer creates /etc/petcam and /var/lib/petcam, copies defaults from
+deploy/etc and deploy/var, and creates the HTTPS certificate/key expected by
+the setup portal. To launch manually:
 
 ```sh
 sudo env PYTHONPATH=/opt/petcam/src python3 -m petcam.infrastructure.system.supervisor
