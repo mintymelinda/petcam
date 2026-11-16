@@ -14,7 +14,6 @@ from pathlib import Path
 from ...domain.camera.capabilities import (
     NATIVE_JPEG_FORMATS,
     camera_identity,
-    mode_max_fps,
     mode_supports_fps,
     mode_supports_resolution,
     parse_csi_cameras,
@@ -112,7 +111,6 @@ def main():
             if not matching:
                 print(f"Requested resolution {args.resolution} is not advertised by {device['device']}.", file=sys.stderr)
                 return 2
-            matching.sort(key=lambda m: (m["format"] not in NATIVE_JPEG_FORMATS, -mode_max_fps(m)))
             mode = matching[0]
             native = mode["format"] in NATIVE_JPEG_FORMATS
         width = args.resolution if args.resolution != "auto" else f'{mode["width"]}x{mode["height"]}'
