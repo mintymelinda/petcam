@@ -58,24 +58,23 @@ def save_state(state: dict[str, Any]) -> None:
 
 
 def service_snapshot(service: str) -> dict[str, Any]:
-    try:
-        result = process_control.run_systemctl(
-            "show", service,
-            "--property=ActiveState", "--property=ActiveEnterTimestampMonotonic",
-            runner=subprocess.run, capture_output=True, text=True, timeout=5, check=False,
-        )
-        if result.returncode:
-            return {"state": "unknown", "active_age": None}
-        properties = dict(
-            line.split("=", 1) for line in result.stdout.splitlines() if "=" in line
-        )
-        active_state = properties.get("ActiveState", "unknown").strip()
-        raw_entered = properties.get("ActiveEnterTimestampMonotonic", "0").strip()
-        entered = int(raw_entered) if raw_entered.isdigit() else 0
-        age = max(0.0, time.monotonic() - entered / 1_000_000) if entered else None
-        return {"state": active_state, "active_age": age}
-    except (OSError, subprocess.TimeoutExpired, ValueError):
+    """Read lifecycle state from the supervisor process inventory."""
+    workers = {
+        "petcam-stream.service": "camera-capture",
+        "petcam-g-streamer-rtsp.service": "gstreamer-rtsp",
+        "petcam-web.service": "web-ui",
+    }
+    worker_name = workers.get(service)
+    if worker_name is None:
         return {"state": "unknown", "active_age": None}
+    try:
+        snapshot = process_control.worker_snapshot(worker_name)
+    except process_control.SupervisorUnavailable:
+        return {"state": "unknown", "active_age": None}
+    running = snapshot.get("running") is True
+    started_at = snapshot.get("started_at")
+    age = max(0.0, time.monotonic() - float(started_at)) if running and started_at else None
+    return {"state": "active" if running else "inactive", "active_age": age}
 
 
 def probe_stream(url: str, timeout: int) -> bool:
@@ -134,22 +133,18 @@ def camera_present() -> bool | None:
 
 
 def restart_service(service: str) -> tuple[bool, str]:
+    workers = {
+        "petcam-web.service": "web-ui",
+        "petcam-stream.service": "camera-capture",
+        "petcam-g-streamer-rtsp.service": "gstreamer-rtsp",
+    }
+    worker = workers.get(service)
+    if worker is None:
+        return False, f"Refusing to restart unsupported PetCam worker: {service}"
     try:
-        if service == "petcam-web.service":
-            # Exit so the existing Restart=always policy replaces the web manager.
-            os.kill(os.getpid(), signal.SIGTERM)
-            return True, "Manager process exited for systemd recovery."
-        if service in ("petcam-stream.service", "petcam-g-streamer-rtsp.service"):
-            result = process_control.run_systemctl(
-                "restart", service, runner=subprocess.run, sudo=True,
-                capture_output=True, text=True, timeout=30, check=False,
-            )
-        else:
-            return False, f"Refusing to restart unsupported PetCam service: {service}"
-        if result.returncode:
-            return False, result.stderr.strip() or f"systemctl restart {service} failed"
+        process_control.restart_worker(worker)
         return True, ""
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except process_control.SupervisorUnavailable as error:
         return False, str(error)
 
 
@@ -219,7 +214,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
 
     if any(snapshot["state"] == "unknown" for snapshot in (backend, rtsp, web)):
         report["state"] = "service_state_unknown"
-        report["reason"] = "systemd service state could not be read; no restart was attempted."
+        report["reason"] = "supervisor process state could not be read; no restart was attempted."
         return _persist(report)
     if any(_starting(snapshot) for snapshot in (backend, rtsp, web)):
         report["state"] = "starting"
