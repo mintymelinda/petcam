@@ -34,6 +34,26 @@ expected="$(printf '%s\n' cron openssl python3 v4l-utils)"
 mkdir -p "$TMP_ROOT/empty-features"
 [[ -z "$(collect_feature_packages "$TMP_ROOT/empty-features")" ]]
 
+# The installer invokes apt once and passes the deduplicated package set.
+MOCK_BIN="$TMP_ROOT/bin"
+mkdir -p "$MOCK_BIN"
+export APT_LOG="$TMP_ROOT/apt.log"
+cat > "$MOCK_BIN/apt-get" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\\n' "$*" >> "$APT_LOG"
+MOCK
+chmod +x "$MOCK_BIN/apt-get"
+PATH="$MOCK_BIN:$PATH"
+install_feature_dependencies "$FEATURES" >/dev/null
+expected_apt_calls="$(printf '%s\\n' 'update' 'install -y --no-install-recommends cron openssl python3 v4l-utils')"
+[[ "$(cat "$APT_LOG")" == "$expected_apt_calls" ]] || {
+  printf 'Unexpected apt-get calls:\\n%s\\n' "$(cat "$APT_LOG")" >&2
+  exit 1
+}
+: > "$APT_LOG"
+install_feature_dependencies "$TMP_ROOT/empty-features" >/dev/null
+[[ ! -s "$APT_LOG" ]]
+
 # Manifest data must never be interpreted as shell or apt options.
 printf '%s\n' '--assume-yes' > "$FEATURES/core/requirements.apt"
 if collect_feature_packages "$FEATURES" >/dev/null 2>&1; then
