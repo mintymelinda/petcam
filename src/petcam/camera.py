@@ -40,7 +40,7 @@ if __package__:
         select_native_h264_mode,
     )
     from .config import parse_config
-    from .network_diagnostics import collect_diagnostics
+    from .infrastructure.network.diagnostics import collect_diagnostics
 
 else:  # Support the installed standalone worker entry point.
     from domain.camera.capabilities import (
@@ -71,7 +71,7 @@ else:  # Support the installed standalone worker entry point.
         select_native_h264_mode,
     )
     from config import parse_config
-    from network_diagnostics import collect_diagnostics
+    from infrastructure.network.diagnostics import collect_diagnostics
 
 
 

@@ -20,38 +20,40 @@ if __package__:
     from .config import apply_config, ensure_config_lock, parse_config
     from .camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from .camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
-    from .network_diagnostics import collect_diagnostics, create_support_bundle
-    from .wifi_metrics import collect_network_performance
+    from .infrastructure.network.diagnostics import collect_diagnostics, create_support_bundle
+    from .infrastructure.network.wifi_metrics import collect_network_performance
     from .timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
     from .motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
     from .light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
     from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
-    from .web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
-    from . import camera_controls, feature_services, service_transactions, stream_metrics, system_metrics, process_control
-    from . import camera_configuration, capture_status, rtsp_status, stream_proxy
+    from .security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+    from . import camera_controls, feature_services, stream_metrics
+    from .application import camera_configuration, capture_status, service_transactions
+    from .infrastructure.system import metrics as system_metrics, processes as process_control
+    from .infrastructure.streaming import proxy as stream_proxy
+    from . import rtsp_status
 else:  # Support the installed standalone web-manager entry point.
     import api.management_routes as management_routes
     import api.streaming_routes as streaming_routes
     from config import apply_config, ensure_config_lock, parse_config
     from camera import PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps, model_tier, read_model
     from camera_service import build_camera_inventory, build_capture_modes as _build_capture_modes
-    from network_diagnostics import collect_diagnostics, create_support_bundle
-    from wifi_metrics import collect_network_performance
+    from infrastructure.network.diagnostics import collect_diagnostics, create_support_bundle
+    from infrastructure.network.wifi_metrics import collect_network_performance
     from timelapse import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
     from motion_detection import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
     from light_sensor import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
     from rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
-    from web_auth import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+    from security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
     import camera_controls
     import feature_services
-    import service_transactions
+    from application import service_transactions
     import stream_metrics
-    import system_metrics
-    import process_control
-    import camera_configuration
-    import capture_status
+    from infrastructure.system import metrics as system_metrics
+    from infrastructure.system import processes as process_control
+    from application import camera_configuration, capture_status
     import rtsp_status
-    import stream_proxy
+    from infrastructure.streaming import proxy as stream_proxy
 
 CONFIG = Path("/etc/petcam/petcam.conf")
 TLS_CERT = Path("/etc/petcam/web-manager.crt")
