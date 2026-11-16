@@ -40,7 +40,7 @@ def _enabled(path: Path) -> bool:
 def desired_services(*, capture_ready: bool, web_enabled: bool, motion: dict, timelapse: dict):
     """Return the optional services that should currently be running."""
     return {
-        SERVICES["web_ui"]: web_enabled,
+        SERVICES["web_ui"]: capture_ready and web_enabled,
         SERVICES["motion"]: capture_ready and motion.get("enabled") is True,
         SERVICES["timelapse"]: capture_ready and timelapse.get("enabled") is True,
     }
