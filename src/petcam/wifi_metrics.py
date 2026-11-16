@@ -1,4 +1,6 @@
 """Module alias for the canonical layered implementation."""
+from importlib import import_module
 import sys
-from .infrastructure.network import wifi_metrics as _implementation
+
+_implementation = import_module(".infrastructure.network.wifi_metrics", __package__)
 sys.modules[__name__] = _implementation

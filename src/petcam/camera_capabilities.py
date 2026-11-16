@@ -1,4 +1,6 @@
 """Module alias for the canonical layered implementation."""
+from importlib import import_module
 import sys
-from .domain.camera import capabilities as _implementation
+
+_implementation = import_module(".domain.camera.capabilities", __package__)
 sys.modules[__name__] = _implementation
