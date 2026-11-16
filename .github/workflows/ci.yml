@@ -54,7 +54,12 @@ jobs:
 
           wheel = next(Path("dist").glob("petcam-*.whl"))
           with ZipFile(wheel) as archive:
-              files = set(archive.namelist())
+              names = archive.namelist()
+              files = set(names)
+              metadata_name = next(name for name in names if name.endswith(".dist-info/METADATA"))
+              metadata = archive.read(metadata_name).decode("utf-8")
+          if not any(line.startswith("Requires-Dist: Pillow") for line in metadata.splitlines()):
+              raise SystemExit("Wheel metadata does not declare Pillow as a runtime dependency.")
           required = {
               "petcam/__init__.py",
               "petcam/static/dashboard.html",
