@@ -45,7 +45,9 @@ function fillModes(preferred = null) {
       mode.height === preferred.height &&
       mode.format === (preferred.format || "CSI") &&
       Math.abs(mode.fps - preferred.fps) < 0.1
-    ) option.selected = true;
+    ) {
+      option.selected = true;
+    }
     $("mode").append(option);
   }
   $("mode").onchange = showSelectedModeWarning;
