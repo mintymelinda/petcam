@@ -9,7 +9,6 @@ FPS_RE = re.compile(r"\(([\d.]+) fps\)")
 SIZE_RANGE_RE = re.compile(r"Size: (?:Stepwise|Continuous) (\d+)x(\d+) - (\d+)x(\d+)(?: with step (\d+)/(\d+))?")
 FPS_RANGE_RE = re.compile(r"Interval: (?:Stepwise|Continuous) ([\d.]+)s - ([\d.]+)s(?: with step ([\d.]+)s)?")
 NATIVE_JPEG_FORMATS = {"MJPG", "MJPEG", "JPEG"}
-NATIVE_H264_FORMATS = {"H264"}
 
 def _camera_slug(value):
     return re.sub(r"[^a-z0-9-]+", "-", value.lower()).strip("-") or "camera"
