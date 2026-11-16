@@ -9,9 +9,9 @@ I2C_SLAVE=0x0703
 COMMAND,ENABLE,CONTROL,ID,CHANNEL0,CHANNEL1=0xA0,0x00,0x01,0x12,0x14,0x16
 STOP=False
 if __package__:
-    from .light_sensor_policy import DEFAULTS, SensorError, classify, validate
+    from .features.light_sensor.policy import DEFAULTS, SensorError, classify, validate
 else:
-    from light_sensor_policy import DEFAULTS, SensorError, classify, validate
+    from features.light_sensor.policy import DEFAULTS, SensorError, classify, validate
 
 def load_config(path=CONFIG):
     values=dict(DEFAULTS)

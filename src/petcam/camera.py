@@ -12,7 +12,7 @@ import urllib.request
 from pathlib import Path
 
 if __package__:
-    from .camera_capabilities import (
+    from .domain.camera.capabilities import (
         NATIVE_H264_FORMATS,
         NATIVE_JPEG_FORMATS,
         USTREAMER_FORMATS,
@@ -31,7 +31,7 @@ if __package__:
         read_model,
         usb_parent_for_video_node,
     )
-    from .camera_modes import (
+    from .domain.camera.capture_modes import (
         PIXEL_BUDGETS,
         filter_devices_by_format,
         model_tier,
@@ -43,7 +43,7 @@ if __package__:
     from .network_diagnostics import collect_diagnostics
 
 else:  # Support the installed standalone worker entry point.
-    from camera_capabilities import (
+    from domain.camera.capabilities import (
         NATIVE_H264_FORMATS,
         NATIVE_JPEG_FORMATS,
         USTREAMER_FORMATS,
@@ -62,7 +62,7 @@ else:  # Support the installed standalone worker entry point.
         read_model,
         usb_parent_for_video_node,
     )
-    from camera_modes import (
+    from domain.camera.capture_modes import (
         PIXEL_BUDGETS,
         filter_devices_by_format,
         model_tier,

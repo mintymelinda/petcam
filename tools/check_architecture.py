@@ -9,13 +9,12 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "petcam"
 POLICY_MODULES = {
-    "camera_capabilities.py",
-    "camera_modes.py",
-    "camera_selection.py",
-    "camera_capture_policy.py",
-    "motion_policy.py",
-    "timelapse_policy.py",
-    "light_sensor_policy.py",
+    "domain/camera/capabilities.py",
+    "domain/camera/capture_modes.py",
+    "domain/camera/capture_policy.py",
+    "domain/motion/policy.py",
+    "domain/timelapse/policy.py",
+    "features/light_sensor/policy.py",
 }
 FORBIDDEN_POLICY_IMPORTS = {
     "subprocess",
@@ -65,7 +64,7 @@ def violations() -> list[str]:
             continue
 
         relative = path.relative_to(PACKAGE)
-        if path.name in POLICY_MODULES and len(relative.parts) == 1:
+        if relative.as_posix() in POLICY_MODULES:
             for node in ast.walk(tree):
                 root = imported_root(node)
                 if root in FORBIDDEN_POLICY_IMPORTS:

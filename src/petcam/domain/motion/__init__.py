@@ -1,0 +1,1 @@
+"""Motion-detection domain policy."""
