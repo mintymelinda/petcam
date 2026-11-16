@@ -323,7 +323,6 @@ class WebManagerTests(unittest.TestCase):
                 mock.patch.object(MODULE, "parse_config", return_value=previous_camera), \
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
-                mock.patch.object(MODULE, "check_gstreamer_runtime"), \
                 mock.patch.object(MODULE, "apply_config") as apply, \
                 mock.patch.object(MODULE, "restart_g_streamer_service") as restart:
             MODULE.save_selection({
