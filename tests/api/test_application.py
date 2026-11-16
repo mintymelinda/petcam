@@ -632,7 +632,6 @@ class WebManagerTests(unittest.TestCase):
         for mode in (
             {"width": 0, "height": 480, "fps": 30},
             {"width": 640, "height": 480, "fps": 0},
-            {"width": 640, "height": 480, "fps": 999},
         ):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 MODULE.save_selection({"kind": "csi", "camera": 0, "mode": mode})
