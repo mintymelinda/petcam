@@ -10,7 +10,7 @@ from petcam.api import auth_routes, management_routes
 
 DASHBOARD_SCRIPTS = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
 DASHBOARD_JS = "\\n".join(
-    Path("src/static", name).read_text(encoding="utf-8")
+    Path("src/petcam/static", name).read_text(encoding="utf-8")
     for name in DASHBOARD_SCRIPTS
 )
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
@@ -171,7 +171,7 @@ class WebManagerTests(unittest.TestCase):
                 MODULE.Handler.do_GET(request)
                 self.assertEqual(request.status, 200)
                 self.assertIn(("Content-Type", "application/javascript; charset=utf-8"), request.response_headers)
-                expected = Path("src/static", name).read_text(encoding="utf-8")
+                expected = Path("src/petcam/static", name).read_text(encoding="utf-8")
                 self.assertEqual(request.wfile.getvalue().decode(), expected)
 
         self.assertNotRegex(MODULE.PAGE, r"<script(?:\s[^>]*)?>\s*[^<]")
@@ -182,7 +182,7 @@ class WebManagerTests(unittest.TestCase):
         source = Path(MODULE.__file__).read_text(encoding="utf-8")
         self.assertNotIn("streaming_routes", source)
         self.assertNotIn("browser-source", MODULE.STATIC_ASSETS)
-        dashboard = Path("src/static/dashboard.html").read_text(encoding="utf-8")
+        dashboard = Path("src/petcam/static/dashboard.html").read_text(encoding="utf-8")
         self.assertNotIn("data-browser-feed-link", dashboard)
         self.assertIn("g-streamer-url", dashboard)
 
