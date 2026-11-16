@@ -305,10 +305,7 @@ class TransactionalApplyTests(unittest.TestCase):
                 mock.patch.object(MODULE.os, "kill"), \
                 mock.patch.object(MODULE.time, "sleep"):
             MODULE.restart_capture()
-        restart.assert_has_calls([
-            mock.call("camera-capture"),
-            mock.call("gstreamer-rtsp"),
-        ])
+        restart.assert_called_once_with("camera-capture")
 
     def test_successful_apply_commits_and_updates_last_known_good(self):
         restart = mock.Mock()

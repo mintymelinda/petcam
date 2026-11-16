@@ -29,9 +29,9 @@ class OptionalFeatureServiceTests(unittest.TestCase):
             motion={"enabled": True},
             timelapse={"enabled": True},
         )
-        self.assertFalse(desired["petcam-web.service"])
-        self.assertFalse(desired["petcam-motion.service"])
-        self.assertFalse(desired["petcam-timelapse.service"])
+        self.assertFalse(desired["web-ui"])
+        self.assertFalse(desired["motion"])
+        self.assertFalse(desired["timelapse"])
 
     def test_disabled_optional_features_remain_stopped(self):
         desired = MODULE.desired_services(
