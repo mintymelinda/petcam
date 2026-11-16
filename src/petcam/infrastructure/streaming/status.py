@@ -1,26 +1,24 @@
-"""Runtime status aggregation for the always-on GStreamer RTSP service."""
+"""Runtime status aggregation using the Python supervisor snapshot."""
 
 import json
-import subprocess
 import time
 
 
-def snapshot(status_file, run=subprocess.run, clock=time.time):
-    try:
-        active_service = run(
-            ["systemctl", "is-active", "--quiet", "petcam-g-streamer-rtsp.service"],
-            check=False, timeout=1,
-        ).returncode == 0
-    except (OSError, subprocess.SubprocessError):
-        active_service = False
-    status = {}
+def snapshot(status_file, supervisor_file="/run/petcam/supervisor-status.json", clock=time.time):
     try:
         with open(status_file, encoding="utf-8") as source:
             status = json.load(source)
     except (OSError, ValueError):
-        pass
+        status = {}
+    try:
+        with open(supervisor_file, encoding="utf-8") as source:
+            supervisor = json.load(source)
+        worker = supervisor.get("workers", {}).get("gstreamer-rtsp", {})
+    except (OSError, ValueError, TypeError):
+        worker = {}
+    active_service = worker.get("running") is True
     updated_at = status.get("updated_at")
-    fresh = isinstance(updated_at, (int, float)) and clock() - updated_at <= 10
+    fresh = isinstance(updated_at, (int, float)) and 0 <= clock() - updated_at <= 10
     state = status.get("state", "starting") if active_service else "stopped"
     if active_service and not fresh:
         state = "stalled"
