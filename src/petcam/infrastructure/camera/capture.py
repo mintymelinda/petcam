@@ -69,9 +69,7 @@ def select_backend(config: dict) -> tuple[str, dict]:
             continue
         if source == "usb":
             requested_format = str(config.get("FORMAT", "auto")).upper()
-            commands = ("select-h264", "select") if requested_format == "AUTO" else (
-                ("select-h264",) if requested_format == "H264" else ("select",)
-            )
+            commands = ("select",)
             for command in commands:
                 try:
                     return source, _run_selection(command, config, source=source)
@@ -81,14 +79,15 @@ def select_backend(config: dict) -> tuple[str, dict]:
             try:
                 selected = _run_selection("select-csi", config, source=source)
                 requested_format = str(config.get("FORMAT", "auto")).upper()
-                if requested_format in ("AUTO", "H264"):
+                selected["_native_h264"] = False
+                if requested_format == "H264":
                     probe = subprocess.run(
                         [sys.executable, "-m", CAMERA_CLI, "h264-encoder"],
                         capture_output=True, text=True, timeout=15, check=False,
                     )
-                    if requested_format == "H264" and probe.returncode:
+                    if probe.returncode:
                         raise RuntimeError("CSI native H.264 encoding was requested but no hardware encoder is available")
-                    selected["_native_h264"] = probe.returncode == 0
+                    selected["_native_h264"] = True
                 return source, selected
             except (RuntimeError, ValueError) as error:
                 failures.append(str(error))
