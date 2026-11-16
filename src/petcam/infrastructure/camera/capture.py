@@ -70,7 +70,12 @@ def select_backend(config: dict) -> tuple[str, dict]:
             command = "select-h264" if str(config.get("FORMAT", "auto")).upper() == "H264" else "select"
         else:
             command = "select-csi"
-        return source, _run_selection(command, config, source=source)
+        try:
+            return source, _run_selection(command, config, source=source)
+        except (RuntimeError, ValueError) as error:
+            failures.append(str(error))
+    if failures:
+        raise RuntimeError("; ".join(failures))
     raise RuntimeError("No supported USB or CSI camera is currently available")
 
 
@@ -94,7 +99,7 @@ def run_capture(config: dict) -> int:
     source, selected = select_backend(config)
     resolution = str(selected["resolution"])
     fps = str(selected["fps"])
-    native_h264 = str(selected.get("format", "")).upper() == "H264"
+    native_h264 = (str(config.get("FORMAT", "auto")).upper() == "H264") if source == "csi" else (str(selected.get("format", "")).upper() == "H264")
     if source == "usb":
         marker = {
             "pid": os.getpid(), "backend": "usb", "device": selected["device"],
