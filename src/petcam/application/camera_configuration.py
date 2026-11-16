@@ -24,16 +24,13 @@ def save_selection(
     read_model,
     config_path,
     parse_config,
-    load_rtmp_config,
-    save_rtmp_config,
     load_timelapse_config,
     load_motion_config,
     check_gstreamer_runtime,
-    is_service_active,
-    set_rtmp_service,
+    restart_g_streamer_service,
     apply_config,
 ):
-    """Validate a discovered capture mode and apply it with output rollback."""
+    """Validate and apply a camera selection with RTSP service recovery."""
     values = resolve_camera_selection(
         data,
         discover_cameras=discover_cameras,
@@ -50,53 +47,31 @@ def save_selection(
         capture_format=values["FORMAT"],
         allow_override=data.get("allow_performance_override") is True,
     )
-    requested_h264 = values["FORMAT"] == "H264"
     previous_camera = parse_config(config_path)
-    previous_rtmp = load_rtmp_config()
-    rtmp_was_active = False
-    if requested_h264 or previous_rtmp["enabled"]:
-        rtmp_was_active = is_service_active("petcam-rtmp.service")
-
-    if requested_h264:
-        validate_capture_feature_compatibility(
-            values["FORMAT"],
-            timelapse_enabled=load_timelapse_config().get("enabled") is True,
-            motion_enabled=load_motion_config().get("enabled") is True,
-        )
-        try:
-            check_gstreamer_runtime()
-        except ValueError as error:
-            raise RuntimeError(str(error)) from error
+    validate_capture_feature_compatibility(
+        values["FORMAT"],
+        timelapse_enabled=load_timelapse_config().get("enabled") is True,
+        motion_enabled=load_motion_config().get("enabled") is True,
+    )
+    try:
+        check_gstreamer_runtime()
+    except ValueError as error:
+        raise RuntimeError(str(error)) from error
 
     camera_applied = False
     try:
-        if requested_h264 or previous_camera.get("FORMAT") == "H264":
-            if rtmp_was_active:
-                set_rtmp_service("disable")
-        if requested_h264:
-            save_rtmp_config({**previous_rtmp, "enabled": True})
         updated = apply_config(values)
         camera_applied = True
-        current_rtmp = load_rtmp_config()
-        if current_rtmp["enabled"]:
-            set_rtmp_service("enable" if requested_h264 or previous_camera.get("FORMAT") == "H264" or not rtmp_was_active else "restart")
-        elif rtmp_was_active:
-            set_rtmp_service("disable")
+        restart_g_streamer_service()
         return updated
     except Exception:
-        if requested_h264:
-            save_rtmp_config(previous_rtmp)
         if camera_applied:
             try:
-                if previous_camera.get("FORMAT") == "H264":
-                    set_rtmp_service("disable")
                 apply_config(previous_camera)
-                if previous_rtmp["enabled"]:
-                    set_rtmp_service("enable")
-                elif rtmp_was_active:
-                    set_rtmp_service("disable")
+                restart_g_streamer_service()
             except Exception as rollback_error:
-                raise RuntimeError(f"Camera selection failed and restoring the previous camera/output settings also failed: {rollback_error}")
-        elif rtmp_was_active and previous_rtmp["enabled"]:
-            set_rtmp_service("enable")
+                raise RuntimeError(
+                    "Camera selection failed and restoring the previous camera/GStreamer state also failed: "
+                    + str(rollback_error)
+                ) from rollback_error
         raise
