@@ -44,11 +44,27 @@ class Worker:
 
 
 def read_enabled(path: Path, *, default: bool = False) -> bool:
+    """Read JSON feature flags and the existing KEY=value integration configs."""
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, ValueError):
+        raw = path.read_text(encoding="utf-8")
+    except OSError:
         return default
-    return isinstance(payload, dict) and payload.get("enabled") is True
+    try:
+        payload = json.loads(raw)
+    except ValueError:
+        payload = dict(
+            line.split("=", 1) for line in raw.splitlines()
+            if "=" in line and not line.lstrip().startswith("#")
+        )
+    if not isinstance(payload, dict):
+        return default
+    for key in ("enabled", "ENABLED", "MQTT_ENABLED"):
+        value = payload.get(key)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+    return default
 
 
 def capture_ready() -> bool:
