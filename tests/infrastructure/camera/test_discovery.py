@@ -41,7 +41,6 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertIs(MODULE.camera_identity, camera_capabilities.camera_identity)
         self.assertIs(MODULE.parse_modes, camera_capabilities.parse_modes)
         self.assertIs(MODULE.select_mode, camera_modes.select_mode)
-        self.assertIs(MODULE.PIXEL_BUDGETS, camera_modes.PIXEL_BUDGETS)
         self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
         self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
 
@@ -73,12 +72,12 @@ class CameraDiscoveryTests(unittest.TestCase):
             "modes": [{"format": "MJPG", "width": 640, "height": 480, "fps": [30.0]}],
         }]))
 
-    def test_prefers_native_mjpeg_and_uses_least_demanding_when_over_budget(self):
+    def test_auto_selection_uses_first_hardware_advertised_mode_without_ranking(self):
         devices = [{"device": "/dev/video0", "modes": MODULE.parse_modes(SAMPLE)}]
-        device, mode, native = MODULE.select_mode(devices, "zero")
+        device, mode, native = MODULE.select_mode(devices)
         self.assertTrue(native)
         self.assertEqual(mode["format"], "MJPG")
-        self.assertEqual((mode["width"], mode["height"]), (1280, 720))
+        self.assertEqual((mode["width"], mode["height"]), (1920, 1080))
         self.assertEqual(device["device"], "/dev/video0")
 
     def test_native_mjpeg_is_mapped_to_ustreamer_passthrough_format(self):
@@ -132,14 +131,16 @@ class CameraDiscoveryTests(unittest.TestCase):
             ["H264"],
         )
 
-    def test_falls_back_to_supported_raw_format_and_ignores_unknown_fourcc(self):
+    def test_auto_selection_does_not_hide_hardware_formats_the_streamer_may_reject(self):
         raw_device = [{"device": "/dev/video1", "modes": [MODULE.parse_modes(SAMPLE)[2]]}]
         device, mode, native = MODULE.select_mode(raw_device, "zero")
         self.assertFalse(native)
         self.assertEqual(mode["format"], "YUYV")
         self.assertEqual(device["device"], "/dev/video1")
-        unsupported = [{"device": "/dev/video2", "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}]}]
-        self.assertIsNone(MODULE.select_mode(unsupported, "pi5"))
+        hardware_mode = [{"device": "/dev/video2", "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}]}]
+        selected_device, selected_mode, _native = MODULE.select_mode(hardware_mode)
+        self.assertEqual(selected_device["device"], "/dev/video2")
+        self.assertEqual(selected_mode["format"], "H264")
 
     def test_parses_stepwise_sizes_and_frame_intervals(self):
         output = """[0]: 'MJPG' (Motion-JPEG, compressed)
@@ -171,15 +172,16 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertEqual(selected["device_path"], cameras[0]["device_path"])
         self.assertAlmostEqual(cameras[0]["modes"][0]["fps"], 120.05)
 
-    def test_selects_csi_mode_within_board_budget_and_validates_overrides(self):
+    def test_csi_auto_selection_uses_first_advertised_mode_without_board_budget(self):
         cameras = MODULE.parse_csi_cameras(CSI_SAMPLE)
-        selected = MODULE.select_csi_mode(cameras, "zero")
-        self.assertTrue(selected["performance_warning"])
-        explicit = MODULE.select_csi_mode(cameras, "pi5", requested_camera=1, resolution="2304x1296", fps="56.03")
+        selected = MODULE.select_csi_mode(cameras)
+        self.assertEqual(selected["resolution"], "1332x990")
+        self.assertNotIn("performance_warning", selected)
+        explicit = MODULE.select_csi_mode(cameras, requested_camera=1, resolution="2304x1296", fps="56.03")
         self.assertEqual(explicit["sensor"], "imx708")
         self.assertEqual(explicit["resolution"], "2304x1296")
         with self.assertRaises(ValueError):
-            MODULE.select_csi_mode(cameras, "pi5", resolution="123x456")
+            MODULE.select_csi_mode(cameras, resolution="123x456")
 
     def test_hardware_h264_encoder_requires_codec_encode_node_and_h264_output(self):
         with tempfile.TemporaryDirectory() as temporary:
