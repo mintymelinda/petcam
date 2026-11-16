@@ -11,7 +11,7 @@ from .capabilities import (
 )
 
 
-def select_csi_mode(cameras, _tier=None, requested_camera=None, resolution="auto", fps="auto", requested_device_path=None):
+def select_csi_mode(cameras, requested_camera=None, resolution="auto", fps="auto", requested_device_path=None):
     """Return the first advertised CSI mode matching the supplied constraints."""
     if requested_device_path:
         cameras = [camera for camera in cameras if camera.get("device_path") == requested_device_path]
@@ -116,7 +116,7 @@ def select_native_h264_mode(devices, resolution="auto", fps="auto"):
     }
 
 
-def select_mode(devices, _tier=None):
+def select_mode(devices):
     """Return the first advertised mode; never rank or suppress hardware modes."""
     for device in devices:
         for mode in device["modes"]:
