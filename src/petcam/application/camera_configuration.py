@@ -5,7 +5,7 @@ if __package__:
         validate_capture_feature_compatibility,
         validate_performance_budget,
     )
-    from .camera_selection import resolve_camera_selection
+    from ..camera_selection import resolve_camera_selection
 else:  # Support the installed standalone web-manager entry point.
     from domain.camera.capture_policy import (
         validate_capture_feature_compatibility,

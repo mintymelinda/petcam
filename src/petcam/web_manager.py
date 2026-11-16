@@ -28,7 +28,7 @@ if __package__:
     from .rtmp_output import load_config as load_rtmp_config, save_config as save_rtmp_config, public_config as public_rtmp_config, check_gstreamer_runtime
     from .security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
     from . import camera_controls, feature_services, stream_metrics
-    from .application from application import camera_configuration, capture_status, service_transactions
+    from .application import camera_configuration, capture_status, service_transactions
     from .infrastructure.system import metrics as system_metrics, processes as process_control
     from .infrastructure.streaming import proxy as stream_proxy
     from . import rtsp_status
@@ -51,8 +51,7 @@ else:  # Support the installed standalone web-manager entry point.
     import stream_metrics
     from infrastructure.system import metrics as system_metrics
     from infrastructure.system import processes as process_control
-    import camera_configuration
-    from application import capture_status
+    from application import camera_configuration, capture_status
     import rtsp_status
     from infrastructure.streaming import proxy as stream_proxy
 
