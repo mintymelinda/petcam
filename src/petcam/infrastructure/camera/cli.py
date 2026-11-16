@@ -31,7 +31,6 @@ from ...domain.camera.capture_modes import (
     filter_devices_by_format,
     select_csi_mode,
     select_mode,
-    select_native_h264_mode,
 )
 from ..persistence.configuration import parse_config
 from ..network.diagnostics import collect_diagnostics
@@ -39,7 +38,7 @@ from ..network.diagnostics import collect_diagnostics
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=("discover", "select", "select-h264", "discover-csi", "select-csi", "h264-encoder", "status"))
+    parser.add_argument("command", choices=("discover", "select", "discover-csi", "select-csi", "h264-encoder", "status"))
     parser.add_argument("--device")
     parser.add_argument("--physical-path")
     parser.add_argument("--camera", type=int)
@@ -82,17 +81,6 @@ def main():
             print("No supported CSI camera or camera mode found. Check the ribbon cable and camera-stack detection.", file=sys.stderr)
             return 1
         print(json.dumps({"backend": "csi", **selected_csi}))
-        return 0
-    if args.command == "select-h264":
-        try:
-            selected_h264 = select_native_h264_mode(devices, args.resolution, args.fps)
-        except ValueError as error:
-            print(str(error), file=sys.stderr)
-            return 2
-        if not selected_h264:
-            print("No native H.264 V4L2 capture mode is advertised.", file=sys.stderr)
-            return 1
-        print(json.dumps(selected_h264))
         return 0
     if args.command == "select":
         devices = filter_devices_by_format(devices, args.format)
