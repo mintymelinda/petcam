@@ -4,11 +4,10 @@
 import json
 import os
 import shutil
-import subprocess
-
-from . import processes as process_control
 import sys
 from pathlib import Path
+
+from . import processes as process_control
 
 ETC = Path("/etc/petcam")
 STATE = Path("/var/lib/petcam")
@@ -60,11 +59,6 @@ MOTION_DEFAULTS = {
 }
 
 
-
-def run(*command):
-    subprocess.run(command, check=True, stdout=subprocess.DEVNULL)
-
-
 def write_file(path, content):
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(path.name + ".reset-tmp")
@@ -75,9 +69,6 @@ def write_file(path, content):
 def reset():
     if os.geteuid() != 0:
         raise PermissionError("Factory reset must run as root.")
-
-    # Stop managed children before replacing runtime state.
-    process_control.request("stop_all")
 
     # Preserve the OS, networking, SSH, device identity, TLS certificate/key,
     # and installed application releases.
@@ -102,9 +93,10 @@ def reset():
         write_file(directory / "config.json", json.dumps(defaults, indent=2) + "\n")
 
     (STATE / "health.json").unlink(missing_ok=True)
-    # Re-read persisted feature settings and start the enabled workers.
-    process_control.request("reconcile")
-
+    # Restart capture using reset settings; the supervisor stops dependent RTSP
+    # workers. Its normal tick applies disabled feature settings after this
+    # request returns, allowing the web manager to finish the reset response.
+    process_control.request("restart", "camera-capture")
 
 
 def main():

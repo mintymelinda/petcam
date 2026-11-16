@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from petcam.infrastructure.system import supervisor
+from petcam.infrastructure.system import supervisor, processes
 
 
 class SupervisorTests(unittest.TestCase):
@@ -59,6 +59,44 @@ class SupervisorTests(unittest.TestCase):
         snapshot = supervisor.Supervisor([worker]).snapshot()
         self.assertIn("workers", snapshot)
         self.assertFalse(snapshot["workers"]["idle"]["running"])
+
+
+    def test_worker_order_gates_gstreamer_and_sampler_behind_camera_capture(self):
+        names = [worker.name for worker in supervisor.workers()]
+        self.assertLess(names.index("camera-capture"), names.index("gstreamer-rtsp"))
+        self.assertLess(names.index("gstreamer-rtsp"), names.index("rtsp-sampler"))
+
+    def test_camera_restart_stops_rtsp_dependents_before_restarting_capture(self):
+        entries = [
+            supervisor.Worker("camera-capture", ("camera",)),
+            supervisor.Worker("gstreamer-rtsp", ("gstreamer",)),
+            supervisor.Worker("rtsp-sampler", ("sampler",)),
+        ]
+        processes = [mock.Mock() for _ in entries]
+        for worker, process in zip(entries, processes):
+            process.poll.return_value = None
+            worker.process = process
+        manager = supervisor.Supervisor(entries)
+        with mock.patch.object(manager, "start") as start:
+            result = manager.handle_control({"action": "restart", "worker": "camera-capture"})
+        self.assertTrue(result["ok"])
+        processes[1].terminate.assert_called_once()
+        processes[2].terminate.assert_called_once()
+        start.assert_called_once_with(entries[0])
+
+    def test_control_socket_serves_status_requests(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_path = Path(directory)
+            manager = supervisor.Supervisor([])
+            with mock.patch.object(supervisor, "RUN", run_path), \
+                    mock.patch.object(processes, "SOCKET_PATH", run_path / "supervisor.sock"):
+                manager.start_control_server()
+                try:
+                    response = processes.request("status")
+                finally:
+                    manager.stop_control_server()
+        self.assertTrue(response["ok"])
+        self.assertIn("workers", response["snapshot"])
 
 
 if __name__ == "__main__":
