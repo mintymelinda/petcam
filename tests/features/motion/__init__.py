@@ -1,1 +1,1 @@
-""""Behavioral tests for the corresponding PetCam package.""""
+# Test package marker.
