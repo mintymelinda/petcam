@@ -48,15 +48,16 @@ def save_selection(
         allow_override=data.get("allow_performance_override") is True,
     )
     previous_camera = parse_config(config_path)
-    validate_capture_feature_compatibility(
-        values["FORMAT"],
-        timelapse_enabled=load_timelapse_config().get("enabled") is True,
-        motion_enabled=load_motion_config().get("enabled") is True,
-    )
-    try:
-        check_gstreamer_runtime()
-    except ValueError as error:
-        raise RuntimeError(str(error)) from error
+    if values["FORMAT"] == "H264":
+        validate_capture_feature_compatibility(
+            values["FORMAT"],
+            timelapse_enabled=load_timelapse_config().get("enabled") is True,
+            motion_enabled=load_motion_config().get("enabled") is True,
+        )
+        try:
+            check_gstreamer_runtime()
+        except ValueError as error:
+            raise RuntimeError(str(error)) from error
 
     camera_applied = False
     try:
