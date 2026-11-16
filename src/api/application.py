@@ -345,7 +345,7 @@ def main():
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(TLS_CERT, TLS_KEY)
-    manager = ThreadingHTTPServer(("0.0.0.0", 8443), Handler)
+    manager = ThreadingHTTPServer(("127.0.0.1", 8444), Handler)
     manager.socket = context.wrap_socket(manager.socket, server_side=True)
     threads = [
         threading.Thread(target=manager.serve_forever, daemon=True),
