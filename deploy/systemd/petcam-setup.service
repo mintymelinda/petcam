@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 Environment=PYTHONPATH=/opt/petcam/current/lib
-ExecStart=/usr/bin/python3 -m petcam.api.setup_stub
+ExecStart=/usr/bin/python3 -m petcam.bootstrap.setup_portal
 Restart=always
 RestartSec=5
 UMask=0007

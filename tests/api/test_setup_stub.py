@@ -9,7 +9,7 @@ from http.server import ThreadingHTTPServer
 from pathlib import Path
 from unittest import mock
 
-from petcam.api import setup_stub as MODULE
+from petcam.bootstrap import setup_portal as MODULE
 from petcam.security import sessions as web_auth
 
 
