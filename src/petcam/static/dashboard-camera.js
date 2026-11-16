@@ -37,8 +37,7 @@ function fillModes(preferred = null) {
   for (const mode of modesFor(camera)) {
     const option = document.createElement("option");
     option.value = JSON.stringify(mode);
-    option.textContent =
-      `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}`;
+    option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}`;
     if (
       preferred &&
       mode.width === preferred.width &&
