@@ -29,8 +29,8 @@ def jpeg_frames(response, chunk_size=4096):
             yield bytes(buffer[start:end + 2])
             del buffer[:end + 2]
 
-def storage_status(directory=None):
-    directory = Path(directory or FRAMES)
+def storage_status(directory):
+    directory = Path(directory)
     files = sorted((p for p in directory.glob("*.jpg") if p.is_file()), key=lambda p: p.name) if directory.exists() else []
     return {"frames": len(files), "storage_bytes": sum(p.stat().st_size for p in files)}
 
@@ -55,10 +55,10 @@ def prune_frames(config, directory=None, now=None):
         total -= size
     return storage_status(directory)
 
-def capture_frame(frame, directory=None, now=None):
+def capture_frame(frame, directory, now=None):
     if not frame.startswith(b"\xff\xd8") or not frame.endswith(b"\xff\xd9"):
         raise ValueError("The camera stream did not provide a complete JPEG frame.")
-    directory = Path(directory or FRAMES)
+    directory = Path(directory)
     directory.mkdir(parents=True, exist_ok=True)
     stamp = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
     base = stamp.strftime("%Y%m%dT%H%M%S.%fZ")

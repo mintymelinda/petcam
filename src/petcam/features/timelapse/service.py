@@ -13,7 +13,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from ...infrastructure.persistence.frames import (
-    capture_frame, jpeg_frames, prune_frames, storage_status,
+    capture_frame as persist_frame,
+    jpeg_frames,
+    prune_frames,
+    storage_status as persist_storage_status,
 )
 
 BASE = Path("/var/lib/petcam/timelapse")
@@ -22,6 +25,16 @@ STATE = BASE / "status.json"
 FRAMES = BASE / "frames"
 NETWORK_FILESYSTEMS = {"cifs", "nfs", "nfs4"}
 from ...domain.timelapse.policy import DEFAULTS, NETWORK_ROOT, in_schedule, validate_config
+
+def capture_frame(frame, directory=None, now=None):
+    """Store a JPEG in the timelapse frame directory unless overridden."""
+    return persist_frame(frame, directory or FRAMES, now)
+
+
+def storage_status(directory=None):
+    """Summarize the timelapse frame directory unless overridden."""
+    return persist_storage_status(directory or FRAMES)
+
 
 STREAM_URL = "http://127.0.0.1:8080/stream"
 _running = True
