@@ -4,7 +4,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from petcam import supervisor
+from petcam.infrastructure.system import supervisor
 
 
 class SupervisorTests(unittest.TestCase):

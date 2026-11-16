@@ -1,6 +1,6 @@
 """Single-process-tree supervisor for all PetCam runtime workers.
 
-Run with python -m petcam.supervisor from a source checkout. The supervisor
+Run with python -m petcam.infrastructure.system.supervisor from a source checkout. The supervisor
 owns child lifetimes, restart backoff, optional feature activation and shutdown;
 it deliberately has no dependency on a host service manager.
 """

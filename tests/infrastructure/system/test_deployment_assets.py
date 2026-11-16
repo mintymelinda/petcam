@@ -8,9 +8,9 @@ DEPLOY = ROOT / "deploy"
 
 class DeploymentAssetTests(unittest.TestCase):
     def test_source_supervisor_is_the_runtime_entrypoint(self):
-        self.assertTrue((ROOT / "src/supervisor.py").is_file())
+        self.assertTrue((ROOT / "src/infrastructure/system/supervisor.py").is_file())
         installer = (DEPLOY / "install.sh").read_text(encoding="utf-8")
-        self.assertIn("petcam.supervisor", installer)
+        self.assertIn("petcam.infrastructure.system.supervisor", installer)
         self.assertNotIn(".whl", installer)
         self.assertNotIn("pip install", installer)
 

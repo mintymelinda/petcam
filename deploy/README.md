@@ -24,7 +24,7 @@ Keep the checkout at a stable path (the examples use /opt/petcam). Create
 then create the HTTPS certificate/key expected by the setup portal. Start:
 
 ```sh
-sudo env PYTHONPATH=/opt/petcam/src python3 -m petcam.supervisor
+sudo env PYTHONPATH=/opt/petcam/src python3 -m petcam.infrastructure.system.supervisor
 ```
 
 The supervisor launches the always-on setup portal, RTSP server and sampler,
