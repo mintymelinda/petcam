@@ -5,7 +5,9 @@ Wants=network-online.target petcam-web.service
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/petcam/current/lib/motion_detection.py
+WorkingDirectory=/opt/petcam/current/lib
+Environment=PYTHONPATH=/opt/petcam/current/lib
+ExecStart=/usr/bin/python3 -m petcam.features.motion.worker
 Restart=on-failure
 RestartSec=5
 Nice=19

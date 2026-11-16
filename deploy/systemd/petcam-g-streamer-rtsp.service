@@ -6,7 +6,9 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/python3 /opt/petcam/current/lib/g_streamer_output.py
+WorkingDirectory=/opt/petcam/current/lib
+Environment=PYTHONPATH=/opt/petcam/current/lib
+ExecStart=/usr/bin/python3 -m petcam.infrastructure.streaming.gstreamer
 Restart=on-failure
 RestartSec=5
 StartLimitIntervalSec=0

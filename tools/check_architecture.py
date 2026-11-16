@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fail CI when core policy and HTTP composition boundaries are crossed."""
+"""Enforce PetCam's package layout and inward dependency boundaries."""
 
 from __future__ import annotations
 
@@ -8,12 +8,22 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PACKAGE = ROOT / "src" / "petcam"
+EXPECTED_TEST_PACKAGES = (
+    "api",
+    "application",
+    "domain",
+    "features",
+    "infrastructure",
+    "security",
+    "static",
+)
 POLICY_MODULES = {
     "domain/camera/capabilities.py",
     "domain/camera/capture_modes.py",
     "domain/camera/capture_policy.py",
     "domain/motion/policy.py",
     "domain/timelapse/policy.py",
+    "domain/streaming/status.py",
     "features/light_sensor/policy.py",
 }
 FORBIDDEN_POLICY_IMPORTS = {
@@ -36,11 +46,11 @@ FORBIDDEN_POLICY_CALLS = {
 }
 
 
-def imported_root(node: ast.AST) -> str | None:
+def imported_module(node: ast.AST) -> str | None:
     if isinstance(node, ast.Import):
-        return node.names[0].name.split(".", 1)[0] if node.names else None
+        return node.names[0].name if node.names else None
     if isinstance(node, ast.ImportFrom):
-        return (node.module or "").split(".", 1)[0]
+        return node.module
     return None
 
 
@@ -64,9 +74,16 @@ def violations() -> list[str]:
             continue
 
         relative = path.relative_to(PACKAGE)
-        if relative.as_posix() in POLICY_MODULES:
+        relative_name = relative.as_posix()
+
+        if len(relative.parts) == 1 and relative.name != "__init__.py":
+            problems.append(
+                f"{path.relative_to(ROOT)}: package root may contain only __init__.py; move this module into its owning package"
+            )
+
+        if relative_name in POLICY_MODULES:
             for node in ast.walk(tree):
-                root = imported_root(node)
+                root = imported_module(node)
                 if root in FORBIDDEN_POLICY_IMPORTS:
                     problems.append(
                         f"{path.relative_to(ROOT)}:{node.lineno}: policy imports infrastructure module {root!r}"
@@ -77,13 +94,35 @@ def violations() -> list[str]:
                         f"{path.relative_to(ROOT)}:{node.lineno}: policy invokes infrastructure call {name!r}"
                     )
 
-        if relative.parts and relative.parts[0] == "api":
-            for node in ast.walk(tree):
-                root = imported_root(node)
-                if root == "web_manager":
-                    problems.append(
-                        f"{path.relative_to(ROOT)}:{node.lineno}: API routes must not import the composition root"
-                    )
+        package = relative.parts[0] if relative.parts else ""
+        for node in ast.walk(tree):
+            module = imported_module(node) or ""
+            if package == "domain" and module.startswith((
+                "petcam.api", "petcam.application", "petcam.infrastructure",
+                "petcam.features", "petcam.security",
+            )):
+                problems.append(
+                    f"{path.relative_to(ROOT)}:{node.lineno}: domain must not depend on outer application layers"
+                )
+            if package in {"application", "features"} and module.startswith("petcam.api"):
+                problems.append(
+                    f"{path.relative_to(ROOT)}:{node.lineno}: application/feature code must not depend on API routes"
+                )
+            if package == "infrastructure" and module.startswith((
+                "petcam.api", "petcam.application", "petcam.features", "petcam.security",
+            )):
+                problems.append(
+                    f"{path.relative_to(ROOT)}:{node.lineno}: infrastructure must not depend on application or feature layers"
+                )
+            if package == "api" and module == "web_manager":
+                problems.append(
+                    f"{path.relative_to(ROOT)}:{node.lineno}: API routes must not import the legacy composition-root module"
+                )
+
+    test_root = ROOT / "tests"
+    for package in EXPECTED_TEST_PACKAGES:
+        if not (test_root / package).is_dir():
+            problems.append(f"tests/{package}: matching architectural test package is missing")
 
     return problems
 
@@ -93,7 +132,7 @@ def main() -> int:
     if problems:
         print("\n".join(problems))
         return 1
-    print("Architecture boundaries verified.")
+    print("Package layout and architecture boundaries verified.")
     return 0
 
 
