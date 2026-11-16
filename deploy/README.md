@@ -1,25 +1,42 @@
-# PetCam device deployment
+# PetCam source deployment
 
-Build the wheel from the repository root, copy it and this `deploy/` directory
-to the Raspberry Pi, then run:
+PetCam runs directly from this checkout. There is no wheel build, package build,
+virtual environment, or PetCam systemd unit.
+
+## Install runtime dependencies
+
+On Raspberry Pi OS / Debian:
 
 ```sh
-sudo bash ./deploy/install.sh ./dist/petcam-<version>-py3-none-any.whl
+sudo apt-get update
+sudo apt-get install -y python3 python3-pil python3-gi \
+  gir1.2-gst-rtsp-1.0 gir1.2-gst-rtsp-server-1.0 \
+  gstreamer1.0-tools gstreamer1.0-plugins-base \
+  gstreamer1.0-plugins-good gstreamer1.0-plugins-bad \
+  gstreamer1.0-plugins-ugly gstreamer1.0-libav v4l-utils \
+  ca-certificates openssl cron
 ```
 
-The installer targets Debian/Raspberry Pi OS with apt and systemd. It installs
-the wheel into `/opt/petcam/venv`, copies systemd units, creates missing
-configuration defaults, and enables the boot services. Existing settings and
-credentials are preserved.
+## Configure and launch
 
-The setup portal always owns HTTPS port 8443. A self-signed local certificate
-is generated only when a certificate or key is missing; replace these with a
-trusted pair at `/etc/petcam/web-manager.crt` and
-`/etc/petcam/web-manager.key` when appropriate.
+Keep the checkout at a stable path (the examples use /opt/petcam). Create
+/etc/petcam and /var/lib/petcam, copy the defaults from deploy/etc and deploy/var,
+then create the HTTPS certificate/key expected by the setup portal. Start:
 
-Always enabled: GStreamer RTSP, RTSP sampler, setup portal, feature supervisor,
-Home Assistant worker, and light-sensor worker. The Home Assistant and light
-sensor workers remain disabled by their own settings unless explicitly enabled.
-The full Web UI, motion, and timelapse are supervisor-managed and must not be
-enabled directly. The obsolete `petcam-stream.service` drop-in is removed
-during upgrade.
+```sh
+sudo env PYTHONPATH=/opt/petcam/src python3 -m petcam.supervisor
+```
+
+The supervisor launches the always-on setup portal, RTSP server and sampler,
+and starts optional workers only when their persisted feature settings enable
+them. It restarts failed workers with bounded exponential backoff and writes
+its live process inventory to /run/petcam/supervisor-status.json.
+
+## Start at boot
+
+The installer adds one root crontab @reboot entry that invokes the supervisor
+from the checkout. Cron is only the boot trigger; all PetCam process lifecycle,
+health and optional-feature decisions belong to the Python supervisor.
+
+The setup portal remains at https://<device-hostname>:8443/. The full manager
+is disabled by default and can be enabled from the setup portal.
