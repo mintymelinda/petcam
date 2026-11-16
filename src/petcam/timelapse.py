@@ -18,9 +18,9 @@ STATE = BASE / "status.json"
 FRAMES = BASE / "frames"
 NETWORK_FILESYSTEMS = {"cifs", "nfs", "nfs4"}
 if __package__:
-    from .timelapse_policy import DEFAULTS, NETWORK_ROOT, in_schedule, validate_config
+    from .domain.timelapse.policy import DEFAULTS, NETWORK_ROOT, in_schedule, validate_config
 else:
-    from timelapse_policy import DEFAULTS, NETWORK_ROOT, in_schedule, validate_config
+    from domain.timelapse.policy import DEFAULTS, NETWORK_ROOT, in_schedule, validate_config
 
 STREAM_URL = "http://127.0.0.1:8080/stream"
 _running = True

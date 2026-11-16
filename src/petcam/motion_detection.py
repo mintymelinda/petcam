@@ -16,7 +16,7 @@ from pathlib import Path
 from PIL import Image, ImageChops
 
 if __package__:
-    from .motion_policy import (
+    from .domain.motion.policy import (
         DEFAULTS,
         cooldown_elapsed,
         in_quiet_hours,
@@ -25,7 +25,7 @@ if __package__:
     )
     from .timelapse import capture_frame, jpeg_frames, prune_frames
 else:  # Support the installed standalone worker entry point.
-    from motion_policy import (
+    from domain.motion.policy import (
         DEFAULTS,
         cooldown_elapsed,
         in_quiet_hours,
