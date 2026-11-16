@@ -84,6 +84,18 @@ class GStreamerOutputTests(unittest.TestCase):
             self.assertFalse(MODULE.native_h264_available(marker_path=marker))
 
 
+    def test_systemd_service_is_pulled_in_with_camera_capture(self):
+        root = Path(__file__).parents[1] / "deploy" / "systemd"
+        unit = (root / "petcam-g-streamer-rtsp.service").read_text(encoding="utf-8")
+        drop_in = (
+            root / "petcam-stream.service.d" / "10-gstreamer-rtsp.conf"
+        ).read_text(encoding="utf-8")
+        self.assertIn("After=network-online.target petcam-stream.service", unit)
+        self.assertIn("Wants=network-online.target", unit)
+        self.assertIn("WantedBy=multi-user.target", unit)
+        self.assertIn("Wants=petcam-g-streamer-rtsp.service", drop_in)
+        self.assertNotIn("ConditionPathExists", unit)
+
 
 
 if __name__ == "__main__":

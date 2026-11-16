@@ -2,7 +2,7 @@
 Description=PetCam always-on GStreamer RTSP camera service
 Documentation=https://github.com/mintymelinda/petcam
 After=network-online.target petcam-stream.service
-Wants=network-online.target petcam-stream.service
+Wants=network-online.target
 
 [Service]
 Type=simple
