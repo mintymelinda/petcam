@@ -17,10 +17,10 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
     if kind not in ("usb", "csi") or not isinstance(width, int) or not isinstance(height, int):
         raise ValueError("Invalid camera selection")
     if not (
-        1 <= width <= 10000
-        and 1 <= height <= 10000
+        width > 0
+        and height > 0
         and isinstance(fps, (int, float))
-        and 0 < fps <= 240
+        and fps > 0
     ):
         raise ValueError("Invalid capture mode")
 
