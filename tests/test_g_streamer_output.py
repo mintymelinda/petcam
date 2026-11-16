@@ -6,6 +6,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from petcam import g_streamer_output as MODULE
+
+
+class GStreamerOutputTests(unittest.TestCase):
     def test_native_h264_pipeline_uses_v4l2_and_rtp_packetization_only(self):
         pipeline = MODULE.build_gstreamer_launch({
             "native_h264": True,

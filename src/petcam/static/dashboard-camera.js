@@ -180,16 +180,23 @@ async function refreshGStreamer() {
   try {
     const data = await request("/api/live-status");
     const status = data.g_streamer_status || {};
-    const source = status.source === "native_h264_csi"
-      ? "CSI hardware H.264 stream copy"
-      : status.source === "native_h264"
-        ? "native H.264 stream copy"
-        : status.source === "mjpeg_copy" ? "MJPEG packet copy" : "camera source pending";
+    const source =
+      status.source === "native_h264_csi"
+        ? "CSI hardware H.264 stream copy"
+        : status.source === "native_h264"
+          ? "native H.264 stream copy"
+          : status.source === "mjpeg_copy"
+            ? "MJPEG packet copy"
+            : "camera source pending";
     $("g-streamer-status").textContent =
-      "GStreamer RTSP service: " + (status.state || "starting") +
-      (status.service_active ? " · always on · " + source : " · service unavailable");
+      "GStreamer RTSP service: " +
+      (status.state || "starting") +
+      (status.service_active
+        ? " · always on · " + source
+        : " · service unavailable");
   } catch (error) {
-    $("g-streamer-status").textContent = "GStreamer RTSP status unavailable: " + error.message;
+    $("g-streamer-status").textContent =
+      "GStreamer RTSP status unavailable: " + error.message;
   }
 }
 // System statistics
@@ -257,7 +264,9 @@ async function refreshStatistics(data = null) {
         Number.isFinite(Number(gStreamer.fps))
           ? Number(gStreamer.fps).toFixed(1)
           : gStreamer.service_active
-            ? gStreamer.state === "stalled" ? "No recent service heartbeat" : gStreamer.state
+            ? gStreamer.state === "stalled"
+              ? "No recent service heartbeat"
+              : gStreamer.state
             : "Service unavailable",
       ],
       [

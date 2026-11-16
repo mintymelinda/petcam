@@ -1,7 +1,7 @@
 const $ = (id) => document.getElementById(id);
 let inventory = [],
   activeConfig = null,
-  captureStatus = {},
+  captureStatus = {};
 
 const tabButtons = [...document.querySelectorAll("[data-tab]")];
 const pendingCameraControlChanges = new Map();
