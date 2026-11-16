@@ -9,11 +9,13 @@ fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
 command -v apt-get >/dev/null || fail "Debian/Raspberry Pi OS with apt is required."
 [[ -f "$REPO_ROOT/src/petcam/infrastructure/system/supervisor.py" ]] || fail "Run this installer from the PetCam source checkout."
-export DEBIAN_FRONTEND=noninteractive
-# Feature manifests are the source of truth for runtime system dependencies.
-# Adding a feature with requirements.apt never requires editing this installer.
-source "$REPO_ROOT/deploy/lib/dependencies.sh"
-install_feature_dependencies "$REPO_ROOT/deploy/features"
+if [[ "${PETCAM_SKIP_DEPENDENCIES:-0}" != 1 ]]; then
+  export DEBIAN_FRONTEND=noninteractive
+  source "$REPO_ROOT/deploy/lib/dependencies.sh"
+  install_feature_dependencies "$REPO_ROOT/deploy/features"
+else
+  log "Skipping apt installation; dependencies were installed by the image builder."
+fi
 install -d -m 0755 "$ETC_ROOT" "$STATE_ROOT" "$RUN_ROOT"
 if [[ ! -e "$ETC_ROOT/petcam.conf" ]]; then install -m 0640 "$REPO_ROOT/deploy/etc/petcam/petcam.conf" "$ETC_ROOT/petcam.conf"; fi
 for name in home-assistant.conf light-sensor.conf web-manager.json; do
@@ -21,26 +23,20 @@ for name in home-assistant.conf light-sensor.conf web-manager.json; do
 done
 for feature in motion timelapse; do
   install -d -m 0750 "$STATE_ROOT/$feature"
-  if [[ ! -e "$STATE_ROOT/$feature/config.json" ]]; then
-    install -m 0640 "$REPO_ROOT/deploy/var/lib/petcam/$feature/config.json" "$STATE_ROOT/$feature/config.json"
-  fi
+  if [[ ! -e "$STATE_ROOT/$feature/config.json" ]]; then install -m 0640 "$REPO_ROOT/deploy/var/lib/petcam/$feature/config.json" "$STATE_ROOT/$feature/config.json"; fi
 done
 install -d -m 0750 "$STATE_ROOT/motion/frames" "$STATE_ROOT/timelapse/frames"
-if [[ ! -s "$ETC_ROOT/web-manager.crt" || ! -s "$ETC_ROOT/web-manager.key" ]]; then
-  log "Generating a local self-signed HTTPS certificate."
-  openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
-    -subj "/CN=$(hostname -f 2>/dev/null || hostname)" \
-    -keyout "$ETC_ROOT/web-manager.key.tmp" -out "$ETC_ROOT/web-manager.crt.tmp"
-  install -m 0600 "$ETC_ROOT/web-manager.key.tmp" "$ETC_ROOT/web-manager.key"
-  install -m 0644 "$ETC_ROOT/web-manager.crt.tmp" "$ETC_ROOT/web-manager.crt"
-  rm -f "$ETC_ROOT/web-manager.key.tmp" "$ETC_ROOT/web-manager.crt.tmp"
+install -d -m 0755 /usr/local/sbin
+install -m 0755 "$REPO_ROOT/deploy/start.sh" /usr/local/sbin/petcam-start
+if [[ "${PETCAM_DEFER_TLS:-0}" != 1 ]]; then
+  PETCAM_INITIALIZE_ONLY=1 PETCAM_ROOT="$REPO_ROOT" /usr/local/sbin/petcam-start "$REPO_ROOT"
+else
+  log "Deferring device-specific HTTPS certificate generation until first boot."
 fi
-chmod 0600 "$ETC_ROOT/web-manager.key"
-printf '@reboot root cd %q && PYTHONPATH=%q /usr/bin/python3 -m petcam.infrastructure.system.supervisor >>/var/log/petcam-supervisor.log 2>&1\n' \
-  "$REPO_ROOT" "$REPO_ROOT/src" > /etc/cron.d/petcam
+printf '@reboot root /usr/local/sbin/petcam-start %q >>/var/log/petcam-supervisor.log 2>&1\n' "$REPO_ROOT" > /etc/cron.d/petcam
 chmod 0644 /etc/cron.d/petcam
 update-rc.d cron defaults || true
-service cron start
+if [[ "${PETCAM_SKIP_SERVICE_START:-0}" != 1 ]]; then service cron start; fi
 log "Installed source-based PetCam boot entry."
-log "Supervisor command: PYTHONPATH=$REPO_ROOT/src python3 -m petcam.infrastructure.system.supervisor"
+log "Supervisor command: PETCAM_ROOT=$REPO_ROOT /usr/local/sbin/petcam-start"
 log "Setup portal: https://$(hostname -f 2>/dev/null || hostname):8443/setup"

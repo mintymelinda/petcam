@@ -37,23 +37,32 @@ feature settings enable them.
 
 Keep the checkout at a stable path (the examples use /opt/petcam). The
 installer creates /etc/petcam and /var/lib/petcam, copies defaults from
-deploy/etc and deploy/var, and creates the HTTPS certificate/key expected by
-the setup portal. To launch manually:
+deploy/etc and deploy/var, and installs the device boot wrapper. To launch
+manually:
 
 ```sh
-sudo env PYTHONPATH=/opt/petcam/src python3 -m petcam.infrastructure.system.supervisor
+PETCAM_ROOT=/opt/petcam /usr/local/sbin/petcam-start
 ```
 
-The supervisor launches the always-on setup portal, RTSP server and sampler,
-and starts optional workers only when their persisted feature settings enable
-them. It restarts failed workers with bounded exponential backoff and writes
-its live process inventory to /run/petcam/supervisor-status.json.
+The wrapper creates the HTTPS certificate for the device hostname when it is
+first needed, then starts the Python supervisor. The supervisor launches the
+always-on setup portal, RTSP server and sampler, and starts optional workers
+only when their persisted feature settings enable them. It restarts failed
+workers with bounded exponential backoff and writes its live process inventory
+to /run/petcam/supervisor-status.json.
 
 ## Start at boot
 
-The installer adds one root crontab @reboot entry that invokes the supervisor
-from the checkout. Cron is only the boot trigger; all PetCam process lifecycle,
-health and optional-feature decisions belong to the Python supervisor.
+The installer adds one root crontab @reboot entry that invokes the wrapper.
+Cron is only the boot trigger; all PetCam process lifecycle, health and
+optional-feature decisions belong to the Python supervisor.
 
 The setup portal remains at https://<device-hostname>:8443/. The full manager
 is disabled by default and can be enabled from the setup portal.
+
+## Prebuilt Raspberry Pi image
+
+See [the Raspberry Pi image build](image/README.md) for the Docker Compose +
+pi-gen pipeline. It builds Raspberry Pi OS Trixie ARM64 with PetCam installed
+at /opt/petcam, while keeping this source-based installer usable on existing
+devices.
