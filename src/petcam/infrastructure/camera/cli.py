@@ -120,15 +120,19 @@ def main():
         fps = args.fps if args.fps != "auto" else "0"
         fmt = mode["format"]
         encoder = "HW" if fmt in NATIVE_JPEG_FORMATS else "CPU"
-        if args.fps != "auto" and (not args.fps.isdigit() or int(args.fps) < 1):
-            print("FPS must be 'auto' or a positive integer.", file=sys.stderr)
-            return 2
         if args.fps != "auto":
-            fps_value = int(args.fps)
+            try:
+                fps_value = float(args.fps)
+            except ValueError:
+                print("FPS must be 'auto' or a positive number.", file=sys.stderr)
+                return 2
+            if fps_value <= 0:
+                print("FPS must be 'auto' or a positive number.", file=sys.stderr)
+                return 2
             if (mode["fps"] or mode.get("fps_range")) and not mode_supports_fps(mode, fps_value):
                 print(f"Requested {fps_value} FPS is not advertised for {width} {fmt}.", file=sys.stderr)
                 return 2
-        selected_fps = int(fps) if fps != "0" else mode_max_fps(mode)
+        selected_fps = float(fps) if fps != "0" else float(mode_max_fps(mode))
         print(json.dumps({
             "device": device["device"], "resolution": width, "fps": fps,
             "format": ustreamer_format(fmt),
