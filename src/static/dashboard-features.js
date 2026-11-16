@@ -130,9 +130,7 @@ async function refreshDiagnostics() {
           .join(" · ")
       : "Local camera, listener, and network checks look healthy.";
     $("diagnostic-details").textContent =
-      (d.problems || []).join("\n") +
-      "\n" +
-      d.remote_client_note;
+      (d.problems || []).join("\n") + "\n" + d.remote_client_note;
   } catch (e) {
     $("diagnostic-summary").textContent =
       "Diagnostics unavailable: " + e.message;

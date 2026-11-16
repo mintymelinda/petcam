@@ -44,7 +44,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(saved, [candidate, previous])
         self.assertEqual(run.call_count, 4)
 
-    def test_manager_page_uses_configured_device_hostname_for_stream_urls(self):
+    def test_manager_page_uses_configured_device_hostname_for_rtsp_endpoint(self):
         class Request:
             path = "/"
 
@@ -67,7 +67,7 @@ class WebManagerTests(unittest.TestCase):
             MODULE.Handler.do_GET(request)
         page = request.wfile.getvalue().decode()
         self.assertEqual(request.status, 200)
-        self.assertIn("http://kittycam.local:8080/", page)
+        self.assertNotIn(":8080/", page)
         self.assertIn("rtsp://kittycam.local:8554/petcam", page)
         self.assertNotIn("petcam.local", page)
         self.assertNotIn("__PETCAM_HOST__", page)
@@ -79,7 +79,7 @@ class WebManagerTests(unittest.TestCase):
             self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.example.net")
     def test_management_page_uses_the_four_tab_layout(self):
         self.assertIn("Refresh", PAGE_AND_JS)
-        self.assertIn("Browser Source", PAGE_AND_JS)
+        self.assertNotIn("Browser Source", PAGE_AND_JS)
         self.assertIn('role="tablist"', PAGE_AND_JS)
         tab_order = [PAGE_AND_JS.index('data-tab="camera"'), PAGE_AND_JS.index('data-tab="timelapse"'),
                      PAGE_AND_JS.index('data-tab="motion"'), PAGE_AND_JS.index('data-tab="system"')]
@@ -111,8 +111,7 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("RTSP endpoint", PAGE_AND_JS)
         self.assertIn("GREY", MODULE.USTREAMER_FORMATS)
         self.assertIn('{"H264"}', Path("src/application/camera_inventory.py").read_text())
-        self.assertIn("syncOutputModeControls", PAGE_AND_JS)
-        self.assertIn("always-on RTSP service serves H.264 directly", PAGE_AND_JS)
+        self.assertIn("RTSP service serves the camera stream directly", PAGE_AND_JS)
         self.assertNotIn("rtmp://", PAGE_AND_JS)
         self.assertNotIn("stream_key", PAGE_AND_JS)
         self.assertNotIn("rtmp-server-url", PAGE_AND_JS)

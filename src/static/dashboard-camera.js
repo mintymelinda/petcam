@@ -42,7 +42,7 @@ function showSelectedModeWarning() {
   else
     $("message").textContent =
       mode.format === "H264"
-        ? "H.264 selected. The HTTP Browser Source will be disabled and the always-on RTSP service serves H.264 directly."
+        ? "H.264 selected. The RTSP service serves the camera stream directly."
         : "Selected mode is within the estimated device performance budget.";
 }
 function activeCameraMatches(camera, config) {
@@ -138,7 +138,7 @@ async function refreshLiveStatus() {
     refreshStatistics(d);
     captureStatus = d.capture_status || {};
     renderCaptureStatus();
-      const updated = new Date(d.capture_status_updated_at * 1000);
+    const updated = new Date(d.capture_status_updated_at * 1000);
     $("capture-status-freshness").textContent =
       "Capture status refreshes every 5 seconds · last updated " +
       updated.toLocaleTimeString();
@@ -283,8 +283,7 @@ async function refreshStatistics(data = null) {
       "Updated " +
       new Date(d.capture_status_updated_at * 1000).toLocaleTimeString() +
       " · GStreamer RTSP: " +
-      (gStreamer.state || "unknown") +
-      "; MJPEG delivery is measured separately.";
+      (gStreamer.state || "unknown");
   } catch (error) {
     $("statistics-updated").textContent =
       "Statistics unavailable: " + error.message;
@@ -350,7 +349,7 @@ async function refresh() {
         " camera(s) found. Current saved camera settings are selected.";
       fillModes(preferred);
     }
-      renderCaptureStatus();
+    renderCaptureStatus();
     await refreshCameraControls();
   } catch (e) {
     $("message").textContent = e.message;

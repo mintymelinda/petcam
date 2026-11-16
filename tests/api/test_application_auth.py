@@ -179,60 +179,6 @@ class WebManagerRouteAuthenticationTests(unittest.TestCase):
             )
             self.assertEqual(status, 404)
 
-    def test_authenticated_manager_preview_uses_primary_stream(self):
-        cookie, _ = self.login()
-        seen = []
-
-        def proxy(handler, port):
-            seen.append(port)
-            handler.send_response(200)
-            handler.send_header("Content-Length", "2")
-            handler.end_headers()
-            handler.wfile.write(b"ok")
-
-        with mock.patch.object(MANAGER, "parse_config", return_value={"PORT": "8081"}), \
-                mock.patch.object(MANAGER, "proxy_stream", side_effect=proxy):
-            status, _, payload = self.request("GET", "/stream", cookie=cookie)
-        self.assertEqual(status, 200)
-        self.assertEqual(payload, b"ok")
-        self.assertEqual(seen, [8081])
-
-    def test_obs_stream_endpoint_exposes_only_the_primary_stream_without_auth(self):
-        server = ThreadingHTTPServer(("127.0.0.1", 0), MANAGER.StreamHandler)
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        seen = []
-
-        def proxy(handler, port):
-            seen.append(port)
-            handler.send_response(200)
-            handler.send_header("Content-Length", "2")
-            handler.end_headers()
-            handler.wfile.write(b"ok")
-
-        try:
-            with mock.patch.object(MANAGER, "parse_config", return_value={"PORT": "8081"}), \
-                    mock.patch.object(MANAGER, "proxy_stream", side_effect=proxy):
-                connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
-                connection.request("GET", "/stream")
-                response = connection.getresponse()
-                payload = response.read()
-                connection.close()
-                self.assertEqual(response.status, 200)
-                self.assertEqual(payload, b"ok")
-                self.assertEqual(seen, [8081])
-
-                connection = http.client.HTTPConnection("127.0.0.1", server.server_address[1], timeout=5)
-                connection.request("GET", "/stream/usb-test")
-                response = connection.getresponse()
-                response.read()
-                connection.close()
-                self.assertEqual(response.status, 404)
-        finally:
-            server.shutdown()
-            server.server_close()
-            thread.join(timeout=2)
-
     def test_state_changes_require_csrf_and_valid_session(self):
         cookie, csrf = self.login()
         with mock.patch.object(MANAGER, "save_selection") as save:
