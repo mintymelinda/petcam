@@ -22,8 +22,8 @@ collect_feature_packages() {
     while IFS= read -r line || [[ -n "$line" ]]; do
       line="${line%%#*}"
       # Trim leading and trailing whitespace without evaluating manifest data.
-      line="${line#" "${line%%[![:space:]]*}}"
-      line="${line%" "${line##*[![:space:]]}}"
+      line="${line#"${line%%[![:space:]]*}}"
+      line="${line%"${line##*[![:space:]]}}"
       [[ -z "$line" ]] && continue
       package="$line"
       if [[ ! "$package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]]; then
@@ -42,8 +42,12 @@ collect_feature_packages() {
 install_feature_dependencies() {
   local features_root="$1"
   local -a packages=()
+  local packages_output
 
-  mapfile -t packages < <(collect_feature_packages "$features_root") || return 1
+  packages_output="$(collect_feature_packages "$features_root")" || return 1
+  if [[ -n "$packages_output" ]]; then
+    mapfile -t packages <<< "$packages_output"
+  fi
   if (("${#packages[@]}" == 0)); then
     feature_dependency_log "No feature system dependencies declared."
     return 0
