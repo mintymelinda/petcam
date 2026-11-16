@@ -1,0 +1,21 @@
+[Unit]
+Description=PetCam HTTPS web manager
+Documentation=https://github.com/mintymelinda/petcam
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=PYTHONPATH=/opt/petcam/current/lib
+ExecStart=/usr/bin/python3 -m petcam.api.application
+Restart=on-failure
+RestartSec=5
+UMask=0007
+Nice=10
+CPUWeight=10
+CPUQuota=25%
+MemoryHigh=128M
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target
