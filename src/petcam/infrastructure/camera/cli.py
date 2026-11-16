@@ -103,7 +103,11 @@ def main():
             mode = matching[0]
             native = mode["format"] in NATIVE_JPEG_FORMATS
         width = args.resolution if args.resolution != "auto" else f'{mode["width"]}x{mode["height"]}'
-        fps = args.fps if args.fps != "auto" else str(mode_max_fps(mode))
+        if args.fps != "auto":
+            fps = args.fps
+        else:
+            default_fps = float(mode_max_fps(mode))
+            fps = str(int(default_fps)) if default_fps.is_integer() else str(default_fps)
         fmt = mode["format"]
         encoder = "HW" if fmt in NATIVE_JPEG_FORMATS else "CPU"
         if args.fps != "auto":
