@@ -133,7 +133,7 @@ class CameraDiscoveryTests(unittest.TestCase):
 
     def test_auto_selection_does_not_hide_hardware_formats_the_streamer_may_reject(self):
         raw_device = [{"device": "/dev/video1", "modes": [MODULE.parse_modes(SAMPLE)[2]]}]
-        device, mode, native = MODULE.select_mode(raw_device, "zero")
+        device, mode, native = MODULE.select_mode(raw_device)
         self.assertFalse(native)
         self.assertEqual(mode["format"], "YUYV")
         self.assertEqual(device["device"], "/dev/video1")
