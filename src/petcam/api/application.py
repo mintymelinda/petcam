@@ -18,10 +18,9 @@ from urllib.parse import urlparse
 from . import management_routes
 from ..infrastructure.persistence.configuration import apply_config, ensure_config_lock, parse_config
 from ..infrastructure.camera.cli import (
-    PIXEL_BUDGETS, USTREAMER_FORMATS, camera_identity, discover_csi_cameras,
-    discover_devices, mode_supports_fps, model_tier, read_model,
+    camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps,
 )
-from ..application.camera_inventory import build_camera_inventory, build_capture_modes as _build_capture_modes
+from ..application.camera_inventory import build_camera_inventory
 from ..infrastructure.network.diagnostics import collect_diagnostics, create_support_bundle
 from ..infrastructure.network.wifi_metrics import collect_network_performance
 from ..features.timelapse.service import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
@@ -83,19 +82,10 @@ def device_mdns_hostname():
 PAGE = (STATIC_DIR / "dashboard.html").read_text(encoding="utf-8")
 
 
-def build_capture_modes(camera, performance_budget):
-    """Return the server-approved capture-mode catalog for one camera."""
-    return _build_capture_modes(camera, performance_budget)
-
-
 def camera_inventory():
     return build_camera_inventory(
         discover_devices,
         discover_csi_cameras,
-        model_tier,
-        read_model,
-        PIXEL_BUDGETS,
-        USTREAMER_FORMATS,
         camera_identity,
     )
 
@@ -225,14 +215,8 @@ def save_selection(data):
         data,
         discover_cameras=camera_inventory,
         mode_supports_fps=mode_supports_fps,
-        pixel_budgets=PIXEL_BUDGETS,
-        model_tier=model_tier,
-        read_model=read_model,
         config_path=CONFIG,
         parse_config=parse_config,
-        load_timelapse_config=load_timelapse_config,
-        load_motion_config=load_motion_config,
-        check_gstreamer_runtime=check_gstreamer_runtime,
         restart_g_streamer_service=restart_g_streamer_service,
         apply_config=apply_config,
     )
