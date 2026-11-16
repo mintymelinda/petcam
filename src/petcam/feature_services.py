@@ -60,6 +60,7 @@ def update_motion(
     load_config,
     save_config,
     load_rtmp_config,
+    systemctl_command,
     apply_transaction,
 ):
     """Apply motion settings with dependent-service restart and rollback."""
@@ -126,7 +127,7 @@ def update_rtmp_output(
     ]
     rollback_commands = [
         (
-            ["/usr/bin/systemctl", "restart", "petcam-stream.service"],
+            systemctl_command("restart", "petcam-stream.service"),
             45,
             "Unable to restart the camera with the restored OBS output settings.",
         ),
