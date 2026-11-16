@@ -15,6 +15,3 @@ CPUQuota=25%
 MemoryMax=96M
 IOSchedulingClass=idle
 IOSchedulingPriority=7
-
-[Install]
-WantedBy=multi-user.target
