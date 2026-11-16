@@ -384,7 +384,8 @@ class WebManagerTests(unittest.TestCase):
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE.Path, "is_file", return_value=True), \
                 mock.patch.object(MODULE.subprocess, "run", return_value=mock.Mock(returncode=1)), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "apply_config") as apply, \
+                mock.patch.object(MODULE, "restart_g_streamer_service"):
             with self.assertRaisesRegex(ValueError, "Disable timelapse and motion detection"):
                 MODULE.save_selection({
                     "kind": "usb", "camera_id": "usb-kiyo",
@@ -400,7 +401,8 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": [30], "format": "MJPG"}],
         }]
         try:
-            with mock.patch.object(MODULE, "apply_config") as apply:
+            with mock.patch.object(MODULE, "apply_config") as apply, \
+                mock.patch.object(MODULE, "restart_g_streamer_service"):
                 MODULE.save_selection({
                     "kind": "usb",
                     "device": "/dev/video0",
@@ -422,7 +424,8 @@ class WebManagerTests(unittest.TestCase):
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
                 mock.patch.object(MODULE, "model_tier", return_value="pi3"), \
                 mock.patch.object(MODULE, "PIXEL_BUDGETS", {"pi3": 1}), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "apply_config") as apply, \
+                mock.patch.object(MODULE, "restart_g_streamer_service"):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-fast",
                 "mode": {"width": 1920, "height": 1080, "fps": 60, "format": "MJPG"},
@@ -440,7 +443,8 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": [30], "format": "MJPG"}],
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "apply_config") as apply, \
+                mock.patch.object(MODULE, "restart_g_streamer_service"):
             MODULE.save_selection({
                 "kind": "usb",
                 "camera_id": "usb-stable",
@@ -463,7 +467,8 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": 30}],
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "apply_config") as apply, \
+                mock.patch.object(MODULE, "restart_g_streamer_service"):
             MODULE.save_selection({
                 "kind": "csi",
                 "camera_id": "csi-stable",
