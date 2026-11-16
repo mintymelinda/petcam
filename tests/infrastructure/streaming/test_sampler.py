@@ -121,7 +121,7 @@ def test_gstreamer_runtime_rejects_missing_h264_decoder():
     class Factory:
         @staticmethod
         def find(name):
-            return None if name == "avdec_h264" or name == "v4l2h264dec" else object()
+            return None if name in {"v4l2h264dec", "avdec_h264", "vah264dec", "nvh264dec"} else object()
 
     fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
     with pytest.MonkeyPatch.context() as patcher:
@@ -140,7 +140,7 @@ def test_sampler_systemd_unit_orders_after_rtsp_and_creates_local_ipc():
     timelapse_unit = (root / "petcam-timelapse.service").read_text(encoding="utf-8")
     assert "After=network-online.target petcam-g-streamer-rtsp.service" in unit
     assert "Wants=network-online.target petcam-g-streamer-rtsp.service" in unit
-    assert "Wants=petcam-rtsp-sampler.service" in rtsp_unit
+    assert "Wants=network-online.target petcam-rtsp-sampler.service" in rtsp_unit
     assert "petcam-rtsp-sampler.service" in motion_unit
     assert "petcam-rtsp-sampler.service" in timelapse_unit
     assert "WantedBy=multi-user.target" in unit
