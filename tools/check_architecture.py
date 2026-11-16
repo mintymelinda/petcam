@@ -53,7 +53,9 @@ def imported_modules(node: ast.AST, relative: Path) -> list[str]:
     if isinstance(node, ast.Import):
         modules = [alias.name for alias in node.names]
     elif isinstance(node, ast.ImportFrom):
-        if node.level:
+        if not node.level and node.module == "petcam":
+            modules = [f"petcam.{alias.name}" for alias in node.names]
+        elif node.level:
             package_parts = list(relative.parts[:-1])
             keep = max(0, len(package_parts) - node.level + 1)
             base = package_parts[:keep]
