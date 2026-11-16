@@ -40,6 +40,7 @@ TLS_CERT = Path("/etc/petcam/web-manager.crt")
 TLS_KEY = Path("/etc/petcam/web-manager.key")
 HEALTH_FILE = Path("/var/lib/petcam/health.json")
 G_STREAMER_STATUS_FILE = Path("/run/petcam/g-streamer-status.json")
+SUPERVISOR_STATUS_FILE = Path("/run/petcam/supervisor-status.json")
 _login_attempts = {}
 _login_lock = threading.Lock()
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
@@ -319,7 +320,7 @@ def diagnostics_snapshot():
 
 
 def g_streamer_status_snapshot():
-    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, clock=time.time)
+    return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, supervisor_file=SUPERVISOR_STATUS_FILE, clock=time.time)
 
 def health_monitor_loop():
     from ..infrastructure.system.health import check_health
