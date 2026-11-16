@@ -26,7 +26,6 @@ from ..infrastructure.network.wifi_metrics import collect_network_performance
 from ..features.timelapse.service import load_config as load_timelapse_config, save_config as save_timelapse_config, state_snapshot as timelapse_snapshot
 from ..features.motion.service import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
 from ..features.light_sensor.service import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
-from ..infrastructure.streaming.gstreamer import check_gstreamer_runtime
 from ..security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
 from ..infrastructure.camera import controls as camera_controls
 from ..application import feature_configuration as feature_services
