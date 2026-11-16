@@ -18,9 +18,32 @@ def systemctl_command(*arguments: str, sudo: bool = False) -> list[str]:
     return (["sudo", "-n"] if sudo else []) + [SYSTEMCTL, *arguments]
 
 
-def run_systemctl(*arguments: str, runner: Callable[..., Any] = subprocess.run, sudo: bool = False, **options: Any) -> Any:
-    """Run systemctl through an injectable process runner."""
-    return runner(systemctl_command(*arguments, sudo=sudo), **options)
+def run_command(
+    command: list[str],
+    *,
+    runner: Callable[..., Any] | None = None,
+    **options: Any,
+) -> Any:
+    """Execute an argument vector through the shared infrastructure process adapter."""
+    if not isinstance(command, (list, tuple)) or not command or any(
+        not isinstance(value, str) or not value for value in command
+    ):
+        raise ValueError("process command must be a non-empty sequence of strings")
+    return (runner or subprocess.run)(list(command), **options)
+
+
+def run_systemctl(
+    *arguments: str,
+    runner: Callable[..., Any] | None = None,
+    sudo: bool = False,
+    **options: Any,
+) -> Any:
+    """Run systemctl through the shared process adapter."""
+    return run_command(
+        systemctl_command(*arguments, sudo=sudo),
+        runner=runner,
+        **options,
+    )
 
 
 def stream_instance_unit(profile_id: str) -> str:
