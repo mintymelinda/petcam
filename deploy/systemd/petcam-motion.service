@@ -5,8 +5,7 @@ Wants=network-online.target petcam-rtsp-sampler.service
 
 [Service]
 Type=simple
-Environment=PYTHONPATH=/opt/petcam/current/lib
-ExecStart=/usr/bin/python3 -m petcam.features.motion.worker
+ExecStart=/opt/petcam/venv/bin/python -m petcam.features.motion.worker
 Restart=on-failure
 RestartSec=5
 Nice=19

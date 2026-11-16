@@ -5,8 +5,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-Environment=PYTHONPATH=/opt/petcam/current/lib
-ExecStart=/usr/bin/python3 -m petcam.features.home_assistant.worker
+ExecStart=/opt/petcam/venv/bin/python -m petcam.features.home_assistant.worker
 Restart=on-failure
 RestartSec=10
 

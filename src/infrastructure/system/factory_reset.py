@@ -37,6 +37,14 @@ MQTT_TOPIC_PREFIX=petcam
 MQTT_PUBLISH_STREAM_URL=false
 MQTT_STREAM_URL=
 """
+LIGHT_SENSOR_DEFAULTS = """# Optional TSL2591 ambient light sensor (I2C).
+ENABLED=false
+I2C_BUS=1
+I2C_ADDRESS=0x29
+BRIGHT_THRESHOLD_LUX=100
+DARK_THRESHOLD_LUX=30
+POLL_SECONDS=10
+"""
 TIMELAPSE_DEFAULTS = {
     "enabled": False, "interval_seconds": 300, "schedule_start": "00:00",
     "schedule_end": "23:59", "retention_days": 30, "max_storage_mb": 2048,
@@ -51,8 +59,10 @@ MOTION_DEFAULTS = {
     "max_events": 100,
 }
 SERVICES = (
+    "petcam-g-streamer-rtsp.service", "petcam-rtsp-sampler.service",
+    "petcam-setup.service", "petcam-feature-services.service",
     "petcam-motion.service", "petcam-timelapse.service",
-    "petcam-home-assistant.service", "petcam-stream.service",
+    "petcam-home-assistant.service", "petcam-light-sensor.service",
     "petcam-web.service",
 )
 
@@ -72,15 +82,7 @@ def reset():
     if os.geteuid() != 0:
         raise PermissionError("Factory reset must run as root.")
 
-    # Stop every PetCam worker before clearing its configuration and data.
-    profiles = sorted((ETC / "cameras.d").glob("*.conf"))
-    for profile in profiles:
-        profile_id = profile.stem
-        if profile_id and all(c in "abcdefghijklmnopqrstuvwxyz0123456789-" for c in profile_id):
-            subprocess.run(
-                process_control.systemctl_command("disable", "--now", process_control.stream_instance_unit(profile_id)),
-                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
+    # Stop all managed PetCam services before clearing configuration and data.
     for service in SERVICES:
         subprocess.run(
             process_control.systemctl_command("stop", service),
@@ -100,6 +102,8 @@ def reset():
 
     write_file(ETC / "petcam.conf", CAMERA_DEFAULTS)
     write_file(ETC / "home-assistant.conf", HOME_ASSISTANT_DEFAULTS)
+    write_file(ETC / "light-sensor.conf", LIGHT_SENSOR_DEFAULTS)
+    write_file(ETC / "web-manager.json", json.dumps({"enabled": False}, indent=2) + "\n")
 
     for name, defaults in (("timelapse", TIMELAPSE_DEFAULTS), ("motion", MOTION_DEFAULTS)):
         directory = STATE / name
@@ -109,9 +113,9 @@ def reset():
 
     (STATE / "health.json").unlink(missing_ok=True)
     run(*process_control.systemctl_command("daemon-reload"))
-    for service in ("petcam-stream.service", "petcam-web.service",
-                    "petcam-timelapse.service", "petcam-motion.service",
-                    "petcam-home-assistant.service"):
+    for service in ("petcam-g-streamer-rtsp.service", "petcam-rtsp-sampler.service",
+                    "petcam-setup.service", "petcam-feature-services.service",
+                    "petcam-home-assistant.service", "petcam-light-sensor.service"):
         run(*process_control.systemctl_command("start", service))
 
 

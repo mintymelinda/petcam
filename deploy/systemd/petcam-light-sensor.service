@@ -4,8 +4,7 @@ After=local-fs.target
 
 [Service]
 Type=simple
-Environment=PYTHONPATH=/opt/petcam/current/lib
-ExecStart=/usr/bin/python3 -m petcam.features.light_sensor.worker
+ExecStart=/opt/petcam/venv/bin/python -m petcam.features.light_sensor.worker
 Restart=on-failure
 RestartSec=10
 
