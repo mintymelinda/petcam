@@ -167,7 +167,9 @@ def _proxy(handler):
     headers["Host"] = handler.headers.get("Host", "localhost")
     headers["Connection"] = "close"
     try:
-        connection = http.client.HTTPConnection(MANAGER_HOST, MANAGER_PORT, timeout=15)
+        connection = http.client.HTTPSConnection(
+            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=15
+        )
         connection.request(handler.command, handler.path, body=body, headers=headers)
         response = connection.getresponse()
         payload = response.read()
