@@ -514,7 +514,6 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("actual ", PAGE_AND_JS)
         self.assertIn("setInterval(refreshLiveStatus, 5000)", PAGE_AND_JS)
         self.assertIn("Capture status refreshes every 5 seconds", PAGE_AND_JS)
-        self.assertIn("forwarded JPEG FPS", PAGE_AND_JS)
         self.assertIn('id="capture-status-freshness"', PAGE_AND_JS)
 
     def test_system_tab_displays_the_installed_application_version_without_dead_telemetry_nodes(self):

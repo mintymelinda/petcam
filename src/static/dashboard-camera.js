@@ -2,13 +2,6 @@
 function modesFor(camera) {
   return camera.capture_modes || [];
 }
-function selectedCaptureMode() {
-  try {
-    return JSON.parse($("mode").value);
-  } catch (error) {
-    return null;
-  }
-}
 function projectedPixelRate(mode) {
   return Number(mode.estimated_pixels_per_second || 0);
 }
