@@ -14,6 +14,7 @@ from pathlib import Path
 from ...domain.camera.capabilities import (
     NATIVE_JPEG_FORMATS,
     camera_identity,
+    mode_max_fps,
     mode_supports_fps,
     mode_supports_resolution,
     parse_csi_cameras,
@@ -102,7 +103,7 @@ def main():
             mode = matching[0]
             native = mode["format"] in NATIVE_JPEG_FORMATS
         width = args.resolution if args.resolution != "auto" else f'{mode["width"]}x{mode["height"]}'
-        fps = args.fps if args.fps != "auto" else "0"
+        fps = args.fps if args.fps != "auto" else str(mode_max_fps(mode))
         fmt = mode["format"]
         encoder = "HW" if fmt in NATIVE_JPEG_FORMATS else "CPU"
         if args.fps != "auto":
