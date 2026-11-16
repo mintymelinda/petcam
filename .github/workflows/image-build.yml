@@ -67,7 +67,6 @@ jobs:
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
-          enable-pigen-cache: false
           enable-cloud-init: 0
           enable-ssh: 0
           username: petcam
@@ -77,6 +76,7 @@ jobs:
           timezone: America/Toronto
           keyboard-keymap: us
           keyboard-layout: English (US)
+          verbose-output: true
 
       - name: Validate generated image
         env:
