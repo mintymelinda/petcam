@@ -17,7 +17,7 @@ class OptionalFeatureServiceTests(unittest.TestCase):
             timelapse={"enabled": True},
         )
         self.assertEqual(desired, {
-            "petcam-web.service": True,
+            "petcam-web.service": False,
             "petcam-motion.service": False,
             "petcam-timelapse.service": False,
         })
