@@ -8,7 +8,7 @@ from tools.create_imager_manifest import create_manifest
 
 
 class ImagerManifestTests(unittest.TestCase):
-    def test_manifest_describes_cloud_init_customisation_and_image_integrity(self):
+    def test_manifest_targets_original_pi_zero_w_and_preserves_image_integrity(self):
         image = b"petcam-image-content" * 128
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "petcam.img.xz"
@@ -16,13 +16,18 @@ class ImagerManifestTests(unittest.TestCase):
             image_path.write_bytes(compressed)
             manifest = create_manifest(
                 image_path,
-                "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam-v1.2.3-arm64.img.xz",
+                "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam-v1.2.3-armhf.img.xz",
                 "2026-11-17",
             )
 
-        self.assertEqual(manifest["imager"]["devices"][0]["tags"], ["pi4"])
-        self.assertEqual(manifest["imager"]["devices"][1]["tags"], ["pi5"])
+        device = manifest["imager"]["devices"][0]
+        self.assertEqual(device["name"], "Raspberry Pi Zero W")
+        self.assertEqual(device["tags"], ["pizero-32bit"])
+        self.assertEqual(device["architecture"], "armhf")
         entry = manifest["os_list"][0]
+        self.assertEqual(entry["name"], "PetCam OS (32-bit)")
+        self.assertEqual(entry["architecture"], "armhf")
+        self.assertEqual(entry["devices"], ["pizero-32bit"])
         self.assertEqual(entry["init_format"], "cloudinit")
         self.assertTrue(
             {
@@ -38,7 +43,6 @@ class ImagerManifestTests(unittest.TestCase):
                 "devices",
             }.issubset(entry)
         )
-        self.assertEqual(entry["devices"], ["pi4", "pi5"])
         self.assertEqual(entry["extract_size"], len(image))
         self.assertEqual(entry["extract_sha256"], hashlib.sha256(image).hexdigest())
         self.assertEqual(
