@@ -36,7 +36,7 @@ jobs:
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
-          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow tests.deploy.test_imager_manifest
 
       - name: Validate Docker Compose configuration
         run: docker compose -f deploy/image/compose.yaml config --quiet
@@ -86,7 +86,7 @@ jobs:
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
-          enable-cloud-init: 0
+          enable-cloud-init: 1
           enable-ssh: 0
           username: petcam
           password: ''
@@ -168,9 +168,15 @@ jobs:
           cp "$IMAGE_SOURCE" "$IMAGE_NAME"
           xz -t "$IMAGE_NAME"
           sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"
-          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" --clobber
+          IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
+          python3 tools/create_imager_manifest.py \
+            --image "$IMAGE_NAME" \
+            --image-url "$IMAGE_URL" \
+            --release-date "$(date -u +%F)" \
+            --output petcam-imager.json
+          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json --clobber
           ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256"; do
+          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
