@@ -30,6 +30,8 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
+The workflow also caches APT downloads through `apt-cacher-ng`. The cache is restored before the build, exposed to the pi-gen container through the action's `apt-proxy` input, and saved after the build. This avoids repeatedly downloading unchanged Debian, Raspberry Pi OS, and feature packages. Its cache key includes the PetCam package manifest, with a broader restore prefix so package-list changes can still reuse existing downloads. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`.
+
 ## Upstream build updates
 
 The workflow checks out the latest `main` branch of `usimd/pi-gen-action` for every build, then installs its locked Node dependencies and packages its TypeScript source into the `dist/index.js` entrypoint required by GitHub Actions. This is necessary because the upstream source branch does not commit the generated `dist` bundle. It means we follow current action source without pinning a commit or release, while still producing the executable artifact the Actions runner expects.
