@@ -13,7 +13,8 @@ class ImagerManifestTests(unittest.TestCase):
         image = b"petcam-image-content" * 128
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "petcam.img.xz"
-            image_path.write_bytes(lzma.compress(image))
+            compressed = lzma.compress(image)
+            image_path.write_bytes(compressed)
             manifest = create_manifest(
                 image_path,
                 "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam-v1.2.3-arm64.img.xz",
@@ -27,8 +28,8 @@ class ImagerManifestTests(unittest.TestCase):
         self.assertEqual(entry["devices"], ["pi4", "pi5"])
         self.assertEqual(entry["extract_size"], len(image))
         self.assertEqual(entry["extract_sha256"], hashlib.sha256(image).hexdigest())
-        self.assertEqual(entry["image_download_sha256"], hashlib.sha256(lzma.compress(image)).hexdigest())
-        self.assertEqual(entry["image_download_size"], len(lzma.compress(image)))
+        self.assertEqual(entry["image_download_sha256"], hashlib.sha256(compressed).hexdigest())
+        self.assertEqual(entry["image_download_size"], len(compressed))
         self.assertEqual(entry["release_date"], "2026-11-17")
 
     def test_manifest_rejects_non_http_image_urls(self):
