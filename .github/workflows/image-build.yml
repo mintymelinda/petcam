@@ -102,13 +102,13 @@ jobs:
 
       - name: Build Raspberry Pi OS image
         id: image
-        # Run the freshly packaged upstream main branch and its latest ARM64 pi-gen branch.
+        # pi-gen master builds 32-bit Raspberry Pi OS; arm64 is only the build runner architecture.
         uses: ./.github/actions/pi-gen-action
         with:
           image-name: petcam
           hostname: petcam
           release: trixie
-          pi-gen-version: arm64
+          pi-gen-version: master
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
@@ -203,7 +203,7 @@ jobs:
             echo "Validated image artifact is missing." >&2
             exit 1
           fi
-          IMAGE_NAME="petcam-${TAG}-arm64.img.xz"
+          IMAGE_NAME="petcam-${TAG}-armhf.img.xz"
           cp "$IMAGE_SOURCE" "$IMAGE_NAME"
           xz -t "$IMAGE_NAME"
           sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"
