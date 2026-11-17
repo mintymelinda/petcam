@@ -154,6 +154,8 @@ jobs:
           path: ${{ steps.image.outputs.image-path }}
           if-no-files-found: error
           retention-days: 7
+          # The image is already xz-compressed; do not spend time recompressing it into the artifact.
+          compression-level: 0
 
   publish-release:
     name: Publish production image
