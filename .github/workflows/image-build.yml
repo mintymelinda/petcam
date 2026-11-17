@@ -59,21 +59,23 @@ jobs:
         uses: actions/cache@v4
         with:
           path: apt-cache
-          key: ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-${{ github.sha }}
           restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-
             ${{ runner.os }}-${{ runner.arch }}-apt-
 
       - name: Start cached APT proxy
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends apt-cacher-ng
+          mkdir -p apt-cache
           sudo mkdir -p /var/cache/apt-cacher-ng
           if compgen -G 'apt-cache/*' > /dev/null; then
             sudo cp -a apt-cache/. /var/cache/apt-cacher-ng/
           fi
           echo 'Port: 9999' | sudo tee -a /etc/apt-cacher-ng/acng.conf
           sudo chown -R apt-cacher-ng:apt-cacher-ng /var/cache/apt-cacher-ng
-          sudo systemctl restart apt-cacher-ng
+          sudo service apt-cacher-ng restart
 
       # The upstream action's main branch contains TypeScript source; GitHub Actions
       # requires its dist/index.js entrypoint, so build that artifact from the live source.
