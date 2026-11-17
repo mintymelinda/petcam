@@ -35,9 +35,8 @@ jobs:
             tests/deploy/test_dependency_installer.sh; do
             bash -n "$script"
           done
-          python3 -m py_compile tools/create_image_release.py
           bash tests/deploy/test_dependency_installer.sh
-          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release tests.deploy.test_image_signing_workflow
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow
 
       - name: Validate Docker Compose configuration
         run: docker compose -f deploy/image/compose.yaml config --quiet
@@ -111,7 +110,7 @@ jobs:
           test -s "$IMAGE_PATH"
           xz -t "$IMAGE_PATH"
 
-      - name: Upload image for release signing
+      - name: Upload validated image for release
         uses: actions/upload-artifact@v4
         with:
           name: petcam-image-${{ github.sha }}
@@ -120,7 +119,7 @@ jobs:
           retention-days: 7
 
   publish-release:
-    name: Sign and publish production image
+    name: Publish production image
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-image
     runs-on: ubuntu-24.04
@@ -154,18 +153,12 @@ jobs:
             gh release create "$TAG" --draft --verify-tag --title "PetCam $VERSION" --generate-notes
           fi
 
-      - name: Sign image manifest and publish release assets
+      - name: Publish image and checksum
         env:
           GH_TOKEN: ${{ github.token }}
-          PETCAM_UPDATE_SIGNING_PRIVATE_KEY: ${{ secrets.PETCAM_UPDATE_SIGNING_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [[ -z "$PETCAM_UPDATE_SIGNING_PRIVATE_KEY" ]]; then
-            echo "Missing PETCAM_UPDATE_SIGNING_PRIVATE_KEY Actions secret; refusing to publish an unsigned image." >&2
-            exit 1
-          fi
           TAG="$GITHUB_REF_NAME"
-          VERSION="${TAG#v}"
           IMAGE_SOURCE="$(find release -maxdepth 2 -type f -name '*.img.xz' -print -quit)"
           if [[ -z "$IMAGE_SOURCE" || ! -s "$IMAGE_SOURCE" ]]; then
             echo "Validated image artifact is missing." >&2
@@ -174,21 +167,10 @@ jobs:
           IMAGE_NAME="petcam-${TAG}-arm64.img.xz"
           cp "$IMAGE_SOURCE" "$IMAGE_NAME"
           xz -t "$IMAGE_NAME"
-          KEY_FILE="${RUNNER_TEMP}/petcam-image-private.pem"
-          printf '%s\n' "$PETCAM_UPDATE_SIGNING_PRIVATE_KEY" > "$KEY_FILE"
-          chmod 0600 "$KEY_FILE"
-          IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
-          python3 tools/create_image_release.py \
-            --image "$IMAGE_NAME" --version "$VERSION" --image-url "$IMAGE_URL" \
-            --private-key "$KEY_FILE" --public-key deploy/image/image-signing.pub \
-            --output-dir release-assets
-          rm -f "$KEY_FILE"
-          gh release upload "$TAG" "$IMAGE_NAME" \
-            release-assets/petcam-image-manifest.json \
-            release-assets/petcam-image-manifest.json.sig \
-            deploy/image/image-signing.pub --clobber
+          sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"
+          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" --clobber
           ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in "$IMAGE_NAME" petcam-image-manifest.json petcam-image-manifest.json.sig image-signing.pub; do
+          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256"; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
