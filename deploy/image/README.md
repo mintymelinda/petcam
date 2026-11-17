@@ -2,6 +2,26 @@
 
 Docker Compose assembles a portable PetCam source bundle. The `usimd/pi-gen-action` workflow generates Raspberry Pi OS Trixie ARM64 and uses a thin custom stage to install feature-owned OS packages and place PetCam at `/opt/petcam`. The existing source installer remains usable on already-running Debian and Raspberry Pi OS systems.
 
+## Raspberry Pi Imager preconfiguration
+
+The image enables pi-gen's cloud-init and Netplan integration. This provides the NoCloud boot-partition seed that Raspberry Pi Imager uses to apply pre-flash OS customisation on first boot.
+
+Every tagged image release includes `petcam-imager.json`, a Raspberry Pi Imager repository manifest declaring `init_format: "cloudinit"`. It includes verified compressed and extracted image sizes and SHA-256 hashes. The stable manifest URL is:
+
+```text
+https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
+```
+
+In Raspberry Pi Imager 2.x, open App Options / Content Repository, choose a custom repository JSON URL, and paste the URL above. Imager will show PetCam OS as an installable image and offer its cloud-init customisation flow for hostname, user credentials, Wi-Fi, locale and SSH. The manifest currently advertises Raspberry Pi 4 and Raspberry Pi 5.
+
+You can also launch Imager with the repository directly:
+
+```sh
+rpi-imager --repo https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
+```
+
+This is the generic `cloudinit` format, not `cloudinit-rpi`: it does not advertise Raspberry Pi-specific hardware toggles that have not been configured and tested in the PetCam image.
+
 ## Build cache and stage ordering
 
 The image workflow uses pi-gen-action's work-directory cache. Builds on `main` are the only writers; pull requests and other refs restore the default-branch cache in read-only mode. The cache key is commit-specific, with restore prefixes allowing a new commit to reuse the previous compatible work directory.
@@ -14,4 +34,4 @@ The cache-enabled pi-gen action source is pinned to an immutable upstream commit
 
 ## Production image releases
 
-Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image and a SHA-256 checksum so users can verify the downloaded file. No OTA signing keys, signed update manifests, or public signing keys are required.
+Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image, a SHA-256 checksum, and the Raspberry Pi Imager manifest. No OTA signing keys, signed update manifests, or public signing keys are required.
