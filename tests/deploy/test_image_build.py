@@ -46,7 +46,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("cache-read-only: ${{ github.ref != 'refs/heads/main' }}", workflow)
         self.assertIn("extra-host-dependencies: git", workflow)
         self.assertIn("verbose-output: true", workflow)
-        self.assertIn("enable-cloud-init: 0", workflow)
+        self.assertIn("enable-cloud-init: 1", workflow)
         self.assertIn("enable-ssh: 0", workflow)
         self.assertIn("password: ''", workflow)
         self.assertIn("disable-first-boot-user-rename: 0", workflow)
