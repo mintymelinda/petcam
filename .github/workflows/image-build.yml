@@ -36,7 +36,7 @@ jobs:
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
-          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow tests.deploy.test_imager_manifest
 
       - name: Validate Docker Compose configuration
         run: docker compose -f deploy/image/compose.yaml config --quiet
@@ -55,20 +55,46 @@ jobs:
           test -s deploy/image/stages/stage-petcam/01-petcam/01-packages
           test -s deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
 
-      - name: Check out cache-enabled pi-gen action
+      - name: Restore APT package download cache
+        uses: actions/cache@v4
+        with:
+          path: apt-cache
+          key: ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-
+            ${{ runner.os }}-${{ runner.arch }}-apt-
+
+      - name: Start cached APT proxy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-cacher-ng
+          mkdir -p apt-cache
+          sudo mkdir -p /var/cache/apt-cacher-ng
+          if compgen -G 'apt-cache/*' > /dev/null; then
+            sudo cp -a apt-cache/. /var/cache/apt-cacher-ng/
+          fi
+          echo 'Port: 9999' | sudo tee -a /etc/apt-cacher-ng/acng.conf
+          sudo chown -R apt-cacher-ng:apt-cacher-ng /var/cache/apt-cacher-ng
+          sudo service apt-cacher-ng restart
+
+      # The upstream action's main branch contains TypeScript source; GitHub Actions
+      # requires its dist/index.js entrypoint, so build that artifact from the live source.
+      - name: Check out latest pi-gen action
         uses: actions/checkout@v5
         with:
           repository: usimd/pi-gen-action
-          ref: d075c37c5eed90bf0325858ec2272e84200a5efe
+          ref: main
           path: .github/actions/pi-gen-action
           persist-credentials: false
 
-      - name: Set up Node.js for pi-gen action packaging
+      - name: Package pi-gen action
         uses: actions/setup-node@v5
         with:
           node-version: 24
+          cache: npm
+          cache-dependency-path: .github/actions/pi-gen-action/package-lock.json
 
-      - name: Package cache-enabled pi-gen action
+      - name: Build pi-gen action entrypoint
         working-directory: .github/actions/pi-gen-action
         run: |
           npm ci
@@ -76,7 +102,7 @@ jobs:
 
       - name: Build Raspberry Pi OS image
         id: image
-        # Build the pinned source revision because cache support is not in the v1.11.0 release.
+        # Run the freshly packaged upstream main branch and its latest ARM64 pi-gen branch.
         uses: ./.github/actions/pi-gen-action
         with:
           image-name: petcam
@@ -86,7 +112,10 @@ jobs:
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
-          enable-cloud-init: 0
+          # Keep release compression quick; level 1 is much faster than the default level 6.
+          compression-level: 1
+          apt-proxy: http://172.17.0.1:9999
+          enable-cloud-init: 1
           enable-ssh: 0
           username: petcam
           password: ''
@@ -101,6 +130,14 @@ jobs:
           # pi-gen uses Git on the host to capture the source revision for its builder.
           extra-host-dependencies: git
           verbose-output: true
+
+      - name: Persist APT proxy downloads for the next build
+        if: always()
+        run: |
+          if [[ -d /var/cache/apt-cacher-ng ]]; then
+            sudo cp -a /var/cache/apt-cacher-ng/. apt-cache/
+            sudo chown -R "$USER":"$USER" apt-cache
+          fi
 
       - name: Validate generated image
         env:
@@ -117,6 +154,8 @@ jobs:
           path: ${{ steps.image.outputs.image-path }}
           if-no-files-found: error
           retention-days: 7
+          # The image is already xz-compressed; do not spend time recompressing it into the artifact.
+          compression-level: 0
 
   publish-release:
     name: Publish production image
@@ -142,7 +181,7 @@ jobs:
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
-          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          if [[ ! "$TAG" =~ ^v([0-9]+)\\.([0-9]+)\\.([0-9]+)$ ]]; then
             echo "Release tag $TAG must use vMAJOR.MINOR.PATCH." >&2
             exit 1
           fi
@@ -168,9 +207,15 @@ jobs:
           cp "$IMAGE_SOURCE" "$IMAGE_NAME"
           xz -t "$IMAGE_NAME"
           sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"
-          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" --clobber
+          IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
+          python3 tools/create_imager_manifest.py \
+            --image "$IMAGE_NAME" \
+            --image-url "$IMAGE_URL" \
+            --release-date "$(date -u +%F)" \
+            --output petcam-imager.json
+          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json --clobber
           ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256"; do
+          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1

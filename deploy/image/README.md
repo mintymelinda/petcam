@@ -2,6 +2,26 @@
 
 Docker Compose assembles a portable PetCam source bundle. The `usimd/pi-gen-action` workflow generates Raspberry Pi OS Trixie ARM64 and uses a thin custom stage to install feature-owned OS packages and place PetCam at `/opt/petcam`. The existing source installer remains usable on already-running Debian and Raspberry Pi OS systems.
 
+## Raspberry Pi Imager preconfiguration
+
+The image enables pi-gen's cloud-init and Netplan integration. This provides the NoCloud boot-partition seed that Raspberry Pi Imager uses to apply pre-flash OS customisation on first boot.
+
+Every tagged image release includes `petcam-imager.json`, a Raspberry Pi Imager repository manifest declaring `init_format: "cloudinit"`. It includes verified compressed and extracted image sizes and SHA-256 hashes. The stable manifest URL is:
+
+```text
+https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
+```
+
+In Raspberry Pi Imager 2.x, open App Options / Content Repository, choose a custom repository JSON URL, and paste the URL above. Imager will show PetCam OS as an installable image and offer its cloud-init customisation flow for hostname, user credentials, Wi-Fi, locale and SSH. The manifest currently advertises Raspberry Pi 4 and Raspberry Pi 5.
+
+You can also launch Imager with the repository directly:
+
+```sh
+rpi-imager --repo https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
+```
+
+This is the generic `cloudinit` format, not `cloudinit-rpi`: it does not advertise Raspberry Pi-specific hardware toggles that have not been configured and tested in the PetCam image.
+
 ## Build cache and stage ordering
 
 The image workflow uses pi-gen-action's work-directory cache. Builds on `main` are the only writers; pull requests and other refs restore the default-branch cache in read-only mode. The cache key is commit-specific, with restore prefixes allowing a new commit to reuse the previous compatible work directory.
@@ -10,8 +30,18 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
-The cache-enabled pi-gen action source is pinned to an immutable upstream commit and packaged with `npm ci` / `npm run package` before execution, because the cache implementation is newer than the published v1.11.0 action bundle. Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
+The workflow also caches APT downloads through `apt-cacher-ng`. The cache is restored before the build, exposed to the pi-gen container through the action's `apt-proxy` input, and saved after the build. This avoids repeatedly downloading unchanged Debian, Raspberry Pi OS, and feature packages. Its cache key includes the PetCam package manifest, with a broader restore prefix so package-list changes can still reuse existing downloads. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`. Artifact upload uses compression level 0 because recompressing an already-compressed `.xz` file adds CPU time with negligible size reduction.
+
+## Upstream build updates
+
+The workflow checks out the latest `main` branch of `usimd/pi-gen-action` for every build, then installs its locked Node dependencies and packages its TypeScript source into the `dist/index.js` entrypoint required by GitHub Actions. This is necessary because the upstream source branch does not commit the generated `dist` bundle. It means we follow current action source without pinning a commit or release, while still producing the executable artifact the Actions runner expects.
+
+The action in turn checks out the `arm64` branch of `RPi-Distro/pi-gen` through `pi-gen-version: arm64`, so pi-gen changes on that branch are also picked up by new builds.
+
+This deliberately favors upstream freshness over immutable action references. A change to the action's default branch can affect the next PetCam build, so every build must pass image validation before its artifact can be released. The action's branch is not a substitute for keeping the Trixie APT package sources current: installed kernel and OS package versions are resolved from the repositories used by pi-gen during the build.
+
+Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
 
 ## Production image releases
 
-Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image and a SHA-256 checksum so users can verify the downloaded file. No OTA signing keys, signed update manifests, or public signing keys are required.
+Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image, a SHA-256 checksum, and the Raspberry Pi Imager manifest. No OTA signing keys, signed update manifests, or public signing keys are required.
