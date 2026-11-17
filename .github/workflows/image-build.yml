@@ -37,7 +37,7 @@ jobs:
           done
           python3 -m py_compile tools/create_image_release.py
           bash tests/deploy/test_dependency_installer.sh
-          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release tests.deploy.test_image_signing_workflow
 
       - name: Validate Docker Compose configuration
         run: docker compose -f deploy/image/compose.yaml config --quiet
@@ -142,13 +142,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          EXPECTED_VERSION="$(tr -d '\r\n' < VERSION)"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ || "$VERSION" != "$EXPECTED_VERSION" ]]; then
-            echo "Tag $TAG must match VERSION ($EXPECTED_VERSION) and use vMAJOR.MINOR.PATCH." >&2
+          TAG="$GITHUB_REF_NAME"
+          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+            echo "Release tag $TAG must use vMAJOR.MINOR.PATCH." >&2
             exit 1
           fi
+          VERSION="${TAG#v}"
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else

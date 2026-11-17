@@ -14,7 +14,7 @@ The cache-enabled pi-gen action source is pinned to an immutable upstream commit
 
 ## Production image signing
 
-Production releases are published only from `vMAJOR.MINOR.PATCH` tags matching `VERSION`. Pull-request, main-branch, and manual builds remain unsigned validation artifacts.
+Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is the sole source of the release version; the workflow validates the tag format and derives the manifest version and asset names directly from it. No separate version file is maintained.
 
 The release job uses the same `PETCAM_UPDATE_SIGNING_PRIVATE_KEY` Actions secret and Ed25519 procedure as PetCam OS. The corresponding public key is pinned in `image-signing.pub`. Before signing, the helper derives the public key from the supplied private key and requires an exact match. It creates a canonical JSON manifest containing the image version, ARM64 architecture, HTTPS release URL, byte size, and SHA-256 digest, signs it with OpenSSL Ed25519, and verifies the signature against the pinned public key.
 
