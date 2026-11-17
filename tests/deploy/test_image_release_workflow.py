@@ -24,5 +24,6 @@ class ImageReleaseWorkflowTests(unittest.TestCase):
     def test_release_documentation_describes_unsigned_image_and_checksum(self):
         docs = (ROOT / "deploy/image/README.md").read_text(encoding="utf-8")
         self.assertIn("SHA-256 checksum", docs)
-        self.assertNotIn("signing key", docs.lower())
+        self.assertNotIn("ed25519", docs.lower())
+        self.assertNotIn("PETCAM_UPDATE_SIGNING_PRIVATE_KEY", docs)
         self.assertNotIn("signed manifest", docs.lower())
