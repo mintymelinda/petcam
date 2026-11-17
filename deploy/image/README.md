@@ -12,10 +12,6 @@ The cache is an optimization, not a correctness boundary: pi-gen stages still ru
 
 The cache-enabled pi-gen action source is pinned to an immutable upstream commit and packaged with `npm ci` / `npm run package` before execution, because the cache implementation is newer than the published v1.11.0 action bundle. Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
 
-## Production image signing
+## Production image releases
 
-Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is the sole source of the release version; the workflow validates the tag format and derives the manifest version and asset names directly from it. No separate version file is maintained.
-
-The release job uses the same `PETCAM_UPDATE_SIGNING_PRIVATE_KEY` Actions secret and Ed25519 procedure as PetCam OS. The corresponding public key is pinned in `image-signing.pub`. Before signing, the helper derives the public key from the supplied private key and requires an exact match. It creates a canonical JSON manifest containing the image version, ARM64 architecture, HTTPS release URL, byte size, and SHA-256 digest, signs it with OpenSSL Ed25519, and verifies the signature against the pinned public key.
-
-The workflow creates or reuses a draft GitHub Release, uploads the image, signed manifest, detached signature, and public key, verifies all required assets, and only then publishes the release. Missing or mismatched signing credentials fail closed.
+Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image and a SHA-256 checksum so users can verify the downloaded file. No OTA signing keys, signed update manifests, or public signing keys are required.
