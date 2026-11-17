@@ -11,6 +11,7 @@ class ImageReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("publish-release:", workflow)
         self.assertIn("if: startsWith(github.ref, 'refs/tags/v')", workflow)
         self.assertIn("Release tag $TAG must use vMAJOR.MINOR.PATCH.", workflow)
+        self.assertIn(r"=~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$", workflow)
         self.assertIn('VERSION="${TAG#v}"', workflow)
         self.assertIn("sha256sum", workflow)
         self.assertIn("enable-cloud-init: 1", workflow)
