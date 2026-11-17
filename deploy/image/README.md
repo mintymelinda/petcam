@@ -30,7 +30,13 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
-The cache-enabled pi-gen action source is pinned to an immutable upstream commit and packaged with `npm ci` / `npm run package` before execution, because the cache implementation is newer than the published v1.11.0 action bundle. Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
+## Upstream build updates
+
+The workflow follows `usimd/pi-gen-action@main` instead of pinning a commit or release. This removes the local checkout and Node packaging steps and picks up the action's latest implementation on each build. The action in turn checks out the `arm64` branch of `RPi-Distro/pi-gen` through `pi-gen-version: arm64`, so pi-gen changes on that branch are also picked up by new builds.
+
+This deliberately favors upstream freshness over immutable action references. A change to the action's default branch can affect the next PetCam build, so every build must pass image validation before its artifact can be released. The action's branch is not a substitute for keeping the Trixie APT package sources current: installed kernel and OS package versions are resolved from the repositories used by pi-gen during the build.
+
+Git is explicitly installed as a host dependency for pi-gen's build tooling; the pi-gen Docker builder also installs Git in its own image.
 
 ## Production image releases
 
