@@ -36,7 +36,8 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
 
     def test_image_workflow_builds_32_bit_armhf_with_pi_gen_master(self):
         workflow = (ROOT / ".github/workflows/image-build.yml").read_text(encoding="utf-8")
-        self.assertIn("runs-on: ubuntu-24.04-arm", workflow)
+        self.assertIn("runs-on: ubuntu-24.04", workflow)
+        self.assertNotIn("runs-on: ubuntu-24.04-arm", workflow)
         self.assertIn("repository: usimd/pi-gen-action", workflow)
         self.assertIn("ref: main", workflow)
         self.assertIn("path: .github/actions/pi-gen-action", workflow)
