@@ -1,6 +1,6 @@
 # Raspberry Pi OS image build
 
-Docker Compose assembles a portable PetCam source bundle. The `usimd/pi-gen-action` workflow generates Raspberry Pi OS Trixie ARM64 and uses a thin custom stage to install feature-owned OS packages and place PetCam at `/opt/petcam`. The existing source installer remains usable on already-running Debian and Raspberry Pi OS systems.
+Docker Compose assembles a portable PetCam source bundle. The image workflow builds **32-bit Raspberry Pi OS Trixie (ARMv6-compatible ARMHF)** using the upstream `RPi-Distro/pi-gen` `master` branch, then uses a thin custom stage to install feature-owned OS packages and place PetCam at `/opt/petcam`. This targets the original Raspberry Pi Zero W; it is not a 64-bit image and does not require Docker on the device. The existing source installer remains usable on already-running Debian and Raspberry Pi OS systems.
 
 ## Raspberry Pi Imager preconfiguration
 
@@ -12,7 +12,7 @@ Every tagged image release includes `petcam-imager.json`, a Raspberry Pi Imager 
 https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
 ```
 
-In Raspberry Pi Imager 2.x, open App Options / Content Repository, choose a custom repository JSON URL, and paste the URL above. Imager will show PetCam OS as an installable image and offer its cloud-init customisation flow for hostname, user credentials, Wi-Fi, locale and SSH. The manifest currently advertises Raspberry Pi 4 and Raspberry Pi 5.
+In Raspberry Pi Imager 2.x, open App Options / Content Repository, choose a custom repository JSON URL, and paste the URL above. Imager will show PetCam OS as an installable image for the original Raspberry Pi Zero W and offer its cloud-init customisation flow for hostname, user credentials, Wi-Fi, locale and SSH.
 
 You can also launch Imager with the repository directly:
 
@@ -20,7 +20,7 @@ You can also launch Imager with the repository directly:
 rpi-imager --repo https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json
 ```
 
-This is the generic `cloudinit` format, not `cloudinit-rpi`: it does not advertise Raspberry Pi-specific hardware toggles that have not been configured and tested in the PetCam image.
+The manifest uses the `pizero-32bit` device tag and `armhf` architecture. It deliberately does not advertise Zero 2 W, Pi 4, or Pi 5. This is the generic `cloudinit` format, not `cloudinit-rpi`: it does not advertise Raspberry Pi-specific hardware toggles that have not been configured and tested in the PetCam image.
 
 ## Build cache and stage ordering
 
@@ -30,13 +30,13 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
-The workflow also caches APT downloads through `apt-cacher-ng`. The cache is restored before the build, exposed to the pi-gen container through the action's `apt-proxy` input, and saved after the build. This avoids repeatedly downloading unchanged Debian, Raspberry Pi OS, and feature packages. Its cache key includes the PetCam package manifest, with a broader restore prefix so package-list changes can still reuse existing downloads. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`. Artifact upload uses compression level 0 because recompressing an already-compressed `.xz` file adds CPU time with negligible size reduction.
+The image build downloads APT packages directly from the configured Debian and Raspberry Pi OS repositories. It deliberately does not route package downloads through a self-hosted or ephemeral APT proxy: a proxy outage must not prevent a clean image build. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`. Artifact upload uses compression level 0 because recompressing an already-compressed `.xz` file adds CPU time with negligible size reduction.
 
 ## Upstream build updates
 
 The workflow checks out the latest `main` branch of `usimd/pi-gen-action` for every build, then installs its locked Node dependencies and packages its TypeScript source into the `dist/index.js` entrypoint required by GitHub Actions. This is necessary because the upstream source branch does not commit the generated `dist` bundle. It means we follow current action source without pinning a commit or release, while still producing the executable artifact the Actions runner expects.
 
-The action in turn checks out the `arm64` branch of `RPi-Distro/pi-gen` through `pi-gen-version: arm64`, so pi-gen changes on that branch are also picked up by new builds.
+The action checks out the `master` branch of `RPi-Distro/pi-gen` through `pi-gen-version: master`. Raspberry Pi's pi-gen documentation explicitly reserves `master` for 32-bit images and `arm64` for 64-bit images. The GitHub Actions host runner is ARM64, but that only accelerates the build host; the image target is the 32-bit ARMHF Raspberry Pi OS produced by pi-gen.
 
 This deliberately favors upstream freshness over immutable action references. A change to the action's default branch can affect the next PetCam build, so every build must pass image validation before its artifact can be released. The action's branch is not a substitute for keeping the Trixie APT package sources current: installed kernel and OS package versions are resolved from the repositories used by pi-gen during the build.
 
@@ -44,4 +44,4 @@ Git is explicitly installed as a host dependency for pi-gen's build tooling; the
 
 ## Production image releases
 
-Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARM64 image, a SHA-256 checksum, and the Raspberry Pi Imager manifest. No OTA signing keys, signed update manifests, or public signing keys are required.
+Production releases are published only from `vMAJOR.MINOR.PATCH` tags. The Git tag is validated and used to name the release and image asset. The image build is validated before it is uploaded to a draft GitHub Release. The release contains the compressed ARMHF image, a SHA-256 checksum, and the Raspberry Pi Imager manifest. No OTA signing keys, signed update manifests, or public signing keys are required.

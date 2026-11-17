@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   build-image:
-    runs-on: ubuntu-24.04-arm
+    # pi-gen's build container is i386; use an x86-64 host. The output remains ARMHF.
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
       contents: read
@@ -55,28 +56,6 @@ jobs:
           test -s deploy/image/stages/stage-petcam/01-petcam/01-packages
           test -s deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
 
-      - name: Restore APT package download cache
-        uses: actions/cache@v4
-        with:
-          path: apt-cache
-          key: ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-${{ github.sha }}
-          restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-apt-${{ hashFiles('deploy/image/stages/stage-petcam/01-petcam/01-packages') }}-
-            ${{ runner.os }}-${{ runner.arch }}-apt-
-
-      - name: Start cached APT proxy
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends apt-cacher-ng
-          mkdir -p apt-cache
-          sudo mkdir -p /var/cache/apt-cacher-ng
-          if compgen -G 'apt-cache/*' > /dev/null; then
-            sudo cp -a apt-cache/. /var/cache/apt-cacher-ng/
-          fi
-          echo 'Port: 9999' | sudo tee -a /etc/apt-cacher-ng/acng.conf
-          sudo chown -R apt-cacher-ng:apt-cacher-ng /var/cache/apt-cacher-ng
-          sudo service apt-cacher-ng restart
-
       # The upstream action's main branch contains TypeScript source; GitHub Actions
       # requires its dist/index.js entrypoint, so build that artifact from the live source.
       - name: Check out latest pi-gen action
@@ -102,19 +81,18 @@ jobs:
 
       - name: Build Raspberry Pi OS image
         id: image
-        # Run the freshly packaged upstream main branch and its latest ARM64 pi-gen branch.
+        # pi-gen master builds 32-bit Raspberry Pi OS; arm64 is only the build runner architecture.
         uses: ./.github/actions/pi-gen-action
         with:
           image-name: petcam
           hostname: petcam
           release: trixie
-          pi-gen-version: arm64
+          pi-gen-version: master
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
           # Keep release compression quick; level 1 is much faster than the default level 6.
           compression-level: 1
-          apt-proxy: http://172.17.0.1:9999
           enable-cloud-init: 1
           enable-ssh: 0
           username: petcam
@@ -130,14 +108,6 @@ jobs:
           # pi-gen uses Git on the host to capture the source revision for its builder.
           extra-host-dependencies: git
           verbose-output: true
-
-      - name: Persist APT proxy downloads for the next build
-        if: always()
-        run: |
-          if [[ -d /var/cache/apt-cacher-ng ]]; then
-            sudo cp -a /var/cache/apt-cacher-ng/. apt-cache/
-            sudo chown -R "$USER":"$USER" apt-cache
-          fi
 
       - name: Validate generated image
         env:
@@ -203,7 +173,7 @@ jobs:
             echo "Validated image artifact is missing." >&2
             exit 1
           fi
-          IMAGE_NAME="petcam-${TAG}-arm64.img.xz"
+          IMAGE_NAME="petcam-${TAG}-armhf.img.xz"
           cp "$IMAGE_SOURCE" "$IMAGE_NAME"
           xz -t "$IMAGE_NAME"
           sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"

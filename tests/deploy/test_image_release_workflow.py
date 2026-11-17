@@ -20,6 +20,8 @@ class ImageReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("tests.deploy.test_imager_manifest", workflow)
         self.assertIn('petcam-imager.json', workflow)
         self.assertIn('--image-url "$IMAGE_URL"', workflow)
+        self.assertIn('petcam-${TAG}-armhf.img.xz', workflow)
+        self.assertNotIn('petcam-${TAG}-arm64.img.xz', workflow)
         self.assertIn('gh release edit "$TAG" --draft=false', workflow)
         self.assertNotIn("PETCAM_UPDATE_SIGNING_PRIVATE_KEY", workflow)
         self.assertNotIn("image-signing.pub", workflow)
@@ -28,7 +30,7 @@ class ImageReleaseWorkflowTests(unittest.TestCase):
         self.assertFalse((ROOT / "deploy/image/image-signing.pub").exists())
         self.assertFalse((ROOT / "tools/create_image_release.py").exists())
 
-    def test_release_documentation_describes_unsigned_image_and_checksum(self):
+    def test_release_documentation_describes_unsigned_zero_w_image_and_checksum(self):
         docs = (ROOT / "deploy/image/README.md").read_text(encoding="utf-8")
         self.assertIn("SHA-256 checksum", docs)
         self.assertNotIn("ed25519", docs.lower())
@@ -36,4 +38,6 @@ class ImageReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("signed manifest", docs.lower())
         self.assertIn('init_format: "cloudinit"', docs)
         self.assertIn("releases/latest/download/petcam-imager.json", docs)
+        self.assertIn("original Raspberry Pi Zero W", docs)
+        self.assertIn("ARMHF image", docs)
         self.assertIn("hostname, user credentials, Wi-Fi, locale and SSH", docs)

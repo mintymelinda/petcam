@@ -19,16 +19,10 @@ ICON_URL = (
 WEBSITE_URL = "https://github.com/mintymelinda/petcam"
 DEVICE_PROFILES = [
     {
-        "name": "Raspberry Pi 4",
-        "description": "Raspberry Pi 4 Model B",
-        "tags": ["pi4"],
-        "architecture": "armv8",
-    },
-    {
-        "name": "Raspberry Pi 5",
-        "description": "Raspberry Pi 5",
-        "tags": ["pi5"],
-        "architecture": "armv8",
+        "name": "Raspberry Pi Zero W",
+        "description": "Original Raspberry Pi Zero W (ARMv6)",
+        "tags": ["pizero-32bit"],
+        "architecture": "armhf",
     },
 ]
 
@@ -72,18 +66,18 @@ def create_manifest(
         "imager": {"devices": DEVICE_PROFILES},
         "os_list": [
             {
-                "name": "PetCam OS (64-bit)",
+                "name": "PetCam OS (32-bit)",
                 "description": (
-                    "PetCam appliance for Raspberry Pi 4 and 5. Configure the "
-                    "hostname, user credentials, Wi-Fi, locale and SSH in "
-                    "Raspberry Pi Imager before flashing."
+                    "PetCam appliance for the original Raspberry Pi Zero W "
+                    "(ARMv6). Configure the hostname, user credentials, Wi-Fi, "
+                    "locale and SSH in Raspberry Pi Imager before flashing."
                 ),
                 "icon": ICON_URL,
                 "url": image_url,
                 "website": WEBSITE_URL,
-                "architecture": "armv8",
+                "architecture": "armhf",
                 "init_format": "cloudinit",
-                "devices": ["pi4", "pi5"],
+                "devices": ["pizero-32bit"],
                 "release_date": release_date,
                 **metadata,
             }
