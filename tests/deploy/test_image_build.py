@@ -7,13 +7,16 @@ STAGE = IMAGE / "stages/stage-petcam"
 
 
 class RaspberryPiImageBuildTests(unittest.TestCase):
-    def test_compose_uses_native_arm64_docker_assembly(self):
+    def test_compose_uses_native_arm64_docker_assembly_without_version_file(self):
         compose = (IMAGE / "compose.yaml").read_text(encoding="utf-8")
         dockerfile = (IMAGE / "Dockerfile").read_text(encoding="utf-8")
+        assembler = (IMAGE / "assemble.sh").read_text(encoding="utf-8")
         self.assertIn("platform: linux/arm64", compose)
         self.assertIn("deploy/image/Dockerfile", compose)
         self.assertIn("FROM debian:trixie-slim", dockerfile)
         self.assertIn("assemble-petcam", dockerfile)
+        self.assertNotIn("COPY VERSION", dockerfile)
+        self.assertNotIn("-C /workspace VERSION", assembler)
 
     def test_pi_gen_stage_installs_packages_before_runtime_configuration(self):
         package_dir = STAGE / "01-petcam"
