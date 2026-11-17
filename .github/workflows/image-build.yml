@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   build-image:
-    runs-on: ubuntu-24.04-arm
+    # pi-gen's build container is i386; use an x86-64 host. The output remains ARMHF.
+    runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
       contents: read
