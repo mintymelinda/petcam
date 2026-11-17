@@ -32,7 +32,9 @@ The cache is an optimization, not a correctness boundary: pi-gen stages still ru
 
 ## Upstream build updates
 
-The workflow follows `usimd/pi-gen-action@main` instead of pinning a commit or release. This removes the local checkout and Node packaging steps and picks up the action's latest implementation on each build. The action in turn checks out the `arm64` branch of `RPi-Distro/pi-gen` through `pi-gen-version: arm64`, so pi-gen changes on that branch are also picked up by new builds.
+The workflow checks out the latest `main` branch of `usimd/pi-gen-action` for every build, then installs its locked Node dependencies and packages its TypeScript source into the `dist/index.js` entrypoint required by GitHub Actions. This is necessary because the upstream source branch does not commit the generated `dist` bundle. It means we follow current action source without pinning a commit or release, while still producing the executable artifact the Actions runner expects.
+
+The action in turn checks out the `arm64` branch of `RPi-Distro/pi-gen` through `pi-gen-version: arm64`, so pi-gen changes on that branch are also picked up by new builds.
 
 This deliberately favors upstream freshness over immutable action references. A change to the action's default branch can affect the next PetCam build, so every build must pass image validation before its artifact can be released. The action's branch is not a substitute for keeping the Trixie APT package sources current: installed kernel and OS package versions are resolved from the repositories used by pi-gen during the build.
 
