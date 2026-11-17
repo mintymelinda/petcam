@@ -12,6 +12,8 @@ permissions:
 jobs:
   format-javascript:
     runs-on: ubuntu-24.04
+    env:
+      NODE_OPTIONS: --trace-deprecation
     steps:
       - name: Check out source
         uses: actions/checkout@v5
