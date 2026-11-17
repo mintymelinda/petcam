@@ -52,6 +52,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("apt-cacher-ng", workflow)
         self.assertIn("apt-proxy: http://172.17.0.1:9999", workflow)
         self.assertIn("compression-level: 1", workflow)
+        self.assertIn("compression-level: 0", workflow)
         self.assertIn("cache-read-only: ${{ github.ref != 'refs/heads/main' }}", workflow)
         self.assertIn("extra-host-dependencies: git", workflow)
         self.assertIn("verbose-output: true", workflow)
