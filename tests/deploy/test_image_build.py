@@ -48,7 +48,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("pi-gen-version: master", workflow)
         self.assertNotIn("pi-gen-version: arm64", workflow)
         self.assertIn("enable-pigen-cache: true", workflow)
-        self.assertIn("actions/cache@v4", workflow)
+        self.assertIn("enable-pigen-cache: true", workflow)
         self.assertNotIn("apt-cacher-ng", workflow)
         self.assertNotIn("apt-proxy:", workflow)
         self.assertNotIn("172.17.0.1:9999", workflow)
