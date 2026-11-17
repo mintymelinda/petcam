@@ -1,5 +1,4 @@
 import hashlib
-import json
 import lzma
 import tempfile
 import unittest
@@ -25,10 +24,26 @@ class ImagerManifestTests(unittest.TestCase):
         self.assertEqual(manifest["imager"]["devices"][1]["tags"], ["pi5"])
         entry = manifest["os_list"][0]
         self.assertEqual(entry["init_format"], "cloudinit")
+        self.assertTrue(
+            {
+                "name",
+                "description",
+                "icon",
+                "url",
+                "extract_size",
+                "extract_sha256",
+                "image_download_size",
+                "image_download_sha256",
+                "release_date",
+                "devices",
+            }.issubset(entry)
+        )
         self.assertEqual(entry["devices"], ["pi4", "pi5"])
         self.assertEqual(entry["extract_size"], len(image))
         self.assertEqual(entry["extract_sha256"], hashlib.sha256(image).hexdigest())
-        self.assertEqual(entry["image_download_sha256"], hashlib.sha256(compressed).hexdigest())
+        self.assertEqual(
+            entry["image_download_sha256"], hashlib.sha256(compressed).hexdigest()
+        )
         self.assertEqual(entry["image_download_size"], len(compressed))
         self.assertEqual(entry["release_date"], "2026-11-17")
 
