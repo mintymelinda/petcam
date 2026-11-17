@@ -30,7 +30,7 @@ The PetCam stage intentionally remains **after** `stage0 stage1 stage2`. Those u
 
 The cache is an optimization, not a correctness boundary: pi-gen stages still run, and the action excludes cached root filesystems when saving work artifacts to avoid stale rootfs state. We validate the generated compressed image on every build.
 
-The workflow also caches APT downloads through `apt-cacher-ng`. The cache is restored before the build, exposed to the pi-gen container through the action's `apt-proxy` input, and saved after the build. This avoids repeatedly downloading unchanged Debian, Raspberry Pi OS, and feature packages. Its cache key includes the PetCam package manifest, with a broader restore prefix so package-list changes can still reuse existing downloads. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`. Artifact upload uses compression level 0 because recompressing an already-compressed `.xz` file adds CPU time with negligible size reduction.
+The image build downloads APT packages directly from the configured Debian and Raspberry Pi OS repositories. It deliberately does not route package downloads through a self-hosted or ephemeral APT proxy: a proxy outage must not prevent a clean image build. The final `.xz` image uses compression level 1 rather than the action's slower default level 6; image integrity is still checked with `xz -t`. Artifact upload uses compression level 0 because recompressing an already-compressed `.xz` file adds CPU time with negligible size reduction.
 
 ## Upstream build updates
 
