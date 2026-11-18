@@ -234,6 +234,30 @@ function initializeDashboard() {
       b.disabled = false;
     }
   };
+  $("save-full-ui").onclick = async () => {
+    const button = $("save-full-ui");
+    button.disabled = true;
+    const disabled = $("disable-full-ui").checked;
+    try {
+      await request("/api/web-ui", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: !disabled }),
+      });
+      if (disabled) {
+        $("full-ui-status").textContent =
+          "Full UI disabled. Opening the lightweight setup page…";
+        window.location.assign("/setup");
+      } else {
+        $("full-ui-status").textContent =
+          "Full UI enabled. The dashboard service will start within a few seconds; refresh this page if needed.";
+      }
+    } catch (error) {
+      $("full-ui-status").textContent =
+        "Unable to update Full UI setting: " + error.message;
+      button.disabled = false;
+    }
+  };
   $("refresh-health").onclick = refreshHealth;
   refresh();
   refreshLiveStatus();

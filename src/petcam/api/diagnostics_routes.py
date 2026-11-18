@@ -34,7 +34,12 @@ def handle_get(handler, services):
         handler.send_json(200, services.diagnostics_snapshot())
         return True
     if path == "/api/system":
-        handler.send_json(200, {"services.installed_version": services.installed_version()})
+        version = services.installed_version()
+        handler.send_json(200, {
+            "installed_version": version,
+            "services.installed_version": version,
+            "web_ui_enabled": services.web_ui_enabled(),
+        })
         return True
     if path == "/api/health":
         try:
