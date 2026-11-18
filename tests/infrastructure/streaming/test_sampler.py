@@ -32,9 +32,9 @@ def test_latest_frame_buffer_rejects_incomplete_jpeg():
 @pytest.mark.parametrize(
     ("encoding", "expected"),
     [
-        ("H264", ("rtph264depay", "h264parse")),
-        ("JPEG", ("rtpjpegdepay", "jpegparse")),
-        ("mjpeg", ("rtpjpegdepay", "jpegparse")),
+        ("H264", ("rtph264depay", "h264parse", "avdec_h264")),
+        ("JPEG", ("rtpjpegdepay", "jpegparse", "jpegdec")),
+        ("mjpeg", ("rtpjpegdepay", "jpegparse", "jpegdec")),
     ],
 )
 def test_rtp_codec_mapping_supports_h264_and_mjpeg(encoding, expected):
@@ -105,8 +105,8 @@ def test_frame_server_rejects_unknown_commands(tmp_path):
 def test_gstreamer_runtime_requires_decode_and_h264_support():
     names = {
         "rtspsrc", "rtph264depay", "rtpjpegdepay", "h264parse", "jpegparse",
-        "decodebin", "videoconvert", "videorate", "capsfilter", "jpegenc",
-        "appsink", "jpegdec", "avdec_h264",
+        "avdec_h264", "jpegdec", "videoconvert", "videorate", "capsfilter",
+        "jpegenc", "appsink",
     }
 
     class Factory:
@@ -120,16 +120,17 @@ def test_gstreamer_runtime_requires_decode_and_h264_support():
         assert MODULE.check_gstreamer_runtime()
 
 
-def test_gstreamer_runtime_rejects_missing_h264_decoder():
+@pytest.mark.parametrize("missing_decoder", ["avdec_h264", "jpegdec"])
+def test_gstreamer_runtime_rejects_missing_explicit_decoder(missing_decoder):
     class Factory:
         @staticmethod
         def find(name):
-            return None if name in {"v4l2h264dec", "avdec_h264", "vah264dec", "nvh264dec"} else object()
+            return None if name == missing_decoder else object()
 
     fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setattr(MODULE, "_load_gstreamer", lambda: (fake_gst, None))
-        with pytest.raises(MODULE.SamplerError, match="H.264 decoder"):
+        with pytest.raises(MODULE.SamplerError, match=missing_decoder):
             MODULE.check_gstreamer_runtime()
 
 

@@ -126,12 +126,12 @@ def read_latest_frame(socket_path=SOCKET_PATH, timeout=3):
 
 
 def rtp_codec_elements(encoding_name):
-    """Return the depayloader/parser pair for a supported RTSP video codec."""
+    """Return the depayloader, parser, and software decoder for an RTSP video codec."""
     codec = str(encoding_name or "").upper()
     if codec == "H264":
-        return "rtph264depay", "h264parse"
+        return "rtph264depay", "h264parse", "avdec_h264"
     if codec in {"JPEG", "MJPEG"}:
-        return "rtpjpegdepay", "jpegparse"
+        return "rtpjpegdepay", "jpegparse", "jpegdec"
     raise SamplerError(f"Unsupported RTSP video encoding: {encoding_name!r}")
 
 
@@ -155,7 +155,8 @@ def check_gstreamer_runtime():
         "rtpjpegdepay",
         "h264parse",
         "jpegparse",
-        "decodebin",
+        "avdec_h264",
+        "jpegdec",
         "videoconvert",
         "videorate",
         "capsfilter",
@@ -164,9 +165,6 @@ def check_gstreamer_runtime():
         "jpegdec",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
-    h264_decoders = ("v4l2h264dec", "avdec_h264", "vah264dec", "nvh264dec")
-    if not any(Gst.ElementFactory.find(name) is not None for name in h264_decoders):
-        missing.append("an H.264 decoder (v4l2h264dec or avdec_h264)")
     if missing:
         raise SamplerError("Required GStreamer sampler element(s) are missing: " + ", ".join(missing))
     return True
@@ -185,18 +183,6 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
     pipeline.add(source)
 
     branch_state = {"linked": False}
-
-    def decoded_pad_added(_decoder, pad, converter):
-        caps = pad.get_current_caps() or pad.query_caps(None)
-        if caps is None or caps.get_size() == 0:
-            return
-        if not caps.get_structure(0).get_name().startswith("video/x-raw"):
-            return
-        sink_pad = converter.get_static_pad("sink")
-        if not sink_pad.is_linked():
-            result = pad.link(sink_pad)
-            if result != Gst.PadLinkReturn.OK:
-                logging.error("Could not link decoded RTSP video to the frame sampler: %s", result)
 
     def sample_ready(sink):
         sample = sink.emit("pull-sample")
@@ -226,12 +212,12 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
             return
         encoding = structure.get_string("encoding-name")
         try:
-            depay_name, parser_name = rtp_codec_elements(encoding)
+            depay_name, parser_name, decoder_name = rtp_codec_elements(encoding)
         except SamplerError as error:
             logging.error("%s", error)
             return
 
-        names = (depay_name, parser_name, "decodebin", "videoconvert", "videorate", "capsfilter", "jpegenc", "appsink")
+        names = (depay_name, parser_name, decoder_name, "videoconvert", "videorate", "capsfilter", "jpegenc", "appsink")
         elements = [Gst.ElementFactory.make(name, f"sampler-{index}") for index, name in enumerate(names)]
         if any(element is None for element in elements):
             logging.error("Unable to create GStreamer elements for RTSP codec %s", encoding)
@@ -239,8 +225,8 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
         depay, parser, decoder, converter, rate, caps_filter, encoder, sink = elements
         for element in elements:
             pipeline.add(element)
-        if not depay.link(parser) or not parser.link(decoder):
-            logging.error("Unable to link the RTSP depayloader and decoder for %s", encoding)
+        if not depay.link(parser) or not parser.link(decoder) or not decoder.link(converter):
+            logging.error("Unable to link the RTSP depayloader, parser, and decoder for %s", encoding)
             return
         if not converter.link(rate) or not rate.link(caps_filter) or not caps_filter.link(encoder) or not encoder.link(sink):
             logging.error("Unable to link the RTSP decoded-frame output chain.")
@@ -255,7 +241,6 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
         sink.set_property("drop", True)
         sink.set_property("sync", False)
         sink.set_property("wait-on-eos", False)
-        decoder.connect("pad-added", decoded_pad_added, converter)
         sink.connect("new-sample", sample_ready)
         if pad.link(depay.get_static_pad("sink")) != Gst.PadLinkReturn.OK:
             logging.error("Unable to link the RTSP %s stream to its depayloader.", encoding)
