@@ -32,9 +32,9 @@ def test_latest_frame_buffer_rejects_incomplete_jpeg():
 @pytest.mark.parametrize(
     ("encoding", "expected"),
     [
-        ("H264", ("rtph264depay", "h264parse")),
-        ("JPEG", ("rtpjpegdepay", "jpegparse")),
-        ("mjpeg", ("rtpjpegdepay", "jpegparse")),
+        ("H264", ("rtph264depay", "h264parse", "avdec_h264")),
+        ("JPEG", ("rtpjpegdepay", "jpegparse", "jpegdec")),
+        ("mjpeg", ("rtpjpegdepay", "jpegparse", "jpegdec")),
     ],
 )
 def test_rtp_codec_mapping_supports_h264_and_mjpeg(encoding, expected):
@@ -102,11 +102,117 @@ def test_frame_server_rejects_unknown_commands(tmp_path):
         thread.join(timeout=2)
 
 
-def test_gstreamer_runtime_requires_decode_and_h264_support():
+@pytest.mark.parametrize(
+    ("encoding", "expected"),
+    [
+        (
+            "H264",
+            (
+                "rtph264depay",
+                "h264parse",
+                "capsfilter",
+                "v4l2h264dec",
+                "capsfilter",
+                "videoconvert",
+                "videorate",
+                "capsfilter",
+                "jpegenc",
+                "appsink",
+            ),
+        ),
+        (
+            "MJPEG",
+            (
+                "rtpjpegdepay",
+                "jpegparse",
+                "jpegdec",
+                "videoconvert",
+                "videorate",
+                "capsfilter",
+                "jpegenc",
+                "appsink",
+            ),
+        ),
+    ],
+)
+def test_rtp_pipeline_elements_keep_codec_caps_separate(encoding, expected):
+    depay, parser, decoder = MODULE.rtp_codec_elements(
+        encoding, "v4l2h264dec" if encoding == "H264" else "avdec_h264"
+    )
+    assert MODULE.rtp_pipeline_element_names(
+        encoding, depay, parser, decoder
+    ) == expected
+
+
+def test_rtp_codec_mapping_can_select_hardware_h264_decoder():
+    assert MODULE.rtp_codec_elements("H264", "v4l2h264dec") == (
+        "rtph264depay",
+        "h264parse",
+        "v4l2h264dec",
+    )
+
+
+def test_rtp_codec_mapping_rejects_unknown_h264_decoder():
+    with pytest.raises(MODULE.SamplerError, match="Unsupported H.264 decoder"):
+        MODULE.rtp_codec_elements("H264", "unknown-decoder")
+
+
+def test_gstreamer_runtime_accepts_hardware_h264_decoder_without_libav():
     names = {
         "rtspsrc", "rtph264depay", "rtpjpegdepay", "h264parse", "jpegparse",
-        "decodebin", "videoconvert", "videorate", "capsfilter", "jpegenc",
-        "appsink", "jpegdec", "avdec_h264",
+        "v4l2h264dec", "jpegdec", "videoconvert", "videorate", "capsfilter",
+        "jpegenc", "appsink",
+    }
+
+    class Decoder:
+        @staticmethod
+        def get_property(name):
+            assert name == "device"
+            return "/dev/video10"
+
+    class Factory:
+        @staticmethod
+        def find(name):
+            return object() if name in names else None
+
+        @staticmethod
+        def make(name, element_name):
+            assert name == "v4l2h264dec"
+            return Decoder()
+
+    fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(MODULE, "_load_gstreamer", lambda: (fake_gst, None))
+        patcher.setattr(MODULE.Path, "exists", lambda self: str(self) == "/dev/video10")
+        assert MODULE.check_gstreamer_runtime()
+
+
+def test_v4l2_h264_decoder_falls_back_when_device_is_missing():
+    class Decoder:
+        @staticmethod
+        def get_property(name):
+            return "/dev/video10"
+
+    class Factory:
+        @staticmethod
+        def find(name):
+            return object() if name in {"v4l2h264dec", "avdec_h264"} else None
+
+        @staticmethod
+        def make(name, element_name):
+            return Decoder()
+
+    fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(MODULE.Path, "exists", lambda self: False)
+        assert MODULE.select_h264_decoder(fake_gst) == "avdec_h264"
+
+
+def test_gstreamer_runtime_accepts_software_h264_fallback():
+    names = {
+        "rtspsrc", "rtph264depay", "rtpjpegdepay", "h264parse", "jpegparse",
+        "avdec_h264", "jpegdec", "videoconvert", "videorate", "capsfilter",
+        "jpegenc", "appsink",
     }
 
     class Factory:
@@ -124,12 +230,25 @@ def test_gstreamer_runtime_rejects_missing_h264_decoder():
     class Factory:
         @staticmethod
         def find(name):
-            return None if name in {"v4l2h264dec", "avdec_h264", "vah264dec", "nvh264dec"} else object()
+            return None if name in {"v4l2h264dec", "avdec_h264"} else object()
 
     fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setattr(MODULE, "_load_gstreamer", lambda: (fake_gst, None))
         with pytest.raises(MODULE.SamplerError, match="H.264 decoder"):
+            MODULE.check_gstreamer_runtime()
+
+
+def test_gstreamer_runtime_rejects_missing_jpeg_decoder():
+    class Factory:
+        @staticmethod
+        def find(name):
+            return None if name in {"jpegdec", "v4l2h264dec"} else object()
+
+    fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(MODULE, "_load_gstreamer", lambda: (fake_gst, None))
+        with pytest.raises(MODULE.SamplerError, match="jpegdec"):
             MODULE.check_gstreamer_runtime()
 
 
