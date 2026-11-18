@@ -16,9 +16,19 @@ concurrency:
 
 jobs:
   build-image:
-    # pi-gen's build container is i386; use an x86-64 host. The output remains ARMHF.
+    # pi-gen's build container is i386; use an x86-64 host for both targets.
     runs-on: ubuntu-24.04
     timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - architecture: armhf
+            pi-gen-version: master
+            artifact-name: petcam-image-armhf
+          - architecture: arm64
+            pi-gen-version: arm64
+            artifact-name: petcam-image-arm64
     permissions:
       contents: read
     steps:
@@ -26,6 +36,7 @@ jobs:
         uses: actions/checkout@v5
 
       - name: Validate deployment scripts and manifests
+        if: matrix.architecture == 'armhf'
         run: |
           for script in \
             deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh \
@@ -81,17 +92,16 @@ jobs:
 
       - name: Build Raspberry Pi OS image
         id: image
-        # pi-gen master builds 32-bit Raspberry Pi OS; arm64 is only the build runner architecture.
+        # pi-gen master is 32-bit ARMHF; its arm64 branch builds 64-bit ARM.
         uses: ./.github/actions/pi-gen-action
         with:
           image-name: petcam
           hostname: petcam
           release: trixie
-          pi-gen-version: master
+          pi-gen-version: ${{ matrix.pi-gen-version }}
           stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
-          # Keep release compression quick; level 1 is much faster than the default level 6.
           compression-level: 1
           enable-cloud-init: 1
           enable-ssh: 0
@@ -102,10 +112,8 @@ jobs:
           timezone: America/Toronto
           keyboard-keymap: us
           keyboard-layout: English (US)
-          # Main refreshes the cache; PRs and other refs consume it without polluting it.
-          enable-pigen-cache: true
-          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
-          # pi-gen uses Git on the host to capture the source revision for its builder.
+          # Avoid sharing a work-directory cache between incompatible image architectures.
+          enable-pigen-cache: false
           extra-host-dependencies: git
           verbose-output: true
 
@@ -120,15 +128,14 @@ jobs:
       - name: Upload validated image for release
         uses: actions/upload-artifact@v4
         with:
-          name: petcam-image-${{ github.sha }}
+          name: ${{ matrix.artifact-name }}-${{ github.sha }}
           path: ${{ steps.image.outputs.image-path }}
           if-no-files-found: error
           retention-days: 7
-          # The image is already xz-compressed; do not spend time recompressing it into the artifact.
           compression-level: 0
 
   publish-release:
-    name: Publish production image
+    name: Publish production images
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-image
     runs-on: ubuntu-24.04
@@ -139,11 +146,17 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v5
 
-      - name: Download validated image
+      - name: Download validated ARMHF image
         uses: actions/download-artifact@v4
         with:
-          name: petcam-image-${{ github.sha }}
-          path: release
+          name: petcam-image-armhf-${{ github.sha }}
+          path: release/armhf
+
+      - name: Download validated ARM64 image
+        uses: actions/download-artifact@v4
+        with:
+          name: petcam-image-arm64-${{ github.sha }}
+          path: release/arm64
 
       - name: Prepare draft release
         env:
@@ -162,30 +175,42 @@ jobs:
             gh release create "$TAG" --draft --verify-tag --title "PetCam $VERSION" --generate-notes
           fi
 
-      - name: Publish image and checksum
+      - name: Publish images, checksums, and Imager manifest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
-          IMAGE_SOURCE="$(find release -maxdepth 2 -type f -name '*.img.xz' -print -quit)"
-          if [[ -z "$IMAGE_SOURCE" || ! -s "$IMAGE_SOURCE" ]]; then
-            echo "Validated image artifact is missing." >&2
+          ARMHF_SOURCE="$(find release/armhf -maxdepth 2 -type f -name '*.img.xz' -print -quit)"
+          ARM64_SOURCE="$(find release/arm64 -maxdepth 2 -type f -name '*.img.xz' -print -quit)"
+          if [[ -z "$ARMHF_SOURCE" || ! -s "$ARMHF_SOURCE" ]]; then
+            echo "Validated ARMHF image artifact is missing." >&2
             exit 1
           fi
-          IMAGE_NAME="petcam-${TAG}-armhf.img.xz"
-          cp "$IMAGE_SOURCE" "$IMAGE_NAME"
-          xz -t "$IMAGE_NAME"
-          sha256sum "$IMAGE_NAME" > "${IMAGE_NAME}.sha256"
-          IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
+          if [[ -z "$ARM64_SOURCE" || ! -s "$ARM64_SOURCE" ]]; then
+            echo "Validated ARM64 image artifact is missing." >&2
+            exit 1
+          fi
+          ARMHF_NAME="petcam-${TAG}-armhf.img.xz"
+          ARM64_NAME="petcam-${TAG}-arm64.img.xz"
+          cp "$ARMHF_SOURCE" "$ARMHF_NAME"
+          cp "$ARM64_SOURCE" "$ARM64_NAME"
+          xz -t "$ARMHF_NAME"
+          xz -t "$ARM64_NAME"
+          sha256sum "$ARMHF_NAME" > "${ARMHF_NAME}.sha256"
+          sha256sum "$ARM64_NAME" > "${ARM64_NAME}.sha256"
+          ARMHF_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ARMHF_NAME}"
+          ARM64_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${ARM64_NAME}"
           python3 tools/create_imager_manifest.py \
-            --image "$IMAGE_NAME" \
-            --image-url "$IMAGE_URL" \
+            --armhf-image "$ARMHF_NAME" \
+            --armhf-image-url "$ARMHF_URL" \
+            --arm64-image "$ARM64_NAME" \
+            --arm64-image-url "$ARM64_URL" \
             --release-date "$(date -u +%F)" \
             --output petcam-imager.json
-          gh release upload "$TAG" "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json --clobber
+          gh release upload "$TAG" "$ARMHF_NAME" "${ARMHF_NAME}.sha256" "$ARM64_NAME" "${ARM64_NAME}.sha256" petcam-imager.json --clobber
           ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in "$IMAGE_NAME" "${IMAGE_NAME}.sha256" petcam-imager.json; do
+          for REQUIRED_ASSET in "$ARMHF_NAME" "${ARMHF_NAME}.sha256" "$ARM64_NAME" "${ARM64_NAME}.sha256" petcam-imager.json; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
