@@ -10,6 +10,23 @@ from petcam.infrastructure.system.supervisor import workers
 
 
 class GStreamerOutputTests(unittest.TestCase):
+    def test_rtsp_server_binds_dual_stack_ipv6_address(self):
+        class FakeServer:
+            def __init__(self):
+                self.address = None
+                self.service = None
+
+            def set_address(self, address):
+                self.address = address
+
+            def set_service(self, service):
+                self.service = service
+
+        server = FakeServer()
+        MODULE.configure_rtsp_server(server)
+        self.assertEqual(server.address, "::")
+        self.assertEqual(server.service, "8554")
+
     def test_native_h264_pipeline_uses_v4l2_and_rtp_packetization_only(self):
         pipeline = MODULE.build_gstreamer_launch({
             "native_h264": True,
