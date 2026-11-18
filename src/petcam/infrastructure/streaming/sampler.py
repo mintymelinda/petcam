@@ -162,7 +162,6 @@ def check_gstreamer_runtime():
         "capsfilter",
         "jpegenc",
         "appsink",
-        "jpegdec",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:

@@ -102,7 +102,7 @@ def test_frame_server_rejects_unknown_commands(tmp_path):
         thread.join(timeout=2)
 
 
-def test_gstreamer_runtime_requires_decode_and_h264_support():
+def test_gstreamer_runtime_requires_explicit_software_decoders():
     names = {
         "rtspsrc", "rtph264depay", "rtpjpegdepay", "h264parse", "jpegparse",
         "avdec_h264", "jpegdec", "videoconvert", "videorate", "capsfilter",
