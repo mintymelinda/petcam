@@ -128,6 +128,18 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn('change-password', PAGE_AND_JS)
         self.assertNotIn('/api/password', PAGE_AND_JS)
 
+    def test_dashboard_tab_activation_updates_selection_and_panel_visibility(self):
+        core = Path("src/petcam/static/dashboard-core.js").read_text(encoding="utf-8")
+        self.assertIn("function activateTab(tabName, focus = false)", core)
+        self.assertIn('button.setAttribute("aria-selected", String(selected))', core)
+        self.assertIn("button.tabIndex = selected ? 0 : -1", core)
+        self.assertIn('document.querySelectorAll(\'[role="tabpanel"]\')', core)
+        self.assertIn("panel.hidden = !selected", core)
+        self.assertIn('panel.classList.toggle("active", selected)', core)
+        self.assertIn("if (focus) selectedButton.focus()", core)
+        self.assertIn('activateTab("camera")', PAGE_AND_JS)
+        self.assertIn("activateTab(tabButtons[next].dataset.tab, true)", PAGE_AND_JS)
+
     def test_live_capture_status_reports_csi_hardware_h264_marker(self):
         with tempfile.TemporaryDirectory() as directory:
             marker = Path(directory) / "camera-status.json"
