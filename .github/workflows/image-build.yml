@@ -41,6 +41,7 @@ jobs:
           for script in \
             deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh \
             deploy/image/assemble.sh \
+            deploy/image/stages/stage-petcam-apt-mirror/prerun.sh \
             deploy/image/stages/stage-petcam/prerun.sh \
             deploy/image/stages/stage-petcam/01-petcam/00-run.sh \
             deploy/image/stages/stage-petcam/01-petcam/02-run-chroot.sh \
@@ -99,7 +100,7 @@ jobs:
           hostname: petcam
           release: trixie
           pi-gen-version: ${{ matrix.pi-gen-version }}
-          stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
+          stage-list: ./deploy/image/stages/stage-petcam-apt-mirror stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
           compression-level: 1
