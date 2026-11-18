@@ -164,15 +164,48 @@ def test_gstreamer_runtime_accepts_hardware_h264_decoder_without_libav():
         "jpegenc", "appsink",
     }
 
+    class Decoder:
+        @staticmethod
+        def get_property(name):
+            assert name == "device"
+            return "/dev/video10"
+
     class Factory:
         @staticmethod
         def find(name):
             return object() if name in names else None
 
+        @staticmethod
+        def make(name, element_name):
+            assert name == "v4l2h264dec"
+            return Decoder()
+
     fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
     with pytest.MonkeyPatch.context() as patcher:
         patcher.setattr(MODULE, "_load_gstreamer", lambda: (fake_gst, None))
+        patcher.setattr(MODULE.Path, "exists", lambda self: str(self) == "/dev/video10")
         assert MODULE.check_gstreamer_runtime()
+
+
+def test_v4l2_h264_decoder_falls_back_when_device_is_missing():
+    class Decoder:
+        @staticmethod
+        def get_property(name):
+            return "/dev/video10"
+
+    class Factory:
+        @staticmethod
+        def find(name):
+            return object() if name in {"v4l2h264dec", "avdec_h264"} else None
+
+        @staticmethod
+        def make(name, element_name):
+            return Decoder()
+
+    fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
+    with pytest.MonkeyPatch.context() as patcher:
+        patcher.setattr(MODULE.Path, "exists", lambda self: False)
+        assert MODULE.select_h264_decoder(fake_gst) == "avdec_h264"
 
 
 def test_gstreamer_runtime_accepts_software_h264_fallback():
