@@ -41,11 +41,11 @@ if ! grep -Fq "80-petcam-network-retries" "$apt_configure_script"; then
   temporary_script="$(mktemp)"
   if ! awk '
     /^on_chroot <<-/ && !inserted {
-      print "install -d -m 0755 \\"${ROOTFS_DIR}/etc/apt/apt.conf.d\\""
-      print "cat > \\"${ROOTFS_DIR}/etc/apt/apt.conf.d/80-petcam-network-retries\\" <<PETCAM_APT_RETRIES"
-      print "Acquire::Retries \\"5\\";"
-      print "Acquire::http::Timeout \\"30\\";"
-      print "Acquire::https::Timeout \\"30\\";"
+      print "install -d -m 0755 \"${ROOTFS_DIR}/etc/apt/apt.conf.d\""
+      print "cat > \"${ROOTFS_DIR}/etc/apt/apt.conf.d/80-petcam-network-retries\" <<PETCAM_APT_RETRIES"
+      print "Acquire::Retries \"5\";"
+      print "Acquire::http::Timeout \"30\";"
+      print "Acquire::https::Timeout \"30\";"
       print "PETCAM_APT_RETRIES"
       inserted = 1
     }
