@@ -149,6 +149,25 @@ def rtp_pipeline_element_names(encoding_name, depay_name, parser_name, decoder_n
     return tuple(names)
 
 
+def select_h264_decoder(Gst):
+    """Prefer V4L2 only when its configured decoder device is present."""
+    if Gst.ElementFactory.find("v4l2h264dec") is None:
+        return "avdec_h264"
+
+    decoder = Gst.ElementFactory.make("v4l2h264dec", "sampler-h264-decoder-probe")
+    if decoder is None:
+        return "avdec_h264"
+
+    try:
+        device = decoder.get_property("device")
+        if device and Path(device).exists():
+            return "v4l2h264dec"
+    except Exception as error:
+        logging.debug("Unable to probe the V4L2 H.264 decoder device: %s", error)
+
+    return "avdec_h264"
+
+
 def _load_gstreamer():
     try:
         import gi
@@ -177,8 +196,10 @@ def check_gstreamer_runtime():
         "appsink",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
-    h264_decoders = ("v4l2h264dec", "avdec_h264")
-    if not any(Gst.ElementFactory.find(name) is not None for name in h264_decoders):
+    if (
+        select_h264_decoder(Gst) == "avdec_h264"
+        and Gst.ElementFactory.find("avdec_h264") is None
+    ):
         missing.append("an H.264 decoder (v4l2h264dec or avdec_h264)")
     if missing:
         raise SamplerError("Required GStreamer sampler element(s) are missing: " + ", ".join(missing))
@@ -227,9 +248,7 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
             return
         encoding = structure.get_string("encoding-name")
         is_h264 = str(encoding).upper() == "H264"
-        h264_decoder = "avdec_h264"
-        if Gst.ElementFactory.find("v4l2h264dec") is not None:
-            h264_decoder = "v4l2h264dec"
+        h264_decoder = select_h264_decoder(Gst) if is_h264 else "avdec_h264"
 
         try:
             depay_name, parser_name, decoder_name = rtp_codec_elements(
