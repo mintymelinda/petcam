@@ -137,6 +137,18 @@ def rtp_codec_elements(encoding_name, h264_decoder="avdec_h264"):
     raise SamplerError(f"Unsupported RTSP video encoding: {encoding_name!r}")
 
 
+def rtp_pipeline_element_names(encoding_name, depay_name, parser_name, decoder_name):
+    """Return codec-specific elements for the RTSP sampler output chain."""
+    names = [depay_name, parser_name]
+    if str(encoding_name).upper() == "H264":
+        names.append("capsfilter")
+    names.append(decoder_name)
+    if str(encoding_name).upper() == "H264":
+        names.append("capsfilter")
+    names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
+    return tuple(names)
+
+
 def _load_gstreamer():
     try:
         import gi
@@ -227,13 +239,9 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
             logging.error("%s", error)
             return
 
-        names = [depay_name, parser_name]
-        if is_h264:
-            names.append("capsfilter")
-        names.append(decoder_name)
-        if is_h264:
-            names.append("capsfilter")
-        names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
+        names = rtp_pipeline_element_names(
+            encoding, depay_name, parser_name, decoder_name
+        )
 
         elements = [
             Gst.ElementFactory.make(name, f"sampler-{index}")
