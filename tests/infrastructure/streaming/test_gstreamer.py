@@ -85,6 +85,25 @@ class GStreamerOutputTests(unittest.TestCase):
             self.assertFalse(MODULE.native_h264_available(marker_path=marker))
 
 
+    def test_idle_server_heartbeat_keeps_ready_state_across_intervals(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status_file = Path(directory) / "gstreamer-status.json"
+            current_state = {"value": "starting"}
+
+            MODULE._set_status_state(current_state, "ready", "native_h264", status_file)
+            for _ in range(3):
+                self.assertTrue(MODULE._write_heartbeat(current_state, "native_h264", status_file))
+                status = json.loads(status_file.read_text(encoding="utf-8"))
+                self.assertEqual(status["state"], "ready")
+                self.assertFalse(status["active"])
+                self.assertEqual(status["source"], "native_h264")
+
+            MODULE._set_status_state(current_state, "publishing", "native_h264", status_file)
+            self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["state"], "publishing")
+
+            MODULE._set_status_state(current_state, "ready", "native_h264", status_file)
+            self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["state"], "ready")
+
     def test_supervisor_owns_streaming_workers_without_unit_files(self):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
