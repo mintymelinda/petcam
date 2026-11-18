@@ -102,6 +102,48 @@ def test_frame_server_rejects_unknown_commands(tmp_path):
         thread.join(timeout=2)
 
 
+@pytest.mark.parametrize(
+    ("encoding", "expected"),
+    [
+        (
+            "H264",
+            (
+                "rtph264depay",
+                "h264parse",
+                "capsfilter",
+                "v4l2h264dec",
+                "capsfilter",
+                "videoconvert",
+                "videorate",
+                "capsfilter",
+                "jpegenc",
+                "appsink",
+            ),
+        ),
+        (
+            "MJPEG",
+            (
+                "rtpjpegdepay",
+                "jpegparse",
+                "jpegdec",
+                "videoconvert",
+                "videorate",
+                "capsfilter",
+                "jpegenc",
+                "appsink",
+            ),
+        ),
+    ],
+)
+def test_rtp_pipeline_elements_keep_codec_caps_separate(encoding, expected):
+    depay, parser, decoder = MODULE.rtp_codec_elements(
+        encoding, "v4l2h264dec" if encoding == "H264" else "avdec_h264"
+    )
+    assert MODULE.rtp_pipeline_element_names(
+        encoding, depay, parser, decoder
+    ) == expected
+
+
 def test_rtp_codec_mapping_can_select_hardware_h264_decoder():
     assert MODULE.rtp_codec_elements("H264", "v4l2h264dec") == (
         "rtph264depay",
