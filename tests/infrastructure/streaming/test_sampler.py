@@ -243,7 +243,7 @@ def test_gstreamer_runtime_rejects_missing_jpeg_decoder():
     class Factory:
         @staticmethod
         def find(name):
-            return None if name == "jpegdec" else object()
+            return None if name in {"jpegdec", "v4l2h264dec"} else object()
 
     fake_gst = type("FakeGst", (), {"ElementFactory": Factory})
     with pytest.MonkeyPatch.context() as patcher:
