@@ -106,6 +106,34 @@ class HealthMonitorTests(unittest.TestCase):
         probe.assert_not_called()
         restart.assert_not_called()
 
+    def test_native_h264_idle_ready_heartbeat_does_not_trigger_recovery(self):
+        status_file = Path(self.directory.name) / "rtsp-status.json"
+        status_file.write_text(__import__("json").dumps({
+            "source": "native_h264",
+            "state": "ready",
+            "active": False,
+            "updated_at": 1000,
+        }), encoding="utf-8")
+
+        self.rtsp_ready_patch.stop()
+        try:
+            with (
+                mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}),
+                mock.patch.object(MODULE, "native_h264_capture_active", return_value=True),
+                mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file),
+                mock.patch.object(MODULE, "probe_stream") as probe,
+                mock.patch.object(MODULE, "service_snapshot", side_effect=lambda _name: self.active),
+                mock.patch.object(MODULE, "restart_service") as restart,
+            ):
+                report = MODULE.check_health(now=1000)
+            self.assertEqual(report["state"], "healthy")
+            self.assertTrue(report["rtsp_output_ready"])
+            self.assertIsNone(report["public_stream_ready"])
+            probe.assert_not_called()
+            restart.assert_not_called()
+        finally:
+            self.rtsp_ready_patch.start()
+
     def test_native_h264_rtsp_failure_restarts_only_publisher(self):
         with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}), \
                 mock.patch.object(MODULE, "native_h264_capture_active", return_value=True), \

@@ -112,6 +112,18 @@ def _write_status(state, source, path=STATUS_PATH):
     os.replace(temporary, target)
 
 
+def _set_status_state(current_state, state, source, path=STATUS_PATH):
+    """Update the in-memory lifecycle state and publish it immediately."""
+    current_state["value"] = state
+    _write_status(state, source, path)
+
+
+def _write_heartbeat(current_state, source, path=STATUS_PATH):
+    """Refresh the heartbeat without changing the current lifecycle state."""
+    _write_status(current_state["value"], source, path)
+    return True
+
+
 def check_gstreamer_runtime():
     """Validate the RTSP server bindings and the elements used by both camera modes."""
     _GLib, Gst, _GstRtspServer = _load_gstreamer()
@@ -166,8 +178,7 @@ def main():
     current_state = {"value": "starting"}
 
     def set_state(state):
-        current_state["value"] = state
-        _write_status(state, source)
+        _set_status_state(current_state, state, source)
 
     def media_configured(_factory, media):
         logging.info("GStreamer RTSP media configured from %s", source)
@@ -178,8 +189,8 @@ def main():
     mounts.add_factory("/petcam", factory)
     if server.attach(None) == 0:
         raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
-    _write_status("ready", source)
-    GLib.timeout_add_seconds(2, lambda: (_write_status(current_state["value"], source), True)[1])
+    set_state("ready")
+    GLib.timeout_add_seconds(2, lambda: _write_heartbeat(current_state, source))
     logging.info("Serving %s directly over RTSP at %s", source, RTSP_URL)
     loop = GLib.MainLoop()
 
