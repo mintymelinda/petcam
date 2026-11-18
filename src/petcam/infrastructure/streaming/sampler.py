@@ -125,11 +125,13 @@ def read_latest_frame(socket_path=SOCKET_PATH, timeout=3):
     return frame
 
 
-def rtp_codec_elements(encoding_name):
-    """Return the depayloader, parser, and software decoder for an RTSP video codec."""
+def rtp_codec_elements(encoding_name, h264_decoder="avdec_h264"):
+    """Return the depayloader, parser, and decoder for an RTSP video codec."""
     codec = str(encoding_name or "").upper()
     if codec == "H264":
-        return "rtph264depay", "h264parse", "avdec_h264"
+        if h264_decoder not in {"v4l2h264dec", "avdec_h264"}:
+            raise SamplerError(f"Unsupported H.264 decoder: {h264_decoder!r}")
+        return "rtph264depay", "h264parse", h264_decoder
     if codec in {"JPEG", "MJPEG"}:
         return "rtpjpegdepay", "jpegparse", "jpegdec"
     raise SamplerError(f"Unsupported RTSP video encoding: {encoding_name!r}")
@@ -155,7 +157,6 @@ def check_gstreamer_runtime():
         "rtpjpegdepay",
         "h264parse",
         "jpegparse",
-        "avdec_h264",
         "jpegdec",
         "videoconvert",
         "videorate",
@@ -164,6 +165,9 @@ def check_gstreamer_runtime():
         "appsink",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
+    h264_decoders = ("v4l2h264dec", "avdec_h264")
+    if not any(Gst.ElementFactory.find(name) is not None for name in h264_decoders):
+        missing.append("an H.264 decoder (v4l2h264dec or avdec_h264)")
     if missing:
         raise SamplerError("Required GStreamer sampler element(s) are missing: " + ", ".join(missing))
     return True
@@ -210,26 +214,72 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
         if structure.get_name() != "application/x-rtp" or structure.get_string("media") != "video":
             return
         encoding = structure.get_string("encoding-name")
+        is_h264 = str(encoding).upper() == "H264"
+        h264_decoder = "avdec_h264"
+        if Gst.ElementFactory.find("v4l2h264dec") is not None:
+            h264_decoder = "v4l2h264dec"
+
         try:
-            depay_name, parser_name, decoder_name = rtp_codec_elements(encoding)
+            depay_name, parser_name, decoder_name = rtp_codec_elements(
+                encoding, h264_decoder
+            )
         except SamplerError as error:
             logging.error("%s", error)
             return
 
-        names = (depay_name, parser_name, decoder_name, "videoconvert", "videorate", "capsfilter", "jpegenc", "appsink")
-        elements = [Gst.ElementFactory.make(name, f"sampler-{index}") for index, name in enumerate(names)]
+        names = [depay_name, parser_name]
+        if is_h264:
+            names.append("capsfilter")
+        names.append(decoder_name)
+        if is_h264:
+            names.append("capsfilter")
+        names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
+
+        elements = [
+            Gst.ElementFactory.make(name, f"sampler-{index}")
+            for index, name in enumerate(names)
+        ]
         if any(element is None for element in elements):
             logging.error("Unable to create GStreamer elements for RTSP codec %s", encoding)
             return
-        depay, parser, decoder, converter, rate, caps_filter, encoder, sink = elements
+
+        depay, parser = elements[:2]
+        index = 2
+        if is_h264:
+            parser_caps_filter = elements[index]
+            index += 1
+            parser_caps_filter.set_property(
+                "caps",
+                Gst.Caps.from_string(
+                    "video/x-h264,stream-format=byte-stream,alignment=au"
+                ),
+            )
+
+        decoder = elements[index]
+        index += 1
+        if is_h264:
+            decoder_caps_filter = elements[index]
+            index += 1
+            decoder_caps_filter.set_property(
+                "caps", Gst.Caps.from_string("video/x-raw,format=I420")
+            )
+            if decoder_name == "v4l2h264dec":
+                decoder.set_property("capture-io-mode", 2)
+                decoder.set_property("output-io-mode", 2)
+
+        converter, rate, caps_filter, encoder, sink = elements[index:]
         for element in elements:
             pipeline.add(element)
-        if not depay.link(parser) or not parser.link(decoder) or not decoder.link(converter):
-            logging.error("Unable to link the RTSP depayloader, parser, and decoder for %s", encoding)
-            return
-        if not converter.link(rate) or not rate.link(caps_filter) or not caps_filter.link(encoder) or not encoder.link(sink):
-            logging.error("Unable to link the RTSP decoded-frame output chain.")
-            return
+
+        for upstream, downstream in zip(elements, elements[1:]):
+            if not upstream.link(downstream):
+                logging.error(
+                    "Unable to link the RTSP %s sampler chain between %s and %s.",
+                    encoding,
+                    upstream.get_name(),
+                    downstream.get_name(),
+                )
+                return
 
         rate.set_property("drop-only", True)
         rate.set_property("max-rate", SAMPLE_RATE)
@@ -309,7 +359,7 @@ def run_sampler(rtsp_url=RTSP_URL, socket_path=SOCKET_PATH, status_path=STATUS_P
                             error, debug = message.parse_error()
                             raise SamplerError(f"RTSP sampler pipeline error: {error}; {debug or ''}")
                         raise SamplerError("The RTSP sampler stream ended.")
-                    if time.monotonic() - started_at > 15 and frame_buffer.latest() is None:
+                    if time.monotonic() - started_at > 15 and first_frame["at"] is None:
                         raise SamplerError("The RTSP stream did not produce a fresh decoded frame.")
                     if first_frame["at"] is not None and time.monotonic() - first_frame["at"] > 10:
                         raise SamplerError("The RTSP stream stopped producing frames.")
