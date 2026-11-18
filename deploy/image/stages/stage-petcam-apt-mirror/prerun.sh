@@ -1,11 +1,11 @@
 #!/bin/bash
 set -euo pipefail
 
-: "\${BASE_DIR:?pi-gen did not provide BASE_DIR}"
+: "${BASE_DIR:?pi-gen did not provide BASE_DIR}"
 
-bootstrap_script="\${BASE_DIR}/stage0/prerun.sh"
-apt_configure_script="\${BASE_DIR}/stage0/00-configure-apt/00-run.sh"
-raspbian_sources="\${BASE_DIR}/stage0/00-configure-apt/files/raspbian.sources"
+bootstrap_script="${BASE_DIR}/stage0/prerun.sh"
+apt_configure_script="${BASE_DIR}/stage0/00-configure-apt/00-run.sh"
+raspbian_sources="${BASE_DIR}/stage0/00-configure-apt/files/raspbian.sources"
 
 for required_file in "$bootstrap_script" "$apt_configure_script"; do
   if [[ ! -f "$required_file" ]]; then
@@ -41,8 +41,8 @@ if ! grep -Fq "80-petcam-network-retries" "$apt_configure_script"; then
   temporary_script="$(mktemp)"
   if ! awk '
     /^on_chroot <<-/ && !inserted {
-      print "install -d -m 0755 \\"\${ROOTFS_DIR}/etc/apt/apt.conf.d\\""
-      print "printf \\"Acquire::Retries \\\\"5\\\\";\\\\nAcquire::http::Timeout \\\\"30\\\\";\\\\nAcquire::https::Timeout \\\\"30\\\\";\\\\n\\" > \\"\${ROOTFS_DIR}/etc/apt/apt.conf.d/80-petcam-network-retries\\""
+      print "install -d -m 0755 \\"${ROOTFS_DIR}/etc/apt/apt.conf.d\\""
+      print "printf \\"Acquire::Retries \\\\"5\\\\";\\\\nAcquire::http::Timeout \\\\"30\\\\";\\\\nAcquire::https::Timeout \\\\"30\\\\";\\\\n\\" > \\"${ROOTFS_DIR}/etc/apt/apt.conf.d/80-petcam-network-retries\\""
       inserted = 1
     }
     { print }
