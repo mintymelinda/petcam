@@ -75,9 +75,7 @@ function initializeDashboard() {
     const c = inventory[+$("camera").value],
       m = $("mode").value;
     if (!c || !m) return;
-    const mode = JSON.parse(m),
-      override = confirmPerformanceOverride(c, mode);
-    if (exceedsPerformanceBudget(c, mode) && !override) return;
+    const mode = JSON.parse(m);
     $("apply").disabled = true;
     $("message").textContent = "Applying camera settings…";
     try {
@@ -92,7 +90,6 @@ function initializeDashboard() {
           device_path: c.device_path,
           camera: c.camera,
           mode,
-          allow_performance_override: override,
         }),
       });
       await refresh();
