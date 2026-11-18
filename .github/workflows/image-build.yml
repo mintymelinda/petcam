@@ -51,17 +51,14 @@ jobs:
           python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_image_build tests.deploy.test_image_release_workflow tests.deploy.test_imager_manifest
 
       - name: Validate Docker Compose configuration
-        if: matrix.architecture == 'armhf'
         run: docker compose -f deploy/image/compose.yaml config --quiet
 
       - name: Assemble PetCam runtime with Docker Compose
-        if: matrix.architecture == 'armhf'
         run: |
           mkdir -p deploy/image/dist
           docker compose -f deploy/image/compose.yaml run --build --rm assemble
 
       - name: Prepare pi-gen custom stage
-        if: matrix.architecture == 'armhf'
         run: |
           source deploy/lib/dependencies.sh
           collect_feature_packages deploy/features > deploy/image/stages/stage-petcam/01-petcam/01-packages
