@@ -30,6 +30,87 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertTrue((package_dir / "01-packages").is_file())
         self.assertLess("01-packages", "02-run-chroot.sh")
 
+
+    def test_pi_gen_apt_mirror_stage_pins_raspbian_and_adds_retries(self):
+        import os
+        import subprocess
+        import tempfile
+
+        stage_script = IMAGE / "stages/stage-petcam-apt-mirror/prerun.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            apt_dir = base / "stage0/00-configure-apt"
+            files_dir = apt_dir / "files"
+            files_dir.mkdir(parents=True)
+            bootstrap = base / "stage0/prerun.sh"
+            bootstrap.write_text(
+                'bootstrap trixie "${ROOTFS_DIR}" '
+                "http://raspbian.raspberrypi.com/raspbian/\n",
+                encoding="utf-8",
+            )
+            sources = files_dir / "raspbian.sources"
+            sources.write_text(
+                "URIs: http://raspbian.raspberrypi.com/raspbian/\n",
+                encoding="utf-8",
+            )
+            apt_run = apt_dir / "00-run.sh"
+            apt_run.write_text(
+                "#!/bin/bash -e\non_chroot <<- \\EOF\napt-get update\nEOF\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["BASE_DIR"] = str(base)
+            subprocess.run(["bash", str(stage_script)], env=env, check=True)
+            bootstrap_text = bootstrap.read_text(encoding="utf-8")
+            sources_text = sources.read_text(encoding="utf-8")
+            apt_text = apt_run.read_text(encoding="utf-8")
+            self.assertNotIn("raspbian.raspberrypi.com", bootstrap_text)
+            self.assertNotIn("raspbian.raspberrypi.com", sources_text)
+            self.assertIn("http://archive.raspbian.org/raspbian/", bootstrap_text)
+            self.assertIn("http://archive.raspbian.org/raspbian/", sources_text)
+            self.assertIn('Acquire::Retries "5";', apt_text)
+            self.assertIn('Acquire::http::Timeout "30";', apt_text)
+            self.assertEqual(apt_text.count("80-petcam-network-retries"), 1)
+
+            subprocess.run(["bash", str(stage_script)], env=env, check=True)
+            self.assertEqual(
+                apt_run.read_text(encoding="utf-8").count("80-petcam-network-retries"),
+                1,
+            )
+
+    def test_pi_gen_apt_mirror_stage_leaves_arm64_debian_sources_unchanged(self):
+        import os
+        import subprocess
+        import tempfile
+
+        stage_script = IMAGE / "stages/stage-petcam-apt-mirror/prerun.sh"
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            apt_dir = base / "stage0/00-configure-apt"
+            files_dir = apt_dir / "files"
+            files_dir.mkdir(parents=True)
+            bootstrap = base / "stage0/prerun.sh"
+            bootstrap.write_text(
+                'bootstrap trixie "${ROOTFS_DIR}" http://deb.debian.org/debian/\n',
+                encoding="utf-8",
+            )
+            sources = files_dir / "debian.sources"
+            sources.write_text(
+                "URIs: http://deb.debian.org/debian/\n",
+                encoding="utf-8",
+            )
+            apt_run = apt_dir / "00-run.sh"
+            apt_run.write_text(
+                "#!/bin/bash -e\non_chroot <<- \\EOF\napt-get update\nEOF\n",
+                encoding="utf-8",
+            )
+            env = os.environ.copy()
+            env["BASE_DIR"] = str(base)
+            subprocess.run(["bash", str(stage_script)], env=env, check=True)
+            self.assertIn("http://deb.debian.org/debian/", bootstrap.read_text(encoding="utf-8"))
+            self.assertIn("http://deb.debian.org/debian/", sources.read_text(encoding="utf-8"))
+            self.assertIn("80-petcam-network-retries", apt_run.read_text(encoding="utf-8"))
+
     def test_python_pip_manifest_is_explicitly_empty(self):
         manifest = (ROOT / "deploy/python/requirements.txt").read_text(encoding="utf-8")
         self.assertFalse(any(line.strip() and not line.lstrip().startswith("#") for line in manifest.splitlines()))
@@ -59,7 +140,8 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("password: ''", workflow)
         self.assertIn("disable-first-boot-user-rename: 0", workflow)
         self.assertIn("release: trixie", workflow)
-        self.assertIn("stage0 stage1 stage2 ./deploy/image/stages/stage-petcam", workflow)
+        self.assertIn("./deploy/image/stages/stage-petcam-apt-mirror stage0 stage1 stage2", workflow)
+        self.assertIn("chmod 0755 deploy/image/stages/stage-petcam-apt-mirror/prerun.sh", workflow)
         self.assertIn("01-petcam/02-run-chroot.sh", workflow)
         self.assertIn("petcam-${TAG}-armhf.img.xz", workflow)
         self.assertIn("petcam-${TAG}-arm64.img.xz", workflow)

@@ -37,6 +37,24 @@ The two builds do not share a pi-gen work-directory cache because the cached roo
 
 The image builds download APT packages directly from the configured Debian and Raspberry Pi OS repositories. They deliberately do not route package downloads through a self-hosted or ephemeral APT proxy: a proxy outage must not prevent a clean image build. The final `.xz` images use compression level 1 rather than the action's slower default level 6; image integrity is still checked. Artifact upload uses compression level 0 because recompressing already-compressed `.xz` files adds CPU time with negligible size reduction.
 
+## APT repository reliability
+
+The 32-bit ARMHF image uses the authoritative Raspbian archive at
+`http://archive.raspbian.org/raspbian/` for its base-system packages. pi-gen's
+default Raspbian endpoint redirects requests to third-party mirrors; a build can
+therefore fail when the selected mirror is temporarily unreachable even though
+other mirrors and the archive are available. A small pre-stage runs before
+pi-gen's `stage0` and changes only the Raspbian bootstrap and APT source URLs.
+The Raspberry Pi OS repository at `archive.raspberrypi.com` is left unchanged.
+
+The same pre-stage configures APT to retry failed downloads up to five times and
+uses 30-second HTTP/HTTPS timeouts before the first package-index update. The
+64-bit ARM64 image continues to use Debian's `deb.debian.org` sources; the
+pre-stage detects that layout and leaves its repository URLs untouched while
+applying the same retry settings. Both architecture builds are covered by
+workflow tests so the ARMHF-specific source override cannot accidentally break
+the ARM64 target.
+
 ## Upstream build updates
 
 The workflow checks out the latest `main` branch of `usimd/pi-gen-action` for every build, then installs its locked Node dependencies and packages its TypeScript source into the `dist/index.js` entrypoint required by GitHub Actions. This is necessary because the upstream source branch does not commit the generated `dist` bundle. It means we follow current action source without pinning a commit or release, while still producing the executable artifact the Actions runner expects.

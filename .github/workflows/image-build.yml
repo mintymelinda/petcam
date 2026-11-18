@@ -41,6 +41,7 @@ jobs:
           for script in \
             deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh \
             deploy/image/assemble.sh \
+            deploy/image/stages/stage-petcam-apt-mirror/prerun.sh \
             deploy/image/stages/stage-petcam/prerun.sh \
             deploy/image/stages/stage-petcam/01-petcam/00-run.sh \
             deploy/image/stages/stage-petcam/01-petcam/02-run-chroot.sh \
@@ -66,6 +67,7 @@ jobs:
           install -m 0644 deploy/image/dist/petcam-runtime.tar.gz deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
           test -s deploy/image/stages/stage-petcam/01-petcam/01-packages
           test -s deploy/image/stages/stage-petcam/01-petcam/files/petcam-runtime.tar.gz
+          chmod 0755 deploy/image/stages/stage-petcam-apt-mirror/prerun.sh
 
       # The upstream action's main branch contains TypeScript source; GitHub Actions
       # requires its dist/index.js entrypoint, so build that artifact from the live source.
@@ -99,7 +101,7 @@ jobs:
           hostname: petcam
           release: trixie
           pi-gen-version: ${{ matrix.pi-gen-version }}
-          stage-list: stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
+          stage-list: ./deploy/image/stages/stage-petcam-apt-mirror stage0 stage1 stage2 ./deploy/image/stages/stage-petcam
           export-last-stage-only: true
           compression: xz
           compression-level: 1
