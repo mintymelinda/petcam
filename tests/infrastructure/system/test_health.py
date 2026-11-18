@@ -117,12 +117,14 @@ class HealthMonitorTests(unittest.TestCase):
 
         self.rtsp_ready_patch.stop()
         try:
-            with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}), \\
-                    mock.patch.object(MODULE, "native_h264_capture_active", return_value=True), \\
-                    mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file), \\
-                    mock.patch.object(MODULE, "probe_stream") as probe, \\
-                    mock.patch.object(MODULE, "service_snapshot", side_effect=lambda _name: self.active), \\
-                    mock.patch.object(MODULE, "restart_service") as restart:
+            with (
+                mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "H264"}),
+                mock.patch.object(MODULE, "native_h264_capture_active", return_value=True),
+                mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file),
+                mock.patch.object(MODULE, "probe_stream") as probe,
+                mock.patch.object(MODULE, "service_snapshot", side_effect=lambda _name: self.active),
+                mock.patch.object(MODULE, "restart_service") as restart,
+            ):
                 report = MODULE.check_health(now=1000)
             self.assertEqual(report["state"], "healthy")
             self.assertTrue(report["rtsp_output_ready"])
