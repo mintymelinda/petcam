@@ -76,9 +76,9 @@ class NetworkDiagnosticsTests(unittest.TestCase):
                 mock.patch.object(MODULE, "_native_h264_capture", return_value=(True, True)), \
                 mock.patch.object(MODULE, "command_output", side_effect=[
                     "[]", "[]",
-                    "State Recv-Q Send-Q Local Address:Port Peer Address:Port\\n"
-                    "LISTEN 0 128 0.0.0.0:8554 0.0.0.0:*\\n"
-                    "LISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\\n",
+                    "State Recv-Q Send-Q Local Address:Port Peer Address:Port\n"
+                    "LISTEN 0 128 0.0.0.0:8554 0.0.0.0:*\n"
+                    "LISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\n",
                 ]), \
                 mock.patch.object(MODULE, "probe_http", return_value={"reachable": True, "status": 200}) as probe:
             report = MODULE.collect_diagnostics()
