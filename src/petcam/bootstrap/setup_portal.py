@@ -22,6 +22,7 @@ MANAGER_HOST = "127.0.0.1"
 MANAGER_PORT = 8444
 SESSION_TTL = 8 * 60 * 60
 MAX_BODY = 16 * 1024 * 1024
+PROXY_TIMEOUT_SECONDS = 60
 _sessions: dict[str, dict] = {}
 _sessions_lock = threading.RLock()
 _login_attempts: dict[str, list[float]] = {}
@@ -203,7 +204,7 @@ def _proxy(handler):
     headers["Connection"] = "close"
     try:
         connection = http.client.HTTPSConnection(
-            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=15
+            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=PROXY_TIMEOUT_SECONDS
         )
         connection.request(handler.command, handler.path, body=body, headers=headers)
         response = connection.getresponse()
