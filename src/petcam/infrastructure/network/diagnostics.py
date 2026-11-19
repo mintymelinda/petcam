@@ -164,17 +164,18 @@ def _read_health() -> dict[str, Any]:
         return {}
 
 
-def _native_h264_capture(config: dict[str, Any]) -> bool:
-    """Return whether the active capture process is using native H.264."""
+def _native_h264_capture(config: dict[str, Any]) -> tuple[bool, bool]:
+    """Return whether H.264 is selected and whether its capture process is alive."""
     try:
         marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
         pid = int(marker.get("pid", 0))
         if marker.get("native_h264") is True and pid > 1:
             os.kill(pid, 0)
-            return True
+            return True, True
     except (OSError, ValueError, TypeError, ProcessLookupError):
         pass
-    return str(config.get("FORMAT", "")).upper() == "H264"
+    configured = str(config.get("FORMAT", "")).upper() == "H264"
+    return configured, False
 
 
 def collect_diagnostics() -> dict[str, Any]:
@@ -189,7 +190,7 @@ def collect_diagnostics() -> dict[str, Any]:
         config_valid = False
         config_error = str(error)
 
-    native_h264 = _native_h264_capture(config)
+    native_h264, capture_active = _native_h264_capture(config)
     hostname = socket.gethostname()
     mdns_name = hostname if hostname.endswith(".local") else f"{hostname}.local"
     mdns_addresses = _mdns_resolution(mdns_name)
@@ -208,15 +209,6 @@ def collect_diagnostics() -> dict[str, Any]:
     }
 
     if native_h264:
-        capture_active = False
-        try:
-            marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
-            pid = int(marker.get("pid", 0))
-            if marker.get("native_h264") is True and pid > 1:
-                os.kill(pid, 0)
-                capture_active = True
-        except (OSError, ValueError, TypeError, ProcessLookupError):
-            pass
         backend_http = {"reachable": capture_active, "status": None, "not_required": True}
         backend_stream = {"reachable": capture_active, "status": None, "not_required": True}
     else:
