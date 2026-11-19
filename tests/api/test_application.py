@@ -17,7 +17,9 @@ PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
 
-    def test_camera_selection_restart_restarts_capture_for_coordinated_rtsp_rebuild(self):
+    def test_camera_selection_restart_restarts_capture_for_coordinated_rtsp_rebuild(
+        self,
+    ):
         with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
             MODULE.restart_camera_capture_service()
         restart.assert_called_once_with("camera-capture")
