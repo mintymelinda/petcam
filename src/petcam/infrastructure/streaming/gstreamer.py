@@ -251,28 +251,17 @@ def _write_frame_status(state, codec="H264", path=FRAME_STATUS_PATH, error=None)
     os.replace(temporary, target)
 
 
+def camera_status_signature(camera_status):
+    """Return the fields that require the native capture pipeline to be rebuilt."""
+    return tuple(
+        camera_status.get(key)
+        for key in ("pid", "backend", "device", "camera", "tcp_port", "resolution", "fps", "native_h264")
+    )
+
+
 def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, source):
-    """Run the persistent H.264 tee and RTSP endpoint in one process."""
+    """Keep RTSP mounted while independently replacing the persistent camera pipeline."""
     from petcam.infrastructure.streaming import sampler
-
-    decoder_name = sampler.select_h264_decoder(Gst)
-    required = ("valve", "videoconvert", "videorate", "jpegenc", "appsink", decoder_name)
-    missing = [name for name in required if Gst.ElementFactory.find(name) is None]
-    if missing:
-        raise GStreamerError("Required H.264 frame-branch element(s) are missing: " + ", ".join(missing))
-
-    pipeline = Gst.parse_launch(build_native_capture_launch(camera_status, decoder_name))
-    if pipeline is None:
-        raise GStreamerError("GStreamer could not create the persistent H.264 capture pipeline.")
-    frame_valve = pipeline.get_by_name("frame_valve")
-    frame_decoder = pipeline.get_by_name("frame_decoder")
-    frame_sink = pipeline.get_by_name("frame_sink")
-    rtp_pay = pipeline.get_by_name("rtp_pay")
-    if frame_valve is None or frame_decoder is None or frame_sink is None or rtp_pay is None:
-        raise GStreamerError("The persistent H.264 pipeline is missing a required branch element.")
-    if decoder_name == "v4l2h264dec":
-        frame_decoder.set_property("capture-io-mode", 2)
-        frame_decoder.set_property("output-io-mode", 2)
 
     frame_buffer = sampler.LatestFrameBuffer()
     frame_server = sampler.FrameServer(sampler.SOCKET_PATH, frame_buffer)
@@ -280,8 +269,10 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
         target=frame_server.serve_forever, name="petcam-frame-socket", daemon=True
     )
     frame_thread.start()
+
     frame_state = {"enabled": frame_consumers_enabled(), "published": False}
-    current_state = {"value": "starting", "fps": None}
+    current_state = {"value": "starting", "fps": None, "source": source}
+    active = {"pipeline": None, "bus": None, "signature": None}
     frame_times = []
 
     def sample_ready(sink):
@@ -301,38 +292,6 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
                 buffer.unmap(mapped)
         return Gst.FlowReturn.OK
 
-    frame_sink.connect("new-sample", sample_ready)
-    frame_valve.set_property("drop", not frame_state["enabled"])
-    _write_frame_status("decoding" if frame_state["enabled"] else "disabled")
-
-    def reconcile_frame_branch():
-        enabled = frame_consumers_enabled()
-        if enabled != frame_state["enabled"]:
-            frame_state["enabled"] = enabled
-            frame_state["published"] = False
-            frame_buffer.clear()
-            frame_valve.set_property("drop", not enabled)
-            _write_frame_status("decoding" if enabled else "disabled")
-        return True
-
-    current_state["value"] = "ready"
-    factory = GstRtspServer.RTSPMediaFactory()
-    factory.set_shared(True)
-    factory.set_launch(build_native_rtsp_launch())
-
-    def media_configured(_factory, media):
-        media.connect(
-            "prepared",
-            lambda _media: _set_status_state(current_state, "publishing", source),
-        )
-        media.connect(
-            "unprepared",
-            lambda _media: _set_status_state(current_state, "ready", source),
-        )
-
-    factory.connect("media-configure", media_configured)
-    mounts.add_factory("/petcam", factory)
-
     def count_frame(_pad, _info):
         now = time.monotonic()
         frame_times.append(now)
@@ -344,50 +303,173 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
             elapsed = frame_times[-1] - frame_times[0]
             if elapsed > 0:
                 current_state["fps"] = (len(frame_times) - 1) / elapsed
+        if current_state["value"] != "publishing":
+            _set_status_state(current_state, "publishing", current_state["source"])
         return Gst.PadProbeReturn.OK
 
-    sink_pad = rtp_pay.get_static_pad("sink")
-    if sink_pad is not None:
-        sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
+    def stop_capture_pipeline():
+        pipeline = active["pipeline"]
+        if pipeline is not None:
+            pipeline.set_state(Gst.State.NULL)
+        active.update(pipeline=None, bus=None, signature=None)
+        frame_buffer.clear()
+        frame_state["published"] = False
+        frame_times.clear()
+        current_state["fps"] = None
+        current_state["last_frame_at"] = None
+        _set_status_state(current_state, "ready", current_state["source"])
+
+    def start_capture_pipeline(status):
+        decoder_name = sampler.select_h264_decoder(Gst)
+        required = ("valve", "videoconvert", "videorate", "jpegenc", "appsink", decoder_name)
+        missing = [name for name in required if Gst.ElementFactory.find(name) is None]
+        if missing:
+            raise GStreamerError(
+                "Required H.264 frame-branch element(s) are missing: " + ", ".join(missing)
+            )
+
+        pipeline = Gst.parse_launch(build_native_capture_launch(status, decoder_name))
+        if pipeline is None:
+            raise GStreamerError("GStreamer could not create the persistent H.264 capture pipeline.")
+        frame_valve = pipeline.get_by_name("frame_valve")
+        frame_decoder = pipeline.get_by_name("frame_decoder")
+        frame_sink = pipeline.get_by_name("frame_sink")
+        rtp_pay = pipeline.get_by_name("rtp_pay")
+        if frame_valve is None or frame_decoder is None or frame_sink is None or rtp_pay is None:
+            pipeline.set_state(Gst.State.NULL)
+            raise GStreamerError("The persistent H.264 pipeline is missing a required branch element.")
+        if decoder_name == "v4l2h264dec":
+            frame_decoder.set_property("capture-io-mode", 2)
+            frame_decoder.set_property("output-io-mode", 2)
+
+        frame_sink.connect("new-sample", sample_ready)
+        frame_valve.set_property("drop", not frame_state["enabled"])
+        sink_pad = rtp_pay.get_static_pad("sink")
+        if sink_pad is not None:
+            sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
+
+        result = pipeline.set_state(Gst.State.PLAYING)
+        if result == Gst.StateChangeReturn.FAILURE:
+            pipeline.set_state(Gst.State.NULL)
+            raise GStreamerError("GStreamer could not start the persistent H.264 capture pipeline.")
+        state_result, _current, _pending = pipeline.get_state(5 * Gst.SECOND)
+        if state_result == Gst.StateChangeReturn.FAILURE:
+            pipeline.set_state(Gst.State.NULL)
+            raise GStreamerError("The persistent H.264 capture pipeline failed to enter PLAYING.")
+
+        active.update(
+            pipeline=pipeline,
+            bus=pipeline.get_bus(),
+            signature=camera_status_signature(status),
+        )
+        current_state["source"] = (
+            "native_h264_csi" if status.get("backend") == "csi" else "native_h264"
+        )
+        _write_frame_status("decoding" if frame_state["enabled"] else "disabled")
+        _set_status_state(current_state, "ready", current_state["source"])
+        logging.info(
+            "Persistent H.264 capture pipeline started at %s %s FPS with %s decoder",
+            status.get("resolution"), status.get("fps"), decoder_name,
+        )
+
+    def reconcile_camera_source():
+        latest = load_camera_status()
+        if not latest:
+            if active["pipeline"] is not None:
+                logging.info("Camera capture marker disappeared; holding RTSP server for camera restart")
+                stop_capture_pipeline()
+            return True
+        if latest.get("native_h264") is not True:
+            if active["pipeline"] is not None:
+                stop_capture_pipeline()
+            logging.error("Camera source changed away from native H.264; RTSP server requires mode restart")
+            return True
+
+        signature = camera_status_signature(latest)
+        if signature != active["signature"]:
+            if active["pipeline"] is not None:
+                logging.info(
+                    "Camera mode changed to %s at %s FPS; rebuilding capture while keeping RTSP mounted",
+                    latest.get("resolution"), latest.get("fps"),
+                )
+                stop_capture_pipeline()
+            try:
+                start_capture_pipeline(latest)
+            except Exception:
+                logging.exception("Unable to start the updated native H.264 camera pipeline")
+                _write_frame_status("error", error="Updated H.264 capture pipeline failed to start")
+        return True
+
+    def reconcile_frame_branch():
+        enabled = frame_consumers_enabled()
+        if enabled != frame_state["enabled"]:
+            frame_state["enabled"] = enabled
+            frame_state["published"] = False
+            frame_buffer.clear()
+            pipeline = active["pipeline"]
+            valve = pipeline.get_by_name("frame_valve") if pipeline is not None else None
+            if valve is not None:
+                valve.set_property("drop", not enabled)
+            _write_frame_status("decoding" if enabled else "disabled")
+        return True
+
+    factory = GstRtspServer.RTSPMediaFactory()
+    factory.set_shared(True)
+    factory.set_launch(build_native_rtsp_launch())
+
+    def media_configured(_factory, media):
+        media.connect(
+            "prepared",
+            lambda _media: (
+                _set_status_state(current_state, "publishing", current_state["source"])
+                if active["pipeline"] is not None else None
+            ),
+        )
+
+    factory.connect("media-configure", media_configured)
+    mounts.add_factory("/petcam", factory)
 
     loop = GLib.MainLoop()
-    bus = pipeline.get_bus()
 
-    def check_bus():
+    def check_capture_bus():
+        bus = active["bus"]
+        if bus is None:
+            return True
         message = bus.timed_pop_filtered(
             0, Gst.MessageType.ERROR | Gst.MessageType.EOS
         )
-        if message is None:
-            return True
-        if message.type == Gst.MessageType.ERROR:
-            error, debug = message.parse_error()
-            logging.error("Persistent H.264 capture pipeline failed: %s; %s", error, debug or "")
-        else:
-            logging.error("Persistent H.264 capture pipeline reached EOS.")
-        loop.quit()
-        return False
+        if message is not None:
+            if message.type == Gst.MessageType.ERROR:
+                error, debug = message.parse_error()
+                logging.error("Persistent H.264 capture pipeline failed: %s; %s", error, debug or "")
+            else:
+                logging.error("Persistent H.264 capture pipeline reached EOS.")
+            stop_capture_pipeline()
+        return True
+
+    def heartbeat():
+        last_frame_at = current_state.get("last_frame_at")
+        if last_frame_at is not None and time.monotonic() - last_frame_at > 3.0:
+            current_state["fps"] = None
+            if current_state["value"] == "publishing":
+                _set_status_state(current_state, "ready", current_state["source"])
+        _write_heartbeat(current_state, current_state["source"])
+        return True
 
     def stop(_signum, _frame):
         loop.quit()
 
     signal.signal(signal.SIGTERM, stop)
     signal.signal(signal.SIGINT, stop)
-    GLib.timeout_add_seconds(1, check_bus)
+    GLib.timeout_add_seconds(1, check_capture_bus)
+    GLib.timeout_add_seconds(1, reconcile_camera_source)
     GLib.timeout_add_seconds(2, reconcile_frame_branch)
-    GLib.timeout_add_seconds(2, lambda: _write_heartbeat(current_state, source))
+    GLib.timeout_add_seconds(2, heartbeat)
     try:
-        result = pipeline.set_state(Gst.State.PLAYING)
-        if result == Gst.StateChangeReturn.FAILURE:
-            raise GStreamerError("GStreamer could not start the persistent H.264 capture pipeline.")
-        state_result, _current, _pending = pipeline.get_state(5 * Gst.SECOND)
-        if state_result == Gst.StateChangeReturn.FAILURE:
-            raise GStreamerError("The persistent H.264 capture pipeline failed to enter PLAYING.")
-        _set_status_state(current_state, "ready", source)
-        logging.info("Persistent H.264 capture pipeline started with %s decoder", decoder_name)
+        start_capture_pipeline(camera_status)
         loop.run()
     finally:
-        pipeline.set_state(Gst.State.NULL)
-        frame_buffer.clear()
+        stop_capture_pipeline()
         _write_frame_status("stopped")
         frame_server.shutdown()
         frame_server.server_close()
