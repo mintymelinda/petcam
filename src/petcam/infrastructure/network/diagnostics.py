@@ -198,12 +198,23 @@ def collect_diagnostics() -> dict[str, Any]:
     addresses = _addresses_from_ip(command_output(["ip", "-j", "address", "show"]))
     routes = _parse_default_routes(command_output(["ip", "-j", "route", "show", "default"]))
 
-    expected_ports = (MANAGER_PORT, RTSP_PORT) if native_h264 else (MANAGER_PORT, RTSP_PORT, backend_port)
-    raw_listeners = _listener_report(command_output(["ss", "-ltn"]), expected_ports)
+    all_ports = (MANAGER_PORT, RTSP_PORT, backend_port)
+    raw_listeners = _listener_report(command_output(["ss", "-ltn"]), all_ports)
+    required_ports = (str(MANAGER_PORT), str(RTSP_PORT))
+    if not native_h264:
+        required_ports += (str(backend_port),)
     listeners = {
-        "healthy": all(bool(entries) for entries in raw_listeners.values()),
+        "healthy": all(bool(raw_listeners[port]) for port in required_ports),
         "ports": {
-            port: {"listening": bool(entries), "bindings": entries}
+            port: {
+                "listening": bool(entries),
+                "bindings": entries,
+                **(
+                    {"required": False, "not_required": True}
+                    if native_h264 and port == str(backend_port)
+                    else {"required": True}
+                ),
+            }
             for port, entries in raw_listeners.items()
         },
     }
