@@ -183,7 +183,7 @@ class GStreamerOutputTests(unittest.TestCase):
 
         clients = [FakeClient(fail=True), FakeClient()]
         original_clients = tuple(clients)
-        with self.assertLogs(MODULE.logging, level="ERROR"):
+        with self.assertLogs(level="ERROR"):
             closed = MODULE.close_rtsp_clients(clients, "test")
         self.assertEqual(closed, 2)
         self.assertEqual([client.close_calls for client in original_clients], [1, 1])
