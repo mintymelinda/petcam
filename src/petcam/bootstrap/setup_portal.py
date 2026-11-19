@@ -251,6 +251,13 @@ class Handler(BaseHTTPRequestHandler):
                 _json(self, 200, {"csrf_token": session["csrf"]})
             return
         if web_auth.is_configured() and web_ui_enabled():
+            if path == "/" and not manager_ready():
+                self.send_response(302)
+                self.send_header("Location", "/setup/")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             _proxy(self)
         else:
             self._serve_page()
