@@ -9,12 +9,12 @@ def dependencies(apply_config):
         "mode_supports_fps": lambda _mode, _fps: True,
         "config_path": "/tmp/petcam.conf",
         "parse_config": lambda _path: {"SOURCE": "usb", "FORMAT": "MJPEG"},
-        "restart_g_streamer_service": lambda: None,
+        "restart_camera_capture_service": lambda: None,
         "apply_config": apply_config,
     }
 
 
-def test_save_selection_applies_camera_and_restarts_rtsp(monkeypatch):
+def test_save_selection_restarts_camera_capture(monkeypatch):
     values = {
         "SOURCE": "usb", "RESOLUTION": "1280x720",
         "FPS": "30", "FORMAT": "MJPEG",
@@ -23,7 +23,7 @@ def test_save_selection_applies_camera_and_restarts_rtsp(monkeypatch):
     saved = []
     restarted = []
     deps = dependencies(lambda config: saved.append(config) or config)
-    deps["restart_g_streamer_service"] = lambda: restarted.append(True)
+    deps["restart_camera_capture_service"] = lambda: restarted.append(True)
 
     result = application.save_selection({}, **deps)
 
@@ -32,7 +32,7 @@ def test_save_selection_applies_camera_and_restarts_rtsp(monkeypatch):
     assert restarted == [True]
 
 
-def test_save_selection_rolls_back_camera_when_rtsp_restart_fails(monkeypatch):
+def test_save_selection_rolls_back_camera_when_capture_restart_fails(monkeypatch):
     values = {
         "SOURCE": "usb", "RESOLUTION": "1280x720",
         "FPS": "30", "FORMAT": "MJPEG",
@@ -53,7 +53,7 @@ def test_save_selection_rolls_back_camera_when_rtsp_restart_fails(monkeypatch):
 
     deps = dependencies(apply)
     deps["parse_config"] = lambda _path: previous
-    deps["restart_g_streamer_service"] = restart
+    deps["restart_camera_capture_service"] = restart
 
     with pytest.raises(RuntimeError, match="RTSP restart failed"):
         application.save_selection({}, **deps)
