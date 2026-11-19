@@ -163,3 +163,30 @@ class SupervisorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_native_h264_uses_integrated_frame_branch_instead_of_rtsp_sampler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / "motion").mkdir()
+            (state / "timelapse").mkdir()
+            (state / "motion" / "config.json").write_text('{"enabled": true}', encoding="utf-8")
+            (state / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            (state / "camera-status.json").write_text(
+                json.dumps({"native_h264": True}), encoding="utf-8",
+            )
+            with mock.patch.object(supervisor, "STATE", state):
+                self.assertFalse(supervisor.sampler_needed())
+
+    def test_mjpeg_frame_consumers_still_use_rtsp_sampler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / "motion").mkdir()
+            (state / "timelapse").mkdir()
+            (state / "motion" / "config.json").write_text('{"enabled": true}', encoding="utf-8")
+            (state / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            (state / "camera-status.json").write_text(
+                json.dumps({"native_h264": False}), encoding="utf-8",
+            )
+            with mock.patch.object(supervisor, "STATE", state):
+                self.assertTrue(supervisor.sampler_needed())

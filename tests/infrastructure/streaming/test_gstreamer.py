@@ -137,3 +137,59 @@ class GStreamerOutputTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_native_h264_capture_pipeline_tees_compressed_video_before_decode(self):
+        pipeline = MODULE.build_native_capture_launch({
+            "native_h264": True,
+            "device": "/dev/video0",
+            "resolution": "1280x720",
+            "fps": "30",
+        })
+        self.assertIn("tee name=source_tee", pipeline)
+        self.assertIn("rtph264pay name=rtp_pay", pipeline)
+        self.assertIn("valve name=frame_valve drop=true", pipeline)
+        self.assertIn("videorate drop-only=true max-rate=1", pipeline)
+        self.assertIn("appsink name=frame_sink", pipeline)
+        self.assertLess(pipeline.index("tee name=source_tee"), pipeline.index("avdec_h264"))
+        for forbidden in ("rtspsrc", "x264enc", "avenc_h264", "ffmpeg"):
+            self.assertNotIn(forbidden, pipeline)
+
+    def test_native_h264_rtsp_factory_reads_local_rtp_without_owning_camera(self):
+        pipeline = MODULE.build_native_rtsp_launch()
+        self.assertIn("udpsrc port=5004", pipeline)
+        self.assertIn("rtph264depay", pipeline)
+        self.assertIn("rtph264pay name=pay0", pipeline)
+        for forbidden in ("v4l2src", "tcpclientsrc", "avdec_h264"):
+            self.assertNotIn(forbidden, pipeline)
+
+    def test_native_h264_frame_branch_validates_decoder_and_csi_source(self):
+        pipeline = MODULE.build_native_capture_launch({
+            "native_h264": True,
+            "backend": "csi",
+            "tcp_port": 8556,
+            "resolution": "1920x1080",
+            "fps": 30,
+        }, "v4l2h264dec")
+        self.assertIn("tcpclientsrc host=127.0.0.1 port=8556", pipeline)
+        self.assertIn("valve name=frame_valve", pipeline)
+        self.assertIn("v4l2h264dec", pipeline)
+
+    def test_native_h264_frame_branch_rejects_invalid_decoder(self):
+        with self.assertRaisesRegex(MODULE.GStreamerError, "Unsupported H.264 decoder"):
+            MODULE.build_native_capture_launch({
+                "device": "/dev/video0",
+                "resolution": "1280x720",
+                "fps": "30",
+            }, "bad-decoder")
+
+    def test_frame_consumers_are_detected_from_feature_configuration(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "motion").mkdir()
+            (root / "timelapse").mkdir()
+            (root / "motion" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            (root / "timelapse" / "config.json").write_text('{"enabled": true}', encoding="utf-8")
+            self.assertTrue(MODULE.frame_consumers_enabled(root))
+            (root / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            self.assertFalse(MODULE.frame_consumers_enabled(root))

@@ -97,7 +97,13 @@ def gstreamer_ready() -> bool:
 
 
 def sampler_needed() -> bool:
-    """Run the decoder only while a feature that consumes sampled frames is enabled."""
+    """Run the RTSP sampler only for frame consumers on non-native-H.264 sources."""
+    try:
+        camera = json.loads((STATE / "camera-status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        camera = {}
+    if isinstance(camera, dict) and camera.get("native_h264") is True:
+        return False
     return (
         read_enabled(STATE / "motion" / "config.json")
         or read_enabled(STATE / "timelapse" / "config.json")
