@@ -19,7 +19,6 @@ RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 FRAME_STATUS_PATH = Path("/run/petcam/rtsp-sampler-status.json")
 STATE_PATH = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
-NATIVE_RTP_PORT = 5004
 
 
 class GStreamerError(ValueError):
@@ -137,8 +136,7 @@ def check_gstreamer_runtime():
     required = (
         "v4l2src", "tcpclientsrc", "h264parse", "rtph264pay", "souphttpsrc",
         "multipartdemux", "jpegparse", "rtpjpegpay", "tee", "queue", "valve",
-        "videoconvert", "videorate", "jpegenc", "appsink", "udpsrc", "udpsink",
-        "rtpjitterbuffer", "rtph264depay",
+        "videoconvert", "videorate", "jpegenc", "appsink", "appsrc",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:
@@ -180,8 +178,8 @@ def frame_consumers_enabled(state_path=STATE_PATH):
     return False
 
 
-def build_native_capture_launch(camera_status, decoder_name="avdec_h264", rtp_port=NATIVE_RTP_PORT):
-    """Build one persistent H.264 source with independent RTSP and sampled-frame branches."""
+def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
+    """Build one persistent H.264 source with direct RTSP and sampled-frame branches."""
     if decoder_name not in {"v4l2h264dec", "avdec_h264"}:
         raise GStreamerError(f"Unsupported H.264 decoder: {decoder_name!r}")
     resolution = camera_status.get("resolution", "")
@@ -190,8 +188,6 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264", rtp_po
         raise GStreamerError("Native H.264 resolution is invalid.")
     if not re.fullmatch(r"[1-9][0-9]{0,2}", str(fps)):
         raise GStreamerError("Native H.264 frame rate is invalid.")
-    if not isinstance(rtp_port, int) or not 1 <= rtp_port <= 65535:
-        raise GStreamerError("Native H.264 RTP bridge port is invalid.")
 
     if camera_status.get("backend") == "csi":
         port = camera_status.get("tcp_port", 8556)
@@ -209,13 +205,14 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264", rtp_po
         )
 
     return (
-        f"{source} ! h264parse config-interval=-1 ! tee name=source_tee "
+        f"{source} ! h264parse config-interval=-1 ! "
+        "video/x-h264,stream-format=byte-stream,alignment=au ! tee name=source_tee "
         "source_tee. ! queue max-size-buffers=60 leaky=downstream ! "
-        "h264parse config-interval=-1 ! rtph264pay name=rtp_pay pt=96 config-interval=1 ! "
-        f"udpsink host=127.0.0.1 port={rtp_port} sync=false async=false "
+        "appsink name=rtsp_sink emit-signals=true max-buffers=2 drop=true "
+        "sync=false wait-on-eos=false "
         "source_tee. ! queue max-size-buffers=4 leaky=downstream ! "
-        "h264parse ! video/x-h264,stream-format=byte-stream,alignment=au ! "
-        "valve name=frame_valve drop=true ! "
+        "valve name=frame_valve drop=true ! h264parse ! "
+        "video/x-h264,stream-format=byte-stream,alignment=au ! "
         f"{decoder_name} name=frame_decoder ! videoconvert ! videorate drop-only=true max-rate=1 ! "
         "video/x-raw,framerate=1/1 ! jpegenc quality=85 ! "
         "appsink name=frame_sink emit-signals=true max-buffers=1 drop=true "
@@ -223,15 +220,12 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264", rtp_po
     )
 
 
-def build_native_rtsp_launch(rtp_port=NATIVE_RTP_PORT):
-    """Expose the persistent capture pipeline's local RTP feed through RTSP."""
-    if not isinstance(rtp_port, int) or not 1 <= rtp_port <= 65535:
-        raise GStreamerError("Native H.264 RTP bridge port is invalid.")
+def build_native_rtsp_launch():
+    """Accept encoded access units directly from the persistent capture pipeline."""
     return (
-        f'( udpsrc port={rtp_port} buffer-size=1048576 '
-        'caps="application/x-rtp,media=(string)video,clock-rate=(int)90000,'
-        'encoding-name=(string)H264,payload=(int)96" ! '
-        "rtpjitterbuffer latency=0 ! rtph264depay ! "
+        "( appsrc name=rtsp_source is-live=true format=time do-timestamp=true min-latency=0 "
+        "block=false emit-signals=false max-bytes=1048576 "
+        "caps=video/x-h264,stream-format=byte-stream,alignment=au ! "
         "h264parse config-interval=-1 ! "
         "rtph264pay name=pay0 pt=96 config-interval=1 )"
     )
@@ -320,7 +314,21 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     active = {"pipeline": None, "bus": None, "signature": None}
     camera_unavailable = {"value": False}
     rtsp_clients = []
+    rtsp_media = {"appsrc": None, "prepared": False}
     frame_times = []
+
+    def rtsp_sample_ready(sink):
+        sample = sink.emit("pull-sample")
+        if sample is None:
+            return Gst.FlowReturn.ERROR
+        appsrc = rtsp_media["appsrc"]
+        if appsrc is not None and rtsp_media["prepared"]:
+            # Keep the RTSP appsrc bounded if a slow client cannot consume in real time.
+            if appsrc.get_property("current-level-bytes") < 1048576:
+                result = appsrc.emit("push-sample", sample)
+                if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
+                    logging.debug("Dropping H.264 access unit after RTSP appsrc returned %s", result)
+        return Gst.FlowReturn.OK
 
     def client_connected(_server, client):
         track_rtsp_client(rtsp_clients, client)
@@ -386,8 +394,8 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         frame_valve = pipeline.get_by_name("frame_valve")
         frame_decoder = pipeline.get_by_name("frame_decoder")
         frame_sink = pipeline.get_by_name("frame_sink")
-        rtp_pay = pipeline.get_by_name("rtp_pay")
-        if frame_valve is None or frame_decoder is None or frame_sink is None or rtp_pay is None:
+        rtsp_sink = pipeline.get_by_name("rtsp_sink")
+        if frame_valve is None or frame_decoder is None or frame_sink is None or rtsp_sink is None:
             pipeline.set_state(Gst.State.NULL)
             raise GStreamerError("The persistent H.264 pipeline is missing a required branch element.")
         if decoder_name == "v4l2h264dec":
@@ -395,8 +403,9 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             frame_decoder.set_property("output-io-mode", 2)
 
         frame_sink.connect("new-sample", sample_ready)
+        rtsp_sink.connect("new-sample", rtsp_sample_ready)
         frame_valve.set_property("drop", not frame_state["enabled"])
-        sink_pad = rtp_pay.get_static_pad("sink")
+        sink_pad = rtsp_sink.get_static_pad("sink")
         if sink_pad is not None:
             sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
 
@@ -480,13 +489,25 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     factory.set_launch(build_native_rtsp_launch())
 
     def media_configured(_factory, media):
-        media.connect(
-            "prepared",
-            lambda _media: (
-                _set_status_state(current_state, "publishing", current_state["source"])
-                if active["pipeline"] is not None else None
-            ),
-        )
+        element = media.get_element()
+        appsrc = element.get_by_name("rtsp_source") if element is not None else None
+        if appsrc is None:
+            logging.error("Native RTSP media pipeline is missing its appsrc bridge")
+            return
+        rtsp_media.update(appsrc=appsrc, prepared=False)
+
+        def media_prepared(_media):
+            if rtsp_media["appsrc"] is appsrc:
+                rtsp_media["prepared"] = True
+                if active["pipeline"] is not None:
+                    _set_status_state(current_state, "publishing", current_state["source"])
+
+        def media_unprepared(_media):
+            if rtsp_media["appsrc"] is appsrc:
+                rtsp_media.update(appsrc=None, prepared=False)
+
+        media.connect("prepared", media_prepared)
+        media.connect("unprepared", media_unprepared)
 
     factory.connect("media-configure", media_configured)
     mounts.add_factory("/petcam", factory)
