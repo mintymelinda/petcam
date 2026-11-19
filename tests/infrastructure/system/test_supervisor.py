@@ -61,6 +61,68 @@ class SupervisorTests(unittest.TestCase):
         self.assertFalse(snapshot["workers"]["idle"]["running"])
 
 
+    def test_sampler_stays_stopped_when_motion_and_timelapse_are_disabled(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / "state"
+            etc = root / "etc"
+            state.mkdir()
+            etc.mkdir()
+            (state / "motion").mkdir()
+            (state / "timelapse").mkdir()
+            (state / "motion" / "config.json").write_text(
+                json.dumps({"enabled": False}), encoding="utf-8",
+            )
+            (state / "timelapse" / "config.json").write_text(
+                json.dumps({"enabled": False}), encoding="utf-8",
+            )
+            with (
+                mock.patch.object(supervisor, "STATE", state),
+                mock.patch.object(supervisor, "ETC", etc),
+                mock.patch.object(supervisor, "gstreamer_ready", return_value=True),
+            ):
+                entries = {worker.name: worker for worker in supervisor.workers()}
+                self.assertFalse(entries["rtsp-sampler"].should_run())
+
+    def test_sampler_runs_when_either_frame_consumer_is_enabled(self):
+        for feature in ("motion", "timelapse"):
+            with self.subTest(feature=feature), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = root / "state"
+                etc = root / "etc"
+                state.mkdir()
+                etc.mkdir()
+                for name in ("motion", "timelapse"):
+                    (state / name).mkdir()
+                    (state / name / "config.json").write_text(
+                        json.dumps({"enabled": name == feature}), encoding="utf-8",
+                    )
+                with (
+                    mock.patch.object(supervisor, "STATE", state),
+                    mock.patch.object(supervisor, "ETC", etc),
+                    mock.patch.object(supervisor, "gstreamer_ready", return_value=True),
+                ):
+                    entries = {worker.name: worker for worker in supervisor.workers()}
+                    self.assertTrue(entries["rtsp-sampler"].should_run())
+
+    def test_home_assistant_does_not_depend_on_the_frame_sampler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = root / "state"
+            etc = root / "etc"
+            state.mkdir()
+            etc.mkdir()
+            (etc / "home-assistant.conf").write_text(
+                "MQTT_ENABLED=true\n", encoding="utf-8",
+            )
+            with (
+                mock.patch.object(supervisor, "STATE", state),
+                mock.patch.object(supervisor, "ETC", etc),
+                mock.patch.object(supervisor, "gstreamer_ready", return_value=True),
+            ):
+                entries = {worker.name: worker for worker in supervisor.workers()}
+                self.assertTrue(entries["home-assistant"].should_run())
+
     def test_worker_order_gates_gstreamer_and_sampler_behind_camera_capture(self):
         names = [worker.name for worker in supervisor.workers()]
         self.assertLess(names.index("camera-capture"), names.index("gstreamer-rtsp"))

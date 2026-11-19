@@ -96,6 +96,14 @@ def gstreamer_ready() -> bool:
     return status.get("state") in ("ready", "publishing") and 0 <= age <= 15
 
 
+def sampler_needed() -> bool:
+    """Run the decoder only while a feature that consumes sampled frames is enabled."""
+    return (
+        read_enabled(STATE / "motion" / "config.json")
+        or read_enabled(STATE / "timelapse" / "config.json")
+    )
+
+
 def capture_ready() -> bool:
     try:
         payload = json.loads((RUN / "rtsp-sampler-status.json").read_text(encoding="utf-8"))
@@ -110,11 +118,15 @@ def workers() -> list[Worker]:
         Worker("setup-portal", (py, "-m", "petcam.bootstrap.setup_portal")),
         Worker("camera-capture", (py, "-m", "petcam.infrastructure.camera.capture")),
         Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer"), capture_source_ready),
-        Worker("rtsp-sampler", (py, "-m", "petcam.infrastructure.streaming.sampler"), gstreamer_ready),
+        Worker(
+            "rtsp-sampler",
+            (py, "-m", "petcam.infrastructure.streaming.sampler"),
+            lambda: gstreamer_ready() and sampler_needed(),
+        ),
         Worker("web-ui", (py, "-m", "petcam.api.application"),
                lambda: read_enabled(ETC / "web-manager.json")),
         Worker("home-assistant", (py, "-m", "petcam.features.home_assistant.worker"),
-               lambda: read_enabled(ETC / "home-assistant.conf") and capture_ready()),
+               lambda: read_enabled(ETC / "home-assistant.conf") and gstreamer_ready()),
         Worker("light-sensor", (py, "-m", "petcam.features.light_sensor.worker"),
                lambda: read_enabled(ETC / "light-sensor.conf")),
         Worker("motion", (py, "-m", "petcam.features.motion.worker"),
