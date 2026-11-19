@@ -158,9 +158,9 @@ class SupervisorTests(unittest.TestCase):
                 encoding="utf-8",
             )
             entries = [
-                supervisor.Worker("camera-capture", ("camera",)),
+                supervisor.Worker("camera-capture", ("camera",), lambda: False),
                 supervisor.Worker("gstreamer-rtsp", ("gstreamer",), lambda: False),
-                supervisor.Worker("rtsp-sampler", ("sampler",)),
+                supervisor.Worker("rtsp-sampler", ("sampler",), lambda: False),
             ]
             processes = [mock.Mock() for _ in entries]
             for index, (worker, process) in enumerate(zip(entries, processes)):
