@@ -17,24 +17,45 @@ ICON_URL = (
     "deploy/image/petcam-icon.svg"
 )
 WEBSITE_URL = "https://github.com/mintymelinda/petcam"
+
+# These are Raspberry Pi Imager's 32-bit model tags. Zero 2 W shares
+# the pi3-32bit compatibility tag.
 DEVICE_PROFILES = [
     {
-        "name": "Raspberry Pi Zero W",
-        "description": "Original Raspberry Pi Zero W (ARMv6)",
-        "tags": ["pizero-32bit"],
+        "name": "Raspberry Pi 5",
+        "description": "Raspberry Pi 5, 500 / 500+, and Compute Module 5",
+        "tags": ["pi5-32bit"],
         "architecture": "armhf",
     },
     {
         "name": "Raspberry Pi 4",
-        "description": "Raspberry Pi 4 Model B",
-        "tags": ["pi4"],
-        "architecture": "armv8",
+        "description": "Raspberry Pi 4 Model B, 400, and Compute Module 4 / 4S",
+        "tags": ["pi4-32bit"],
+        "architecture": "armhf",
     },
     {
-        "name": "Raspberry Pi 5",
-        "description": "Raspberry Pi 5",
-        "tags": ["pi5"],
-        "architecture": "armv8",
+        "name": "Raspberry Pi 3",
+        "description": "Raspberry Pi 3 Model A+ / B / B+, Zero 2 W, and Compute Module 3 / 3+",
+        "tags": ["pi3-32bit"],
+        "architecture": "armhf",
+    },
+    {
+        "name": "Raspberry Pi 2",
+        "description": "Raspberry Pi 2 Model B",
+        "tags": ["pi2-32bit"],
+        "architecture": "armhf",
+    },
+    {
+        "name": "Raspberry Pi 1",
+        "description": "Raspberry Pi 1 Model A / A+ / B / B+ and Compute Module 1",
+        "tags": ["pi1-32bit"],
+        "architecture": "armhf",
+    },
+    {
+        "name": "Raspberry Pi Zero",
+        "description": "Raspberry Pi Zero, Zero W, and Zero WH",
+        "tags": ["pizero-32bit"],
+        "architecture": "armhf",
     },
 ]
 
@@ -71,92 +92,50 @@ def _validate_image_url(image_url: str) -> None:
         raise ValueError("image URL must be an absolute HTTP or HTTPS URL")
 
 
-def _os_entry(
-    *,
-    name: str,
-    description: str,
+def create_manifest(
     image_path: Path,
     image_url: str,
-    architecture: str,
-    devices: list[str],
     release_date: str,
 ) -> dict[str, object]:
-    _validate_image_url(image_url)
-    return {
-        "name": name,
-        "description": description,
-        "icon": ICON_URL,
-        "url": image_url,
-        "website": WEBSITE_URL,
-        "architecture": architecture,
-        "init_format": "cloudinit",
-        "devices": devices,
-        "release_date": release_date,
-        **image_metadata(image_path),
-    }
-
-
-def create_manifest(
-    armhf_image_path: Path,
-    armhf_image_url: str,
-    arm64_image_path: Path,
-    arm64_image_url: str,
-    release_date: str,
-) -> dict[str, object]:
-    """Build the Imager manifest with ARMHF and ARM64 install choices."""
+    """Build one 32-bit Imager install choice for every supported Pi generation."""
     date.fromisoformat(release_date)
+    _validate_image_url(image_url)
+    all_device_tags = [tag for device in DEVICE_PROFILES for tag in device["tags"]]
     return {
         "imager": {"devices": DEVICE_PROFILES},
         "os_list": [
-            _os_entry(
-                name="PetCam OS (32-bit)",
-                description=(
-                    "PetCam appliance for the original Raspberry Pi Zero W "
-                    "(ARMv6). Configure hostname, user credentials, Wi-Fi, "
-                    "locale and SSH in Raspberry Pi Imager before flashing."
+            {
+                "name": "PetCam OS (32-bit)",
+                "description": (
+                    "One 32-bit ARMHF PetCam appliance image for Raspberry Pi "
+                    "1 through Raspberry Pi 5, including Zero, Zero W, Zero 2 W, "
+                    "400-series boards, and Compute Modules. Configure hostname, "
+                    "user credentials, Wi-Fi, locale and SSH in Raspberry Pi "
+                    "Imager before flashing."
                 ),
-                image_path=armhf_image_path,
-                image_url=armhf_image_url,
-                architecture="armhf",
-                devices=["pizero-32bit"],
-                release_date=release_date,
-            ),
-            _os_entry(
-                name="PetCam OS (64-bit)",
-                description=(
-                    "PetCam appliance for Raspberry Pi 4 and Raspberry Pi 5. "
-                    "Configure hostname, user credentials, Wi-Fi, locale and "
-                    "SSH in Raspberry Pi Imager before flashing."
-                ),
-                image_path=arm64_image_path,
-                image_url=arm64_image_url,
-                architecture="armv8",
-                devices=["pi4", "pi5"],
-                release_date=release_date,
-            ),
+                "icon": ICON_URL,
+                "url": image_url,
+                "website": WEBSITE_URL,
+                "architecture": "armhf",
+                "init_format": "cloudinit",
+                "devices": all_device_tags,
+                "release_date": release_date,
+                **image_metadata(image_path),
+            }
         ],
     }
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--armhf-image", required=True, type=Path)
-    parser.add_argument("--armhf-image-url", required=True)
-    parser.add_argument("--arm64-image", required=True, type=Path)
-    parser.add_argument("--arm64-image-url", required=True)
+    parser.add_argument("--image", required=True, type=Path)
+    parser.add_argument("--image-url", required=True)
     parser.add_argument("--release-date", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    for image_path in (args.armhf_image, args.arm64_image):
-        if not image_path.is_file():
-            parser.error(f"image does not exist: {image_path}")
-    manifest = create_manifest(
-        args.armhf_image,
-        args.armhf_image_url,
-        args.arm64_image,
-        args.arm64_image_url,
-        args.release_date,
-    )
+    if not args.image.is_file():
+        parser.error(f"image does not exist: {args.image}")
+    manifest = create_manifest(args.image, args.image_url, args.release_date)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
