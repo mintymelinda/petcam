@@ -164,6 +164,19 @@ def _read_health() -> dict[str, Any]:
         return {}
 
 
+def _native_h264_capture(config: dict[str, Any]) -> bool:
+    """Return whether the active capture process is using native H.264."""
+    try:
+        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
+        pid = int(marker.get("pid", 0))
+        if marker.get("native_h264") is True and pid > 1:
+            os.kill(pid, 0)
+            return True
+    except (OSError, ValueError, TypeError, ProcessLookupError):
+        pass
+    return str(config.get("FORMAT", "")).upper() == "H264"
+
+
 def collect_diagnostics() -> dict[str, Any]:
     try:
         config = parse_config(CONFIG_FILE)
@@ -171,19 +184,21 @@ def collect_diagnostics() -> dict[str, Any]:
         config_valid = True
         config_error = None
     except Exception as error:
+        config = {}
         backend_port = DEFAULT_BACKEND_PORT
         config_valid = False
         config_error = str(error)
 
+    native_h264 = _native_h264_capture(config)
     hostname = socket.gethostname()
     mdns_name = hostname if hostname.endswith(".local") else f"{hostname}.local"
     mdns_addresses = _mdns_resolution(mdns_name)
     interfaces = collect_interfaces()
     addresses = _addresses_from_ip(command_output(["ip", "-j", "address", "show"]))
     routes = _parse_default_routes(command_output(["ip", "-j", "route", "show", "default"]))
-    raw_listeners = _listener_report(
-        command_output(["ss", "-ltn"]), (MANAGER_PORT, RTSP_PORT, backend_port)
-    )
+
+    expected_ports = (MANAGER_PORT, RTSP_PORT) if native_h264 else (MANAGER_PORT, RTSP_PORT, backend_port)
+    raw_listeners = _listener_report(command_output(["ss", "-ltn"]), expected_ports)
     listeners = {
         "healthy": all(bool(entries) for entries in raw_listeners.values()),
         "ports": {
@@ -192,9 +207,24 @@ def collect_diagnostics() -> dict[str, Any]:
         },
     }
 
-    backend_url = f"http://127.0.0.1:{backend_port}"
-    backend_http = probe_http(backend_url + "/", timeout=3)
-    backend_stream = probe_http(backend_url + "/stream", timeout=5, stream=True)
+    if native_h264:
+        capture_active = False
+        try:
+            marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
+            pid = int(marker.get("pid", 0))
+            if marker.get("native_h264") is True and pid > 1:
+                os.kill(pid, 0)
+                capture_active = True
+        except (OSError, ValueError, TypeError, ProcessLookupError):
+            pass
+        backend_http = {"reachable": capture_active, "status": None, "not_required": True}
+        backend_stream = {"reachable": capture_active, "status": None, "not_required": True}
+    else:
+        backend_url = f"http://127.0.0.1:{backend_port}"
+        backend_http = probe_http(backend_url + "/", timeout=3)
+        backend_stream = probe_http(backend_url + "/stream", timeout=5, stream=True)
+        capture_active = backend_http["reachable"] and backend_stream["reachable"]
+
     manager_url = f"https://127.0.0.1:{MANAGER_PORT}/"
     manager = probe_http(manager_url, timeout=3, tls=True)
     health = _read_health()
@@ -205,7 +235,8 @@ def collect_diagnostics() -> dict[str, Any]:
             "detail": health.get("state", "not_checked"),
         },
         "capture_backend": {
-            "healthy": backend_http["reachable"] and backend_stream["reachable"],
+            "healthy": capture_active,
+            "mode": "native_h264" if native_h264 else "mjpeg",
             "http": backend_http,
             "mjpeg": backend_stream,
         },
@@ -228,8 +259,12 @@ def collect_diagnostics() -> dict[str, Any]:
         problems.append("Camera configuration is invalid.")
     if health.get("camera_connected") is False:
         problems.append("No supported camera is currently detected.")
-    if not backend_http["reachable"] or not backend_stream["reachable"]:
-        problems.append("The loopback capture backend is unavailable or is not producing MJPEG frames.")
+    if not capture_active:
+        problems.append(
+            "The native H.264 capture process is not active."
+            if native_h264
+            else "The loopback capture backend is unavailable or is not producing MJPEG frames."
+        )
     if not manager["reachable"]:
         problems.append("The local HTTPS management listener is unavailable.")
     if not listeners["ports"][str(RTSP_PORT)]["listening"]:
@@ -242,16 +277,18 @@ def collect_diagnostics() -> dict[str, Any]:
         problems.append("No default network route was found.")
     for port, label in (
         (str(RTSP_PORT), "RTSP server"),
-        (str(backend_port), "capture backend"),
         (str(MANAGER_PORT), "HTTPS manager"),
     ):
         if not listeners["ports"][port]["listening"]:
             problems.append(f"No listening socket was found for the {label} port {port}.")
+    if not native_h264 and not listeners["ports"][str(backend_port)]["listening"]:
+        problems.append(f"No listening socket was found for the capture backend port {backend_port}.")
 
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "hostname": hostname,
         "backend_port": backend_port,
+        "capture_mode": "native_h264" if native_h264 else "mjpeg",
         "layers": layers,
         "problems": problems,
         "remote_client_tested": False,
@@ -262,7 +299,6 @@ def collect_diagnostics() -> dict[str, Any]:
             "the remote client's DNS/mDNS support must be checked from that client."
         ),
     }
-
 
 def _redacted_config() -> str:
     try:
