@@ -174,9 +174,10 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
         save, previous, candidate, commands, rollback_commands, process_control.run_command,
     )
 
-def restart_g_streamer_service():
+def restart_camera_capture_service():
+    """Restart capture so the supervisor rebuilds RTSP from fresh camera metadata."""
     try:
-        process_control.restart_worker("gstreamer-rtsp")
+        process_control.restart_worker("camera-capture")
     except process_control.SupervisorUnavailable as error:
         raise RuntimeError(str(error)) from error
 
@@ -217,7 +218,7 @@ def save_selection(data):
         mode_supports_fps=mode_supports_fps,
         config_path=CONFIG,
         parse_config=parse_config,
-        restart_g_streamer_service=restart_g_streamer_service,
+        restart_camera_capture_service=restart_camera_capture_service,
         apply_config=apply_config,
     )
 
