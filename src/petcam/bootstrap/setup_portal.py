@@ -170,11 +170,10 @@ def manager_ready() -> bool:
             MANAGER_HOST, MANAGER_PORT,
             context=ssl._create_unverified_context(), timeout=2,
         )
-        connection.request("GET", "/")
+        connection.request("GET", "/api/ready")
         response = connection.getresponse()
-        content_type = response.getheader("Content-Type", "").lower()
-        response.read(4096)
-        return response.status == 200 and "text/html" in content_type
+        payload = json.loads(response.read(4096))
+        return response.status == 200 and payload == {"ready": True}
     except (OSError, http.client.HTTPException):
         return False
     finally:
