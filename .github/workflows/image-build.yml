@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-image:
-    # pi-gen's build container is i386; use an x86-64 host for both targets.
+    # pi-gen's build container is i386; use an x86-64 host for the ARMHF target.
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     permissions:
@@ -105,7 +105,7 @@ jobs:
           timezone: America/Toronto
           keyboard-keymap: us
           keyboard-layout: English (US)
-          # Avoid sharing a work-directory cache between incompatible image architectures.
+          # Keep the pi-gen work-directory cache disabled for a clean single-architecture build.
           enable-pigen-cache: false
           extra-host-dependencies: git
           verbose-output: true
@@ -128,7 +128,7 @@ jobs:
           compression-level: 0
 
   publish-release:
-    name: Publish production images
+    name: Publish production image
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-image
     runs-on: ubuntu-24.04
