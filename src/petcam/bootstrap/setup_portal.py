@@ -50,7 +50,8 @@ small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-con
 <label class="switch"><input id="web-enabled" type="checkbox"> Enable full Web UI</label>
 <p class="muted">The full dashboard is a separate service. Turning it off does not disable this setup page, camera streaming, or other enabled features.</p>
 <button id="save" type="button">Save Web UI setting</button><button id="logout" type="button">Sign out</button>
-<p><a id="open-manager" class="button" href="/">Open full dashboard</a></p></section>
+<p><a id="open-manager" class="button" href="/">Open full dashboard</a></p>
+<section id="stream-info"><h3>RTSP camera stream</h3><label for="rtsp-url">Stream URL</label><input id="rtsp-url" type="text" readonly><button id="copy-rtsp-url" type="button">Copy stream URL</button><p class="muted">Use this URL in OBS or another RTSP client.</p></section></section>
 <p id="message" role="status" aria-live="polite"></p></main>
 <script>
 const $=id=>document.getElementById(id);let csrf="";
@@ -58,15 +59,17 @@ async function api(path,body){const headers={"Content-Type":"application/json"};
  const response=await fetch("/setup/api/"+path,{method:body===undefined?"GET":"POST",headers,body:body===undefined?undefined:JSON.stringify(body)});
  const data=await response.json().catch(()=>({error:"Unexpected server response"}));if(!response.ok)throw Error(data.error||"Request failed");return data;}
 function message(value){$("message").textContent=value;}
+function rtspStreamUrl(){let host=window.location.hostname;if(host.startsWith("[")&&host.endsWith("]"))host=host.slice(1,-1);if(host.includes(":"))host="["+host+"]";return "rtsp://"+host+":8554/petcam";}
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
  if(status.configured){try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;
- $("web-enabled").checked=status.enabled;$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";$("open-manager").hidden=!status.enabled;
+ $("web-enabled").checked=status.enabled;$("rtsp-url").value=rtspStreamUrl();$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";$("open-manager").hidden=!status.enabled;
  }catch(_){$("manager-control").hidden=true;$("login-form").hidden=false;}}
  }catch(error){message(error.message);}}
 $("setup-form").addEventListener("submit",async event=>{event.preventDefault();try{if($("new-password").value!==$("confirm-password").value)throw Error("Passwords do not match.");
  const result=await api("setup",{password:$("new-password").value,password_confirmation:$("confirm-password").value});csrf=result.csrf_token;message("Administrator password created.");await refresh();}catch(error){message(error.message);}});
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
 $("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";$("open-manager").hidden=!result.enabled;message("Setting saved. The service will reconcile within a few seconds.");}catch(error){message(error.message);}});
+$("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP stream URL copied.");}catch(_){message("Unable to copy automatically. Select and copy the URL above.");}});
 $("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";$("manager-control").hidden=true;await refresh();});
 refresh();
 </script></body></html>"""
