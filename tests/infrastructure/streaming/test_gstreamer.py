@@ -246,6 +246,7 @@ class GStreamerOutputTests(unittest.TestCase):
     def test_native_h264_rtsp_factory_uses_direct_appsrc_without_udp_round_trip(self):
         pipeline = MODULE.build_native_rtsp_launch()
         self.assertIn("appsrc name=rtsp_source", pipeline)
+        self.assertIn("do-timestamp=true min-latency=0", pipeline)
         self.assertIn("caps=video/x-h264,stream-format=byte-stream,alignment=au", pipeline)
         self.assertIn("rtph264pay name=pay0", pipeline)
         for forbidden in ("udpsrc", "udpsink", "rtpjitterbuffer", "rtph264depay",
