@@ -81,6 +81,6 @@ ss -u -a -n -p | grep "pid=$PID" || true
 top -H -b -n 1 -p "$PID" | head -n 28
 ```
 
-There should be no GStreamer-owned UDP socket on port 5004 and no active rtpjitterbuffer or udpsrc media threads. RTSP client transport sockets may still appear depending on whether clients negotiate UDP or TCP transport.
+There should be no GStreamer-owned UDP socket on port 5004 and no internal rtpjitterbuffer thread. UDP sockets used by RTSP client transports (including RTCP) are expected when clients negotiate UDP transport.
 
 Do not consider the optimization complete based only on the structural check: the CPU comparison and functional matrix above must also pass on the target device.
