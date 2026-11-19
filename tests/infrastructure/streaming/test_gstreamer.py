@@ -121,6 +121,14 @@ class GStreamerOutputTests(unittest.TestCase):
             MODULE._set_status_state(current_state, "ready", "native_h264", status_file)
             self.assertEqual(json.loads(status_file.read_text(encoding="utf-8"))["state"], "ready")
 
+    def test_status_reports_measured_frame_rate(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status_file = Path(directory) / "gstreamer-status.json"
+            MODULE._write_status("publishing", "native_h264", status_file, 29.97)
+            status = json.loads(status_file.read_text(encoding="utf-8"))
+            self.assertEqual(status["fps"], 29.97)
+            self.assertTrue(status["active"])
+
     def test_supervisor_owns_streaming_workers_without_unit_files(self):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
