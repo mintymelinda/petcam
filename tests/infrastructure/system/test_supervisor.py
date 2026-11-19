@@ -113,7 +113,7 @@ class SupervisorTests(unittest.TestCase):
             state.mkdir()
             etc.mkdir()
             (etc / "home-assistant.conf").write_text(
-                "MQTT_ENABLED=true\\n", encoding="utf-8",
+                "MQTT_ENABLED=true\n", encoding="utf-8",
             )
             with (
                 mock.patch.object(supervisor, "STATE", state),
