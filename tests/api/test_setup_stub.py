@@ -48,6 +48,8 @@ class SetupPortalTests(unittest.TestCase):
         self.config_patch.start()
         with MODULE._sessions_lock:
             MODULE._sessions.clear()
+        with web_auth._lock:
+            web_auth._sessions.clear()
         with MODULE._login_lock:
             MODULE._login_attempts.clear()
         MODULE.set_web_ui_enabled(False)
@@ -95,7 +97,10 @@ class SetupPortalTests(unittest.TestCase):
             {"password": "correct horse battery staple", "password_confirmation": "correct horse battery staple"},
         )
         self.assertEqual(status, 201)
-        cookie = next(value for key, value in headers if key.lower() == "set-cookie").split(";", 1)[0]
+        cookie = next(value for key, value in headers if key.lower() == "set-cookie" and value.startswith("petcam_setup_session=")).split(";", 1)[0]
+        manager_cookie = next(value for key, value in headers if key.lower() == "set-cookie" and value.startswith("petcam_session=")).split(";", 1)[0]
+        manager_token = manager_cookie.split("=", 1)[1]
+        self.assertIsNotNone(web_auth.get_session(manager_token))
         csrf = json.loads(payload)["csrf_token"]
         self.assertTrue(web_auth.verify_password("correct horse battery staple"))
 
@@ -114,8 +119,10 @@ class SetupPortalTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(payload)["csrf_token"], csrf)
 
-        status, _, _ = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
+        status, _, logout_headers = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
         self.assertEqual(status, 200)
+        self.assertTrue(any(key.lower() == "set-cookie" and value.startswith("petcam_session=") for key, value in logout_headers))
+        self.assertIsNone(web_auth.get_session(manager_token))
         status, _, _ = self.request("GET", "/setup/api/session", cookie=cookie)
         self.assertEqual(status, 401)
 
