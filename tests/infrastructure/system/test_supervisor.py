@@ -159,12 +159,6 @@ class SupervisorTests(unittest.TestCase):
                     manager.stop_control_server()
         self.assertTrue(response["ok"])
         self.assertIn("workers", response["snapshot"])
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_native_h264_uses_integrated_frame_branch_instead_of_rtsp_sampler(self):
         with tempfile.TemporaryDirectory() as directory:
             state = Path(directory)
@@ -190,3 +184,7 @@ if __name__ == "__main__":
             )
             with mock.patch.object(supervisor, "STATE", state):
                 self.assertTrue(supervisor.sampler_needed())
+
+
+if __name__ == "__main__":
+    unittest.main()

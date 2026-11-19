@@ -133,12 +133,6 @@ class GStreamerOutputTests(unittest.TestCase):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
         self.assertFalse((Path(__file__).parents[3] / "deploy" / "systemd").exists())
-
-
-if __name__ == "__main__":
-    unittest.main()
-
-
     def test_native_h264_capture_pipeline_tees_compressed_video_before_decode(self):
         pipeline = MODULE.build_native_capture_launch({
             "native_h264": True,
@@ -193,3 +187,7 @@ if __name__ == "__main__":
             self.assertTrue(MODULE.frame_consumers_enabled(root))
             (root / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
             self.assertFalse(MODULE.frame_consumers_enabled(root))
+
+
+if __name__ == "__main__":
+    unittest.main()

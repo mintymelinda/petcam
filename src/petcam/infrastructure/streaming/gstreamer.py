@@ -162,7 +162,6 @@ def configure_rtsp_server(server):
     server.set_service("8554")
 
 
-
 def frame_consumers_enabled(state_path=STATE_PATH):
     """Return whether motion or timelapse currently needs decoded frames."""
     for feature in ("motion", "timelapse"):
@@ -402,17 +401,15 @@ def main():
     if args.check:
         output = {
             "source": source,
-            "pipeline": (
-                build_native_capture_launch(
-                    camera_status, __import__(
-                        "petcam.infrastructure.streaming.sampler", fromlist=["select_h264_decoder"]
-                    ).select_h264_decoder(Gst)
-                )
-                if native_h264 else launch
-            ),
+            "pipeline": launch,
             "rtsp_url": "rtsp://<petcam-host>:8554/petcam",
         }
         if native_h264:
+            from petcam.infrastructure.streaming import sampler
+
+            output["pipeline"] = build_native_capture_launch(
+                camera_status, sampler.select_h264_decoder(Gst)
+            )
             output["rtsp_pipeline"] = build_native_rtsp_launch()
         print(json.dumps(output))
         return
