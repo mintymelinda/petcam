@@ -103,6 +103,24 @@ class SetupPortalTests(unittest.TestCase):
         )
         self.assertTrue(any(key.lower() == "cache-control" and value == "no-store" for key, value in headers))
 
+    def test_proxy_uses_extended_timeout_for_slow_device_authentication(self):
+        handler = mock.Mock()
+        handler.headers = {"Content-Length": "0", "Host": "localhost"}
+        handler.command = "GET"
+        handler.path = "/api/ready"
+        response = mock.Mock()
+        response.status = 200
+        response.reason = "OK"
+        response.read.return_value = b'{"ready": true}'
+        response.getheaders.return_value = []
+        connection = mock.Mock()
+        connection.getresponse.return_value = response
+
+        with mock.patch.object(MODULE.http.client, "HTTPSConnection", return_value=connection) as connect:
+            MODULE._proxy(handler)
+
+        self.assertEqual(connect.call_args.kwargs["timeout"], 60)
+
     def test_first_run_setup_login_and_web_ui_toggle(self):
         status, _, payload = self.request("GET", "/setup/api/status")
         self.assertEqual(status, 200)
