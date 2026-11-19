@@ -108,7 +108,7 @@ def _write_status(state, source, path=STATUS_PATH, fps=None):
         "source": source,
     }
     temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(json.dumps(payload) + "\\n", encoding="utf-8")
+    temporary.write_text(json.dumps(payload) + "\n", encoding="utf-8")
     os.replace(temporary, target)
 
 
