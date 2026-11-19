@@ -224,7 +224,7 @@ def build_native_rtsp_launch():
     """Accept encoded access units directly from the persistent capture pipeline."""
     return (
         "( appsrc name=rtsp_source is-live=true format=time do-timestamp=true min-latency=0 "
-        "block=false max-bytes=1048576 "
+        "block=false emit-signals=false max-bytes=1048576 "
         "caps=video/x-h264,stream-format=byte-stream,alignment=au ! "
         "h264parse config-interval=-1 ! "
         "rtph264pay name=pay0 pt=96 config-interval=1 )"
