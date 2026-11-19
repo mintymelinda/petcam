@@ -7,62 +7,42 @@ def dependencies(apply_config):
     return {
         "discover_cameras": lambda: [],
         "mode_supports_fps": lambda _mode, _fps: True,
-        "config_path": "/tmp/petcam.conf",
-        "parse_config": lambda _path: {"SOURCE": "usb", "FORMAT": "MJPEG"},
-        "restart_camera_capture_service": lambda: None,
         "apply_config": apply_config,
     }
 
 
-def test_save_selection_restarts_camera_capture(monkeypatch):
+def test_save_selection_applies_camera_configuration_once(monkeypatch):
     values = {
         "SOURCE": "usb", "RESOLUTION": "1280x720",
         "FPS": "30", "FORMAT": "MJPEG",
     }
     monkeypatch.setattr(application, "resolve_camera_selection", lambda *_a, **_k: values)
-    saved = []
-    restarted = []
-    deps = dependencies(lambda config: saved.append(config) or config)
-    deps["restart_camera_capture_service"] = lambda: restarted.append(True)
+    applied = []
+    deps = dependencies(lambda config: applied.append(config) or config)
 
     result = application.save_selection({}, **deps)
 
     assert result == values
-    assert saved == [values]
-    assert restarted == [True]
+    assert applied == [values]
 
 
-def test_save_selection_rolls_back_camera_when_capture_restart_fails(monkeypatch):
+def test_save_selection_propagates_transactional_apply_failure_without_restarting_again(monkeypatch):
     values = {
         "SOURCE": "usb", "RESOLUTION": "1280x720",
         "FPS": "30", "FORMAT": "MJPEG",
     }
-    previous = {"SOURCE": "usb", "FORMAT": "MJPEG", "RESOLUTION": "640x480"}
     monkeypatch.setattr(application, "resolve_camera_selection", lambda *_a, **_k: values)
-    saved = []
-    restarts = iter([RuntimeError("Capture restart failed"), None])
+    applied = []
 
     def apply(config):
-        saved.append(config)
-        return config
+        applied.append(config)
+        raise RuntimeError("Capture readiness failed; previous settings restored")
 
-    restart_calls = []
+    with pytest.raises(RuntimeError, match="previous settings restored"):
+        application.save_selection({}, **dependencies(apply))
 
-    def restart():
-        restart_calls.append(True)
-        result = next(restarts)
-        if result:
-            raise result
-
-    deps = dependencies(apply)
-    deps["parse_config"] = lambda _path: previous
-    deps["restart_camera_capture_service"] = restart
-
-    with pytest.raises(RuntimeError, match="Capture restart failed"):
-        application.save_selection({}, **deps)
-
-    assert saved == [values, previous]
-    assert restart_calls == [True, True]
+    # apply_config performs its own rollback; this layer must not retry it.
+    assert applied == [values]
 
 
 def test_hardware_mode_is_not_rejected_by_performance_or_feature_policy(monkeypatch):
@@ -77,4 +57,3 @@ def test_hardware_mode_is_not_rejected_by_performance_or_feature_policy(monkeypa
     result = application.save_selection({}, **deps)
 
     assert result == values
-    assert applied == [values]

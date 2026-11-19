@@ -41,6 +41,7 @@ USB_PHYSICAL_PATH_PATTERN = re.compile(r"^/sys/devices/[A-Za-z0-9._:@/+\-]+$")
 CSI_DEVICE_PATH_PATTERN = re.compile(r"^/base/[A-Za-z0-9._:@/+\-]+$")
 RESOLUTION_PATTERN = re.compile(r"^([0-9]+)x([0-9]+)$")
 NUMBER_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)?$")
+CAPTURE_STARTUP_TIMEOUT = 60
 
 
 class ConfigError(ValueError):
@@ -200,7 +201,7 @@ def _atomic_write(path: Path, content: bytes) -> None:
     os.replace(temporary, path)
 
 
-def wait_for_stream(port: int, timeout: int = 30) -> bool:
+def wait_for_stream(port: int, timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
     deadline = time.monotonic() + timeout
     url = f"http://127.0.0.1:{port}/stream"
     while time.monotonic() < deadline:
@@ -278,7 +279,7 @@ def _read_h264_rtp_packet(connection, buffer: bytearray, deadline: float) -> boo
     return False
 
 
-def wait_for_native_h264(timeout: int = 30) -> bool:
+def wait_for_native_h264(timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
     """Require a real H.264 RTP packet from the local GStreamer RTSP endpoint."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
