@@ -17,6 +17,22 @@ PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
 
+    def test_camera_selection_restart_restarts_capture_for_coordinated_rtsp_rebuild(
+        self,
+    ):
+        with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
+            MODULE.restart_camera_capture_service()
+        restart.assert_called_once_with("camera-capture")
+
+    def test_camera_selection_restart_surfaces_supervisor_unavailability(self):
+        with mock.patch.object(
+            MODULE.process_control,
+            "restart_worker",
+            side_effect=MODULE.process_control.SupervisorUnavailable("socket unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "socket unavailable"):
+                MODULE.restart_camera_capture_service()
+
     def test_full_ui_setting_is_saved_through_authenticated_system_route(self):
         class Handler:
             path = "/api/web-ui"
@@ -333,10 +349,10 @@ class WebManagerTests(unittest.TestCase):
         self.assertEqual(request.response[0], 409)
         initialize.assert_not_called()
 
-    def test_g_streamer_service_restart_uses_supervisor_worker_control(self):
+    def test_camera_capture_restart_uses_supervisor_worker_control(self):
         with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
-            MODULE.restart_g_streamer_service()
-        restart.assert_called_once_with("gstreamer-rtsp")
+            MODULE.restart_camera_capture_service()
+        restart.assert_called_once_with("camera-capture")
 
     def test_api_application_has_no_sudo_privilege_handoffs(self):
         source = Path(MODULE.__file__).read_text(encoding="utf-8")
@@ -358,7 +374,7 @@ class WebManagerTests(unittest.TestCase):
         discover_csi.assert_called_once_with()
         self.assertEqual({mode["format"] for mode in cameras[0]["modes"]}, {"MJPG", "H264"})
 
-    def test_h264_selection_restarts_always_on_g_streamer_service(self):
+    def test_h264_selection_restarts_camera_capture(self):
         camera = {
             "kind": "usb", "id": "usb-kiyo", "device": "/dev/video0",
             "physical_path": "/sys/devices/usb1/1-1",
@@ -371,7 +387,7 @@ class WebManagerTests(unittest.TestCase):
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service") as restart:
+                mock.patch.object(MODULE, "restart_camera_capture_service") as restart:
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-kiyo",
                 "mode": {"format": "H264", "width": 1920, "height": 1080, "fps": 30},
@@ -390,7 +406,7 @@ class WebManagerTests(unittest.TestCase):
             mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": True}),
             mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}),
             mock.patch.object(MODULE, "apply_config") as apply,
-            mock.patch.object(MODULE, "restart_g_streamer_service"),
+            mock.patch.object(MODULE, "restart_camera_capture_service"),
         ):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-kiyo",
@@ -407,7 +423,7 @@ class WebManagerTests(unittest.TestCase):
         }]
         try:
             with mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service"):
+                mock.patch.object(MODULE, "restart_camera_capture_service"):
                 MODULE.save_selection({
                     "kind": "usb",
                     "device": "/dev/video0",
@@ -429,7 +445,7 @@ class WebManagerTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "camera_inventory", return_value=[camera]),
             mock.patch.object(MODULE, "apply_config") as apply,
-            mock.patch.object(MODULE, "restart_g_streamer_service"),
+            mock.patch.object(MODULE, "restart_camera_capture_service"),
         ):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-fast",
@@ -449,7 +465,7 @@ class WebManagerTests(unittest.TestCase):
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
                 mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service"):
+                mock.patch.object(MODULE, "restart_camera_capture_service"):
             MODULE.save_selection({
                 "kind": "usb",
                 "camera_id": "usb-stable",
@@ -473,7 +489,7 @@ class WebManagerTests(unittest.TestCase):
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
                 mock.patch.object(MODULE, "apply_config") as apply, \
-                mock.patch.object(MODULE, "restart_g_streamer_service"):
+                mock.patch.object(MODULE, "restart_camera_capture_service"):
             MODULE.save_selection({
                 "kind": "csi",
                 "camera_id": "csi-stable",

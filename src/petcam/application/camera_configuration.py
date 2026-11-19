@@ -10,7 +10,7 @@ def save_selection(
     mode_supports_fps,
     config_path,
     parse_config,
-    restart_g_streamer_service,
+    restart_camera_capture_service,
     apply_config,
 ):
     """Persist the exact hardware-advertised selection and restart its consumer."""
@@ -24,13 +24,13 @@ def save_selection(
     try:
         updated = apply_config(values)
         camera_applied = True
-        restart_g_streamer_service()
+        restart_camera_capture_service()
         return updated
     except Exception:
         if camera_applied:
             try:
                 apply_config(previous_camera)
-                restart_g_streamer_service()
+                restart_camera_capture_service()
             except Exception as rollback_error:
                 raise RuntimeError(
                     "Camera selection failed and restoring the previous camera/GStreamer state also failed: "
