@@ -55,6 +55,8 @@ jobs:
         run: docker compose -f deploy/image/compose.yaml config --quiet
 
       - name: Assemble PetCam runtime with Docker Compose
+        env:
+          PETCAM_VERSION: ${{ github.sha }}
         run: |
           mkdir -p deploy/image/dist
           docker compose -f deploy/image/compose.yaml run --build --rm assemble

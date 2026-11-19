@@ -15,8 +15,10 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("deploy/image/Dockerfile", compose)
         self.assertIn("FROM debian:trixie-slim", dockerfile)
         self.assertIn("assemble-petcam", dockerfile)
-        self.assertNotIn("COPY VERSION", dockerfile)
-        self.assertNotIn("-C /workspace VERSION", assembler)
+        self.assertIn("ARG PETCAM_VERSION=unknown", dockerfile)
+        self.assertIn("/workspace/VERSION", dockerfile)
+        self.assertIn("-C /workspace VERSION", assembler)
+        self.assertIn("PETCAM_VERSION:", compose)
 
     def test_pi_gen_stage_installs_packages_before_runtime_configuration(self):
         package_dir = STAGE / "01-petcam"
@@ -147,6 +149,7 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertIn("petcam-${TAG}-arm64.img.xz", workflow)
         self.assertIn("petcam-image-armhf-${{ github.sha }}", workflow)
         self.assertIn("petcam-image-arm64-${{ github.sha }}", workflow)
+        self.assertIn("PETCAM_VERSION: ${{ github.sha }}", workflow)
 
     def test_first_boot_wrapper_owns_device_specific_tls_initialization(self):
         start = (ROOT / "deploy/start.sh").read_text(encoding="utf-8")

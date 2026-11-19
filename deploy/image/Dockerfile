@@ -3,6 +3,8 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends tar gzip \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /workspace
+ARG PETCAM_VERSION=unknown
+RUN printf '%s\n' "$PETCAM_VERSION" > /workspace/VERSION
 COPY src/ src/
 COPY deploy/ deploy/
 COPY deploy/image/assemble.sh /usr/local/bin/assemble-petcam

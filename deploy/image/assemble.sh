@@ -10,6 +10,6 @@ if awk '!/^[[:space:]]*(#|$)/ { found=1 } END { exit !found }' deploy/python/req
   echo "deploy/python/requirements.txt contains pip dependencies; add a target-compatible offline wheelhouse build first." >&2
   exit 1
 fi
-tar -czf "$output" --exclude='deploy/image' -C /workspace src deploy/README.md deploy/install.sh deploy/start.sh deploy/etc deploy/var deploy/features deploy/lib
+tar -czf "$output" --exclude='deploy/image' -C /workspace VERSION src deploy/README.md deploy/install.sh deploy/start.sh deploy/etc deploy/var deploy/features deploy/lib
 test -s "$output"
 printf 'Assembled PetCam runtime: %s (%s bytes)\n' "$output" "$(stat -c '%s' "$output")"
