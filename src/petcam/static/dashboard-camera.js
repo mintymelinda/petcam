@@ -184,7 +184,7 @@ async function refreshStatistics(data = null) {
     const labels = ["none", "weak", "poor", "good", "excellent"];
     const reception = bars === null ? "unknown" : labels[bars];
     const metrics = [
-      ["Camera FPS", fps ? Number(fps).toFixed(1) : "Not reported"],
+      ["Camera FPS", fps && Number.isFinite(Number(fps)) ? Number(fps).toFixed(1) + " FPS" : "Awaiting measured frames"],
       [
         "GStreamer RTSP FPS",
         gStreamer.active &&
