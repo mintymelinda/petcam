@@ -77,7 +77,10 @@ function renderCaptureStatus() {
   } else
     $("capture-rate").textContent =
       "Actual captured rate: not currently reported" +
-      (format ? " · " + format : "");
+      (format ? " · " + format : "") +
+      (configured && configured !== "auto"
+        ? " · configured: " + configured + " FPS"
+        : "");
 }
 async function refreshLiveStatus() {
   try {
@@ -188,7 +191,9 @@ async function refreshStatistics(data = null) {
         "Camera FPS",
         fps && Number.isFinite(Number(fps))
           ? Number(fps).toFixed(1) + " FPS"
-          : "Awaiting measured frames",
+          : capture.configured_fps && capture.configured_fps !== "auto"
+            ? "Awaiting measurement · " + capture.configured_fps + " FPS configured"
+            : "Awaiting measured frames",
       ],
       [
         "GStreamer RTSP FPS",
