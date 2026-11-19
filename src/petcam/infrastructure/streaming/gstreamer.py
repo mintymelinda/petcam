@@ -19,6 +19,7 @@ RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 FRAME_STATUS_PATH = Path("/run/petcam/rtsp-sampler-status.json")
 STATE_PATH = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
+RTSP_QUEUE_MAX_BYTES = 100 * 1024 * 1024
 
 
 class GStreamerError(ValueError):
@@ -207,7 +208,8 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
     return (
         f"{source} ! h264parse config-interval=-1 ! "
         "video/x-h264,stream-format=byte-stream,alignment=au ! tee name=source_tee "
-        "source_tee. ! queue max-size-buffers=60 leaky=downstream ! "
+        f"source_tee. ! queue max-size-buffers=0 max-size-bytes={RTSP_QUEUE_MAX_BYTES} "
+        "max-size-time=0 leaky=downstream ! "
         "appsink name=rtsp_sink emit-signals=true max-buffers=2 drop=true "
         "sync=false wait-on-eos=false "
         "source_tee. ! queue max-size-buffers=4 leaky=downstream ! "
