@@ -234,21 +234,34 @@ class GStreamerOutputTests(unittest.TestCase):
             "fps": "30",
         })
         self.assertIn("tee name=source_tee", pipeline)
-        self.assertIn("rtph264pay name=rtp_pay", pipeline)
+        self.assertIn("appsink name=rtsp_sink", pipeline)
         self.assertIn("valve name=frame_valve drop=true", pipeline)
         self.assertIn("videorate drop-only=true max-rate=1", pipeline)
         self.assertIn("appsink name=frame_sink", pipeline)
         self.assertLess(pipeline.index("tee name=source_tee"), pipeline.index("avdec_h264"))
-        for forbidden in ("rtspsrc", "x264enc", "avenc_h264", "ffmpeg"):
+        self.assertLess(pipeline.index("valve name=frame_valve"), pipeline.rindex("h264parse"))
+        for forbidden in ("rtph264pay", "udpsink", "rtspsrc", "x264enc", "avenc_h264", "ffmpeg"):
             self.assertNotIn(forbidden, pipeline)
 
-    def test_native_h264_rtsp_factory_reads_local_rtp_without_owning_camera(self):
+    def test_native_h264_rtsp_factory_uses_direct_appsrc_without_udp_round_trip(self):
         pipeline = MODULE.build_native_rtsp_launch()
-        self.assertIn("udpsrc port=5004", pipeline)
-        self.assertIn("rtph264depay", pipeline)
+        self.assertIn("appsrc name=rtsp_source", pipeline)
+        self.assertIn("caps=video/x-h264,stream-format=byte-stream,alignment=au", pipeline)
         self.assertIn("rtph264pay name=pay0", pipeline)
-        for forbidden in ("v4l2src", "tcpclientsrc", "avdec_h264"):
+        for forbidden in ("udpsrc", "udpsink", "rtpjitterbuffer", "rtph264depay",
+                          "v4l2src", "tcpclientsrc", "avdec_h264"):
             self.assertNotIn(forbidden, pipeline)
+
+    def test_native_capture_pipeline_and_rtsp_factory_share_encoded_access_units(self):
+        capture = MODULE.build_native_capture_launch({
+            "native_h264": True, "device": "/dev/video0",
+            "resolution": "1280x720", "fps": "30",
+        })
+        rtsp = MODULE.build_native_rtsp_launch()
+        self.assertIn("appsink name=rtsp_sink", capture)
+        self.assertIn("appsrc name=rtsp_source", rtsp)
+        self.assertNotIn("udpsink", capture + rtsp)
+        self.assertNotIn("udpsrc", capture + rtsp)
 
     def test_native_h264_frame_branch_validates_decoder_and_csi_source(self):
         pipeline = MODULE.build_native_capture_launch({
