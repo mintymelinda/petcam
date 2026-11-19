@@ -119,7 +119,10 @@ def _set_status_state(current_state, state, source, path=STATUS_PATH):
 
 
 def _write_heartbeat(current_state, source, path=STATUS_PATH):
-    """Refresh the heartbeat without changing the current lifecycle state."""
+    """Refresh the heartbeat and discard stale frame-rate measurements."""
+    last_frame_at = current_state.get("last_frame_at")
+    if last_frame_at is None or time.monotonic() - last_frame_at > 3.0:
+        current_state["fps"] = None
     _write_status(current_state["value"], source, path, current_state.get("fps"))
     return True
 
@@ -189,6 +192,7 @@ def main():
     def count_frame(_pad, _info):
         now = time.monotonic()
         frame_times.append(now)
+        current_state["last_frame_at"] = now
         cutoff = now - 2.0
         while frame_times and frame_times[0] < cutoff:
             frame_times.pop(0)
@@ -200,6 +204,7 @@ def main():
 
     def media_unprepared(_media):
         current_state["fps"] = None
+        current_state["last_frame_at"] = None
         frame_times.clear()
         set_state("ready")
 
