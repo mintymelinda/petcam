@@ -120,7 +120,7 @@ class SetupPortalTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(payload)["csrf_token"], csrf)
 
-        status, _, logout_headers = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
+        status, logout_headers, _ = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
         self.assertEqual(status, 200)
         self.assertTrue(any(key.lower() == "set-cookie" and value.startswith("petcam_session=") for key, value in logout_headers))
         self.assertIsNone(web_auth.get_session(manager_token))
