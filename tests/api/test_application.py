@@ -17,6 +17,20 @@ PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
 
+    def test_camera_selection_restart_restarts_capture_for_coordinated_rtsp_rebuild(self):
+        with mock.patch.object(MODULE.process_control, "restart_worker") as restart:
+            MODULE.restart_camera_capture_service()
+        restart.assert_called_once_with("camera-capture")
+
+    def test_camera_selection_restart_surfaces_supervisor_unavailability(self):
+        with mock.patch.object(
+            MODULE.process_control,
+            "restart_worker",
+            side_effect=MODULE.process_control.SupervisorUnavailable("socket unavailable"),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "socket unavailable"):
+                MODULE.restart_camera_capture_service()
+
     def test_full_ui_setting_is_saved_through_authenticated_system_route(self):
         class Handler:
             path = "/api/web-ui"
