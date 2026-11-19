@@ -131,7 +131,9 @@ async function refreshDiagnostics() {
       : "Local camera, listener, and network checks look healthy.";
     const problems = d.problems || [];
     const remoteCheckRelevant = problems.some((problem) =>
-      /network|mDNS|RTSP server|HTTPS management|listening socket/i.test(problem),
+      /network|mDNS|RTSP server|HTTPS management|listening socket/i.test(
+        problem,
+      ),
     );
     $("diagnostic-details").textContent = [
       ...problems,
