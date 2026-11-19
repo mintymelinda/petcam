@@ -63,6 +63,6 @@ is disabled by default and can be enabled from the setup portal.
 ## Prebuilt Raspberry Pi image
 
 See [the Raspberry Pi image build](image/README.md) for the Docker Compose +
-pi-gen pipeline. It builds Raspberry Pi OS Trixie ARM64 with PetCam installed
+pi-gen pipeline. It builds one Raspberry Pi OS Trixie 32-bit ARMHF image for supported Raspberry Pi models, with PetCam installed
 at /opt/petcam, while keeping this source-based installer usable on existing
 devices.
