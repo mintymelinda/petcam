@@ -170,6 +170,12 @@ async function refreshStatistics(data = null) {
     const fps = capture.latest_captured_fps,
       signal = wifi.signal_dbm,
       gStreamer = d.g_streamer_status || {};
+    let cameraFps = "Awaiting measured frames";
+    if (fps && Number.isFinite(Number(fps))) {
+      cameraFps = Number(fps).toFixed(1) + " FPS";
+    } else if (capture.configured_fps && capture.configured_fps !== "auto") {
+      cameraFps = `Awaiting measurement · ${capture.configured_fps} FPS configured`;
+    }
     renderGStreamerStatus(gStreamer);
     const bars = !wifi.connected
       ? 0
@@ -187,14 +193,7 @@ async function refreshStatistics(data = null) {
     const labels = ["none", "weak", "poor", "good", "excellent"];
     const reception = bars === null ? "unknown" : labels[bars];
     const metrics = [
-      [
-        "Camera FPS",
-        fps && Number.isFinite(Number(fps))
-          ? Number(fps).toFixed(1) + " FPS"
-          : capture.configured_fps && capture.configured_fps !== "auto"
-            ? "Awaiting measurement · " + capture.configured_fps + " FPS configured"
-            : "Awaiting measured frames",
-      ],
+      ["Camera FPS", cameraFps],
       [
         "GStreamer RTSP FPS",
         gStreamer.active &&
