@@ -17,8 +17,7 @@ from pathlib import Path
 STATUS_PATH = Path(os.environ.get("PETCAM_G_STREAMER_STATUS", "/run/petcam/g-streamer-status.json"))
 RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
-FRAME_STATUS_PATH = Path(os.environ.get("PETCAM_RTSP_SAMPLER_STATUS", "/run/petcam/rtsp-sampler-status.json"))
-FRAME_SOCKET_PATH = Path(os.environ.get("PETCAM_FRAME_SOCKET", "/run/petcam/rtsp-sampler.sock"))
+FRAME_STATUS_PATH = Path("/run/petcam/rtsp-sampler-status.json")
 STATE_PATH = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
 NATIVE_RTP_PORT = 5004
 
@@ -135,7 +134,12 @@ def _write_heartbeat(current_state, source, path=STATUS_PATH):
 def check_gstreamer_runtime():
     """Validate the RTSP server bindings and the elements used by both camera modes."""
     _GLib, Gst, _GstRtspServer = _load_gstreamer()
-    required = ("v4l2src", "tcpclientsrc", "h264parse", "rtph264pay", "souphttpsrc", "multipartdemux", "jpegparse", "rtpjpegpay")
+    required = (
+        "v4l2src", "tcpclientsrc", "h264parse", "rtph264pay", "souphttpsrc",
+        "multipartdemux", "jpegparse", "rtpjpegpay", "tee", "queue", "valve",
+        "videoconvert", "videorate", "jpegenc", "appsink", "udpsrc", "udpsink",
+        "rtpjitterbuffer", "rtph264depay",
+    )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:
         raise GStreamerError("Required GStreamer element(s) are missing: " + ", ".join(missing))
@@ -212,7 +216,7 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264", rtp_po
         "source_tee. ! queue max-size-buffers=4 leaky=downstream ! "
         "h264parse ! video/x-h264,stream-format=byte-stream,alignment=au ! "
         "valve name=frame_valve drop=true ! "
-        f"{decoder_name} ! videoconvert ! videorate drop-only=true max-rate=1 ! "
+        f"{decoder_name} name=frame_decoder ! videoconvert ! videorate drop-only=true max-rate=1 ! "
         "video/x-raw,framerate=1/1 ! jpegenc quality=85 ! "
         "appsink name=frame_sink emit-signals=true max-buffers=1 drop=true "
         "sync=false wait-on-eos=false"
@@ -261,13 +265,17 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
     if pipeline is None:
         raise GStreamerError("GStreamer could not create the persistent H.264 capture pipeline.")
     frame_valve = pipeline.get_by_name("frame_valve")
+    frame_decoder = pipeline.get_by_name("frame_decoder")
     frame_sink = pipeline.get_by_name("frame_sink")
     rtp_pay = pipeline.get_by_name("rtp_pay")
-    if frame_valve is None or frame_sink is None or rtp_pay is None:
+    if frame_valve is None or frame_decoder is None or frame_sink is None or rtp_pay is None:
         raise GStreamerError("The persistent H.264 pipeline is missing a required branch element.")
+    if decoder_name == "v4l2h264dec":
+        frame_decoder.set_property("capture-io-mode", 2)
+        frame_decoder.set_property("output-io-mode", 2)
 
     frame_buffer = sampler.LatestFrameBuffer()
-    frame_server = sampler.FrameServer(FRAME_SOCKET_PATH, frame_buffer)
+    frame_server = sampler.FrameServer(sampler.SOCKET_PATH, frame_buffer)
     frame_thread = threading.Thread(
         target=frame_server.serve_forever, name="petcam-frame-socket", daemon=True
     )
