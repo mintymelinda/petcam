@@ -133,6 +133,62 @@ class GStreamerOutputTests(unittest.TestCase):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
         self.assertFalse((Path(__file__).parents[3] / "deploy" / "systemd").exists())
+    def test_rtsp_client_tracking_removes_closed_clients(self):
+        class FakeClient:
+            def __init__(self):
+                self.closed_callback = None
+
+            def connect(self, signal, callback):
+                self.assert_signal = signal
+                self.closed_callback = callback
+
+            def close(self):
+                if self.closed_callback:
+                    self.closed_callback(self)
+
+        clients = []
+        client = FakeClient()
+        MODULE.track_rtsp_client(clients, client)
+        self.assertEqual(clients, [client])
+        self.assertEqual(client.assert_signal, "closed")
+
+        client.closed_callback(client)
+        self.assertEqual(clients, [])
+
+    def test_camera_mode_recovery_closes_existing_rtsp_clients(self):
+        class FakeClient:
+            def __init__(self):
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+
+        clients = [FakeClient(), FakeClient()]
+        original_clients = tuple(clients)
+        closed = MODULE.close_rtsp_clients(clients, "camera mode changed")
+        self.assertEqual(closed, 2)
+        self.assertEqual([client.close_calls for client in original_clients], [1, 1])
+        self.assertEqual(clients, [])
+
+    def test_rtsp_client_close_failures_do_not_block_other_clients(self):
+        class FakeClient:
+            def __init__(self, fail=False):
+                self.fail = fail
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+                if self.fail:
+                    raise RuntimeError("close failed")
+
+        clients = [FakeClient(fail=True), FakeClient()]
+        original_clients = tuple(clients)
+        with self.assertLogs(level="ERROR"):
+            closed = MODULE.close_rtsp_clients(clients, "test")
+        self.assertEqual(closed, 2)
+        self.assertEqual([client.close_calls for client in original_clients], [1, 1])
+        self.assertEqual(clients, [])
+
     def test_camera_status_signature_changes_when_resolution_or_capture_pid_changes(self):
         original = {
             "pid": 100,

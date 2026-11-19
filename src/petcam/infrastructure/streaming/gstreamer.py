@@ -259,8 +259,44 @@ def camera_status_signature(camera_status):
     )
 
 
-def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, source):
-    """Keep RTSP mounted while independently replacing the persistent camera pipeline."""
+def track_rtsp_client(clients, client):
+    """Track a connected RTSP client until its control connection closes."""
+    if client in clients:
+        return
+
+    clients.append(client)
+
+    def forget_closed_client(closed_client):
+        try:
+            clients.remove(closed_client)
+        except ValueError:
+            pass
+
+    client.connect("closed", forget_closed_client)
+
+
+def close_rtsp_clients(clients, reason):
+    """Close existing RTSP control connections so clients negotiate fresh media."""
+    pending = tuple(clients)
+    if pending:
+        logging.info("Closing %d RTSP client connection(s): %s", len(pending), reason)
+
+    for client in pending:
+        try:
+            client.close()
+        except Exception:
+            logging.exception("Unable to close an RTSP client connection")
+        finally:
+            try:
+                clients.remove(client)
+            except ValueError:
+                pass
+
+    return len(pending)
+
+
+def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_status, source):
+    """Keep RTSP mounted while replacing capture and reconnecting stale RTSP clients."""
     from petcam.infrastructure.streaming import sampler
 
     frame_buffer = sampler.LatestFrameBuffer()
@@ -273,7 +309,14 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
     frame_state = {"enabled": frame_consumers_enabled(), "published": False}
     current_state = {"value": "starting", "fps": None, "source": source}
     active = {"pipeline": None, "bus": None, "signature": None}
+    camera_unavailable = {"value": False}
+    rtsp_clients = []
     frame_times = []
+
+    def client_connected(_server, client):
+        track_rtsp_client(rtsp_clients, client)
+
+    server.connect("client-connected", client_connected)
 
     def sample_ready(sink):
         sample = sink.emit("pull-sample")
@@ -375,11 +418,14 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
     def reconcile_camera_source():
         latest = load_camera_status()
         if not latest:
+            camera_unavailable["value"] = True
             if active["pipeline"] is not None:
+                close_rtsp_clients(rtsp_clients, "camera capture is restarting")
                 logging.info("Camera capture marker disappeared; holding RTSP server for camera restart")
                 stop_capture_pipeline()
             return True
         if latest.get("native_h264") is not True:
+            close_rtsp_clients(rtsp_clients, "camera source changed away from native H.264")
             if active["pipeline"] is not None:
                 stop_capture_pipeline()
             logging.error("Camera source changed away from native H.264; restarting RTSP mode")
@@ -388,14 +434,18 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
 
         signature = camera_status_signature(latest)
         if signature != active["signature"]:
+            if active["pipeline"] is not None or camera_unavailable["value"] or active["signature"] is not None:
+                close_rtsp_clients(rtsp_clients, "camera mode changed; renegotiating RTSP media")
             if active["pipeline"] is not None:
                 logging.info(
                     "Camera mode changed to %s at %s FPS; rebuilding capture while keeping RTSP mounted",
                     latest.get("resolution"), latest.get("fps"),
                 )
                 stop_capture_pipeline()
+            camera_unavailable["value"] = True
             try:
                 start_capture_pipeline(latest)
+                camera_unavailable["value"] = False
             except Exception:
                 logging.exception("Unable to start the updated native H.264 camera pipeline")
                 _write_frame_status("error", error="Updated H.264 capture pipeline failed to start")
@@ -445,6 +495,8 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
                 logging.error("Persistent H.264 capture pipeline failed: %s; %s", error, debug or "")
             else:
                 logging.error("Persistent H.264 capture pipeline reached EOS.")
+            close_rtsp_clients(rtsp_clients, "capture pipeline stopped producing valid media")
+            camera_unavailable["value"] = True
             stop_capture_pipeline()
         return True
 
@@ -513,7 +565,7 @@ def main():
     if native_h264:
         if server.attach(None) == 0:
             raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
-        _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, source)
+        _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_status, source)
         return
 
     factory = GstRtspServer.RTSPMediaFactory()
