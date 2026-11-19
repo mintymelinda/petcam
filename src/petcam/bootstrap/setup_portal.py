@@ -73,7 +73,7 @@ $("setup-form").addEventListener("submit",async event=>{event.preventDefault();t
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
 $("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(result.enabled){$("open-manager").hidden=true;startReadinessChecks();}else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}message("Setting saved. Waiting for the full console to become ready.");}catch(error){message(error.message);}});
 $("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP stream URL copied.");}catch(_){message("Unable to copy automatically. Select and copy the URL above.");}});
-$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";$("manager-control").hidden=true;await refresh();});
+$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-control").hidden=true;await refresh();});
 refresh();
 </script></body></html>"""
 
@@ -174,7 +174,7 @@ def manager_ready() -> bool:
         response = connection.getresponse()
         payload = json.loads(response.read(4096))
         return response.status == 200 and payload == {"ready": True}
-    except (OSError, http.client.HTTPException):
+    except (OSError, http.client.HTTPException, ValueError):
         return False
     finally:
         if connection is not None:
