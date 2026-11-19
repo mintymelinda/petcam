@@ -71,6 +71,27 @@ class NetworkDiagnosticsTests(unittest.TestCase):
         self.assertEqual(report["backend_port"], 8082)
         self.assertTrue(report["layers"]["listeners"]["ports"]["8082"]["listening"])
 
+    def test_native_h264_does_not_require_mjpeg_endpoint_or_listener(self):
+        with mock.patch.object(MODULE, "parse_config", return_value={"PORT": "8081", "FORMAT": "H264"}), \
+                mock.patch.object(MODULE, "_native_h264_capture", return_value=(True, True)), \
+                mock.patch.object(MODULE, "command_output", side_effect=[
+                    "[]", "[]",
+                    "State Recv-Q Send-Q Local Address:Port Peer Address:Port\\n"
+                    "LISTEN 0 128 0.0.0.0:8554 0.0.0.0:*\\n"
+                    "LISTEN 0 128 0.0.0.0:8443 0.0.0.0:*\\n",
+                ]), \
+                mock.patch.object(MODULE, "probe_http", return_value={"reachable": True, "status": 200}) as probe:
+            report = MODULE.collect_diagnostics()
+
+        self.assertEqual(report["capture_mode"], "native_h264")
+        self.assertTrue(report["layers"]["capture_backend"]["healthy"])
+        self.assertTrue(report["layers"]["capture_backend"]["http"]["not_required"])
+        self.assertTrue(report["layers"]["listeners"]["healthy"])
+        self.assertNotIn("8081", report["layers"]["listeners"]["ports"])
+        self.assertFalse(any("MJPEG" in problem or "port 8081" in problem for problem in report["problems"]))
+        self.assertEqual(probe.call_count, 1)
+        self.assertIn("https://127.0.0.1:8443/", probe.call_args.args[0])
+
     def test_support_bundle_redacts_credentials_and_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "petcam.conf"
