@@ -15,6 +15,8 @@ class DeploymentAssetTests(unittest.TestCase):
         self.assertIn("deploy/start.sh", installer)
         self.assertNotIn(".whl", installer)
         self.assertNotIn("pip install", installer)
+        self.assertIn('git -C "$REPO_ROOT" rev-parse --verify HEAD', installer)
+        self.assertIn('PETCAM_VERSION', installer)
 
     def test_petcam_does_not_ship_systemd_units(self):
         self.assertFalse((DEPLOY / "systemd").exists())
