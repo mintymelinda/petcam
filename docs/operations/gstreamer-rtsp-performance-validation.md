@@ -17,7 +17,7 @@ Use the same camera mode and resolution for every measurement. Keep motion and t
 
 The following helper reports process CPU as a percentage of one logical CPU and the stream heartbeat:
 
-\`\`\`bash
+```bash
 measure_gstreamer_cpu() {
     local pid
     pid=$(pgrep -f '^/usr/bin/python3 -m petcam.infrastructure.streaming.gstreamer$' | head -n 1)
@@ -57,7 +57,7 @@ print("heartbeat age: %.2fs | state: %s | fps: %s" %
       (time.time() - d["updated_at"], d["state"], d["fps"]))
 PY
 }
-\`\`\`
+```
 
 Run it once with no RTSP clients, once with one client, and once with two independent clients. Record the camera resolution, client count, CPU percentage, and reported FPS for each phase. Compare results on the same device against the pre-change baseline. Before this change, the observed baseline was approximately 20–30% CPU with no viewer and approximately 64% with one viewer; these were short samples, not controlled averages.
 
@@ -75,11 +75,11 @@ Run it once with no RTSP clients, once with one client, and once with two indepe
 
 After starting GStreamer, verify that the old local RTP bridge is absent:
 
-\`\`\`bash
+```bash
 PID=$(pgrep -f '^/usr/bin/python3 -m petcam.infrastructure.streaming.gstreamer$' | head -n 1)
 ss -u -a -n -p | grep "pid=$PID" || true
 top -H -b -n 1 -p "$PID" | head -n 28
-\`\`\`
+```
 
 There should be no GStreamer-owned UDP socket on port 5004 and no active rtpjitterbuffer or udpsrc media threads. RTSP client transport sockets may still appear depending on whether clients negotiate UDP or TCP transport.
 
