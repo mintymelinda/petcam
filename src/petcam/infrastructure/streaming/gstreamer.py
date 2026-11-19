@@ -325,7 +325,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if appsrc is not None and rtsp_media["prepared"]:
             # Keep the RTSP appsrc bounded if a slow client cannot consume in real time.
             if appsrc.get_property("current-level-bytes") < 1048576:
-                result = appsrc.emit("push-buffer", sample.get_buffer())
+                result = appsrc.emit("push-sample", sample)
                 if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
                     logging.debug("Dropping H.264 access unit after RTSP appsrc returned %s", result)
         return Gst.FlowReturn.OK
