@@ -108,7 +108,7 @@ def _write_status(state, source, path=STATUS_PATH, fps=None):
         "source": source,
     }
     temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    temporary.write_text(json.dumps(payload) + "\\n", encoding="utf-8")
     os.replace(temporary, target)
 
 
@@ -166,7 +166,7 @@ def main():
     source = ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264") if native_h264 else "mjpeg_copy"
     launch = build_gstreamer_launch(camera_status)
     check_gstreamer_runtime()
-    GLib, _Gst, GstRtspServer = _load_gstreamer()
+    GLib, Gst, GstRtspServer = _load_gstreamer()
     if args.check:
         print(json.dumps({
             "source": source,
