@@ -40,13 +40,16 @@ def test_save_selection_rolls_back_camera_when_capture_restart_fails(monkeypatch
     previous = {"SOURCE": "usb", "FORMAT": "MJPEG", "RESOLUTION": "640x480"}
     monkeypatch.setattr(application, "resolve_camera_selection", lambda *_a, **_k: values)
     saved = []
-    restarts = iter([RuntimeError("RTSP restart failed"), None])
+    restarts = iter([RuntimeError("Capture restart failed"), None])
 
     def apply(config):
         saved.append(config)
         return config
 
+    restart_calls = []
+
     def restart():
+        restart_calls.append(True)
         result = next(restarts)
         if result:
             raise result
@@ -55,10 +58,11 @@ def test_save_selection_rolls_back_camera_when_capture_restart_fails(monkeypatch
     deps["parse_config"] = lambda _path: previous
     deps["restart_camera_capture_service"] = restart
 
-    with pytest.raises(RuntimeError, match="RTSP restart failed"):
+    with pytest.raises(RuntimeError, match="Capture restart failed"):
         application.save_selection({}, **deps)
 
     assert saved == [values, previous]
+    assert restart_calls == [True, True]
 
 
 def test_hardware_mode_is_not_rejected_by_performance_or_feature_policy(monkeypatch):
