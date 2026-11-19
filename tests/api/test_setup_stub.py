@@ -88,6 +88,21 @@ class SetupPortalTests(unittest.TestCase):
         self.assertIn(b"PetCam Setup", payload)
         self.assertFalse(MODULE.web_ui_enabled())
 
+    def test_full_ui_redirects_to_lightweight_ui_when_manager_is_not_ready(self):
+        web_auth.initialize_password("correct horse battery staple")
+        MODULE.set_web_ui_enabled(True)
+
+        with mock.patch.object(MODULE, "manager_ready", return_value=False):
+            status, headers, payload = self.request("GET", "/")
+
+        self.assertEqual(status, 302)
+        self.assertEqual(payload, b"")
+        self.assertIn(
+            ("Location", "/setup/"),
+            [(key, value) for key, value in headers],
+        )
+        self.assertTrue(any(key.lower() == "cache-control" and value == "no-store" for key, value in headers))
+
     def test_first_run_setup_login_and_web_ui_toggle(self):
         status, _, payload = self.request("GET", "/setup/api/status")
         self.assertEqual(status, 200)
