@@ -2,7 +2,7 @@
 
 Docker Compose assembles a portable PetCam source bundle. The image workflow builds **one Raspberry Pi OS Trixie 32-bit ARMHF image** using the upstream `RPi-Distro/pi-gen` project, then uses a thin custom stage to install feature-owned OS packages and place PetCam at `/opt/petcam`.
 
-- **One 32-bit ARMHF image:** built from pi-gen's `master` branch and intended for every Raspberry Pi generation supported by Raspberry Pi OS 32-bit, from the original Raspberry Pi 1 and Zero (ARMv6) through Raspberry Pi 5, including Zero 2 W, Pi 400, and Compute Modules.
+- **One 32-bit ARMHF image:** built from pi-gen's `master` branch and intended for every Raspberry Pi generation supported by Raspberry Pi OS 32-bit, from the original Raspberry Pi 1 and Raspberry Pi Zero (ARMv6) through Raspberry Pi 5, including Zero 2 W, Pi 400, and Compute Modules.
 
 This is one image, not separate architecture-specific downloads. Raspberry Pi OS 32-bit uses the ARMHF/Raspbian userspace needed by original ARMv6 boards while remaining supported on newer Pi models. The image does not require Docker on the device. The existing source installer remains usable on already-running Debian and Raspberry Pi OS systems.
 
