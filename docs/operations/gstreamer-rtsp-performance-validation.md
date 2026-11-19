@@ -10,6 +10,7 @@ This procedure validates the direct H.264 handoff introduced by the native captu
 - There is no local RTP-over-UDP bridge, rtpjitterbuffer, or depayload/re-payload cycle between capture and RTSP.
 - The frame-consumer valve is before the frame-branch H.264 parser and decoder. When motion and timelapse are disabled, the valve drops buffers before that branch parses or decodes them.
 - The RTSP media factory remains shared, so multiple clients consume the same encoded media pipeline.
+- The native RTSP handoff queue is configured with a 100 MiB byte ceiling (`max-size-buffers=0`, `max-size-time=0`). This is a capacity limit, not a preallocation: memory is committed only as buffers accumulate. The queue remains downstream-leaky, so it discards the oldest queued access units if it reaches the ceiling rather than allowing latency to grow without bound. The separate frame-consumer queue remains small and leaky to keep motion/timelapse samples fresh.
 
 ## CPU measurement
 
