@@ -161,7 +161,8 @@ def _json(handler, status, payload, headers=None):
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Cache-Control", "no-store")
     for name, value in (headers or {}).items():
-        for header_value in value if isinstance(value, (list, tuple)) else (value,):
+        values = value if isinstance(value, (list, tuple)) else (value,)
+        for header_value in values:
             handler.send_header(name, header_value)
     handler.end_headers()
     handler.wfile.write(body)
