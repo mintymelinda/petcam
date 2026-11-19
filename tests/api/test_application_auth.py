@@ -86,6 +86,21 @@ class WebManagerRouteAuthenticationTests(unittest.TestCase):
         csrf = json.loads(payload)["csrf_token"]
         return cookie, csrf
 
+    def test_full_ui_toggle_requires_authenticated_csrf_session(self):
+        status, _, _ = self.request("POST", "/api/web-ui", {"enabled": False})
+        self.assertEqual(status, 401)
+
+        cookie, csrf = self.login()
+        with mock.patch.object(MANAGER, "set_web_ui_enabled") as set_enabled:
+            status, _, payload = self.request(
+                "POST", "/api/web-ui", {"enabled": False}, cookie=cookie, csrf=csrf,
+            )
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(payload), {
+            "ok": True, "enabled": False, "setup_path": "/setup",
+        })
+        set_enabled.assert_called_once_with(False)
+
     def test_post_update_login_field_is_explicitly_masked(self):
         scripts = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
         page = MANAGER.PAGE + "\\n".join(

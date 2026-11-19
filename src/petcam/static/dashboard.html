@@ -67,6 +67,10 @@ dialog{max-width:min(28rem,calc(100% - 2rem));width:100%;background:#22262c;colo
 <div class="row"><button id="save-motion">Save motion settings</button></div>
 <h3>Recent motion events</h3><div id="motion-events" class="muted">No motion events recorded.</div></section></div><div id="panel-system" class="tab-panel" role="tabpanel" aria-labelledby="tab-system" tabindex="0" hidden>
 <section id="system-info"><h2>System Info</h2><p id="installed-version" role="status">Loading installed PetCam version…</p></section>
+<section id="full-ui-service"><h2>Full Web UI</h2><p id="full-ui-status" class="muted" role="status">Checking full UI setting…</p>
+<label style="display:flex;gap:.5rem;align-items:center"><input id="disable-full-ui" type="checkbox"> Disable Full UI</label>
+<p class="muted">Disabling the full dashboard stops its background service to free memory and CPU. Camera capture, RTSP streaming, enabled features, and the lightweight setup page remain available. To re-enable the dashboard, visit <a href="/setup">the lightweight setup page</a>.</p>
+<div class="row"><button id="save-full-ui" type="button">Save Full UI setting</button></div></section>
 <section id="g-streamer-service"><h2>GStreamer RTSP Service</h2>
 <p class="muted">RTSP is a core PetCam service. It starts automatically after camera capture is available and remains running without OBS-specific configuration.</p>
 <label for="g-streamer-url">RTSP endpoint</label><input id="g-streamer-url" type="text" readonly value="rtsp://__PETCAM_HOST__:8554/petcam">

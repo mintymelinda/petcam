@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest import mock
 
 from petcam.api import application as MODULE
-from petcam.api import auth_routes, management_routes
+from petcam.api import auth_routes, management_routes, system_routes
 
 DASHBOARD_SCRIPTS = ("dashboard-api.js", "dashboard-core.js", "dashboard-camera.js", "dashboard-features.js", "dashboard.js")
 DASHBOARD_JS = "\\n".join(
@@ -16,6 +16,41 @@ DASHBOARD_JS = "\\n".join(
 PAGE_AND_JS = MODULE.PAGE + DASHBOARD_JS
 
 class WebManagerTests(unittest.TestCase):
+
+    def test_full_ui_setting_is_saved_through_authenticated_system_route(self):
+        class Handler:
+            path = "/api/web-ui"
+
+            def send_json(self, status, payload):
+                self.status = status
+                self.payload = payload
+
+        handler = Handler()
+        services = mock.Mock()
+        self.assertTrue(system_routes.handle_post(handler, services, {"enabled": False}))
+        services.set_web_ui_enabled.assert_called_once_with(False)
+        self.assertEqual(handler.status, 200)
+        self.assertEqual(handler.payload, {"ok": True, "enabled": False, "setup_path": "/setup"})
+
+    def test_full_ui_setting_rejects_non_boolean_values(self):
+        class Handler:
+            path = "/api/web-ui"
+
+            def send_json(self, status, payload):
+                self.status = status
+                self.payload = payload
+
+        handler = Handler()
+        services = mock.Mock()
+        with self.assertRaisesRegex(ValueError, "enabled must be a boolean"):
+            system_routes.handle_post(handler, services, {"enabled": "false"})
+        services.set_web_ui_enabled.assert_not_called()
+
+    def test_system_tab_exposes_full_ui_shutdown_and_recovery_controls(self):
+        self.assertIn('id="disable-full-ui"', PAGE_AND_JS)
+        self.assertIn('id="save-full-ui"', PAGE_AND_JS)
+        self.assertIn('window.location.assign("/setup")', PAGE_AND_JS)
+        self.assertIn("data.web_ui_enabled", PAGE_AND_JS)
 
     def test_feature_config_transaction_restores_config_and_services_on_failure(self):
         previous = {"enabled": False, "interval_seconds": 300}

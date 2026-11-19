@@ -2,7 +2,7 @@
 
 from urllib.parse import urlparse
 
-from . import auth_routes, camera_routes, diagnostics_routes, feature_routes
+from . import auth_routes, camera_routes, diagnostics_routes, feature_routes, system_routes
 
 
 def handle_get(handler, services):
@@ -40,7 +40,7 @@ def handle_post(handler, services):
         data = services._body(handler)
         if auth_routes.handle_authenticated_post(handler, services):
             return
-        for routes in (camera_routes, feature_routes):
+        for routes in (camera_routes, feature_routes, system_routes):
             if routes.handle_post(handler, services, data):
                 return
         handler.send_error(404)

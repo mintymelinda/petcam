@@ -148,6 +148,12 @@ def _load_gstreamer():
     return GLib, Gst, GstRtspServer
 
 
+def configure_rtsp_server(server):
+    """Bind RTSP on IPv6 with dual-stack IPv4 compatibility."""
+    server.set_address("::")
+    server.set_service("8554")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--check", action="store_true", help="validate GStreamer RTSP dependencies and camera selection")
@@ -168,8 +174,7 @@ def main():
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     server = GstRtspServer.RTSPServer()
-    server.set_address("0.0.0.0")
-    server.set_service("8554")
+    configure_rtsp_server(server)
     mounts = server.get_mount_points()
     factory = GstRtspServer.RTSPMediaFactory()
     factory.set_shared(True)

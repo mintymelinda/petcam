@@ -27,6 +27,7 @@ from ..features.timelapse.service import load_config as load_timelapse_config, s
 from ..features.motion.service import load_config as load_motion_config, save_config as save_motion_config, state_snapshot as motion_snapshot, FRAMES as MOTION_FRAMES
 from ..features.light_sensor.service import load_config as load_light_config, save_config as save_light_config, read_status as light_sensor_status
 from ..security.sessions import SESSION_TTL, get_session, initialize_password, invalidate_session, is_configured, new_session, verify_password
+from ..bootstrap import setup_portal
 from ..infrastructure.camera import controls as camera_controls
 from ..application import feature_configuration as feature_services
 from ..application import camera_configuration, capture_status, service_transactions, diagnostics as application_diagnostics
@@ -227,6 +228,14 @@ def system_resource_metrics():
 
 def installed_version():
     return system_metrics.installed_version(__file__)
+
+
+def web_ui_enabled():
+    return setup_portal.web_ui_enabled()
+
+
+def set_web_ui_enabled(enabled):
+    setup_portal.set_web_ui_enabled(enabled)
 
 def _origin_ok(handler):
     origin = urlparse(handler.headers.get("Origin", ""))
