@@ -43,19 +43,20 @@ class SetupPortalTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.auth_patch = mock.patch.object(web_auth, "AUTH_FILE", Path(self.directory.name) / "auth.json")
+        self.session_file_patch = mock.patch.object(web_auth, "SESSION_FILE", Path(self.directory.name) / "web-sessions.json")
         self.config_patch = mock.patch.object(MODULE, "WEB_CONFIG", Path(self.directory.name) / "web-manager.json")
         self.auth_patch.start()
+        self.session_file_patch.start()
         self.config_patch.start()
         with MODULE._sessions_lock:
             MODULE._sessions.clear()
-        with web_auth._lock:
-            web_auth._sessions.clear()
         with MODULE._login_lock:
             MODULE._login_attempts.clear()
         MODULE.set_web_ui_enabled(False)
 
     def tearDown(self):
         self.auth_patch.stop()
+        self.session_file_patch.stop()
         self.config_patch.stop()
         self.directory.cleanup()
 
