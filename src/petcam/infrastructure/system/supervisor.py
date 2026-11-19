@@ -75,6 +75,18 @@ def read_enabled(path: Path, *, default: bool = False) -> bool:
     return default
 
 
+def native_h264_capture_active() -> bool:
+    try:
+        marker = json.loads((STATE / "camera-status.json").read_text(encoding="utf-8"))
+        pid = int(marker.get("pid", 0))
+        if marker.get("native_h264") is not True or pid <= 1:
+            return False
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, TypeError):
+        return False
+
+
 def capture_source_ready() -> bool:
     try:
         marker = json.loads((STATE / "camera-status.json").read_text(encoding="utf-8"))
@@ -97,7 +109,20 @@ def gstreamer_ready() -> bool:
 
 
 def sampler_needed() -> bool:
-    """Run the decoder only while a feature that consumes sampled frames is enabled."""
+    """Run the RTSP sampler only for frame consumers on non-native-H.264 sources."""
+    try:
+        camera = json.loads((STATE / "camera-status.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        camera = {}
+    if isinstance(camera, dict) and camera.get("native_h264") is True:
+        return False
+    if not camera:
+        try:
+            stream = json.loads((RUN / "g-streamer-status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            stream = {}
+        if stream.get("source") in ("native_h264", "native_h264_csi"):
+            return False
     return (
         read_enabled(STATE / "motion" / "config.json")
         or read_enabled(STATE / "timelapse" / "config.json")
@@ -149,6 +174,7 @@ class Supervisor:
         self.started_at = clock()
         self.control_server = None
         self.control_thread = None
+        self._retain_gstreamer_during_capture_restart = False
 
     def start(self, worker: Worker) -> None:
         if self.clock() < worker.next_start:
@@ -188,9 +214,18 @@ class Supervisor:
             desired = worker.should_run()
             process = worker.process
             if not desired:
+                if (
+                    worker.name == "gstreamer-rtsp"
+                    and self._retain_gstreamer_during_capture_restart
+                    and process is not None
+                    and process.poll() is None
+                ):
+                    continue
                 if process is not None:
                     self.stop(worker)
                 continue
+            if worker.name == "gstreamer-rtsp":
+                self._retain_gstreamer_during_capture_restart = False
             if process is not None and process.poll() is None:
                 continue
             if process is not None:
@@ -232,11 +267,22 @@ class Supervisor:
             if worker is None:
                 return {"ok": False, "error": "Unknown worker"}
             if action == "restart" and worker_name == "camera-capture":
-                for dependent_name in ("rtsp-sampler", "gstreamer-rtsp"):
-                    dependent = allowed.get(dependent_name)
+                if native_h264_capture_active():
+                    # The native H.264 RTSP server owns a persistent camera pipeline.
+                    # Keep its RTSP factory and client sessions alive while it notices
+                    # the new camera marker and rebuilds only the source/tee pipeline.
+                    self._retain_gstreamer_during_capture_restart = True
+                    dependent = allowed.get("rtsp-sampler")
                     if dependent is not None:
                         self.stop(dependent)
                         dependent.next_start = 0
+                else:
+                    self._retain_gstreamer_during_capture_restart = False
+                    for dependent_name in ("rtsp-sampler", "gstreamer-rtsp"):
+                        dependent = allowed.get(dependent_name)
+                        if dependent is not None:
+                            self.stop(dependent)
+                            dependent.next_start = 0
             self.stop(worker)
             worker.next_start = 0
             if action == "restart":

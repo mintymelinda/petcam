@@ -128,7 +128,7 @@ class SupervisorTests(unittest.TestCase):
         self.assertLess(names.index("camera-capture"), names.index("gstreamer-rtsp"))
         self.assertLess(names.index("gstreamer-rtsp"), names.index("rtsp-sampler"))
 
-    def test_camera_restart_stops_rtsp_dependents_before_restarting_capture(self):
+    def test_camera_restart_stops_rtsp_dependents_for_mjpeg_capture(self):
         entries = [
             supervisor.Worker("camera-capture", ("camera",)),
             supervisor.Worker("gstreamer-rtsp", ("gstreamer",)),
@@ -139,12 +139,47 @@ class SupervisorTests(unittest.TestCase):
             process.poll.return_value = None
             worker.process = process
         manager = supervisor.Supervisor(entries)
-        with mock.patch.object(manager, "start") as start:
+        with (
+            mock.patch.object(supervisor, "native_h264_capture_active", return_value=False),
+            mock.patch.object(manager, "start") as start,
+        ):
             result = manager.handle_control({"action": "restart", "worker": "camera-capture"})
         self.assertTrue(result["ok"])
         processes[1].terminate.assert_called_once()
         processes[2].terminate.assert_called_once()
         start.assert_called_once_with(entries[0])
+
+    def test_native_h264_camera_restart_preserves_rtsp_server_and_session(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            marker = state / "camera-status.json"
+            marker.write_text(
+                json.dumps({"pid": __import__("os").getpid(), "native_h264": True}),
+                encoding="utf-8",
+            )
+            entries = [
+                supervisor.Worker("camera-capture", ("camera",), lambda: False),
+                supervisor.Worker("gstreamer-rtsp", ("gstreamer",), lambda: False),
+                supervisor.Worker("rtsp-sampler", ("sampler",), lambda: False),
+            ]
+            processes = [mock.Mock() for _ in entries]
+            for index, (worker, process) in enumerate(zip(entries, processes)):
+                process.poll.return_value = None
+                process.pid = 2000 + index
+                worker.process = process
+            manager = supervisor.Supervisor(entries)
+            with (
+                mock.patch.object(supervisor, "STATE", state),
+                mock.patch.object(manager, "start") as start,
+            ):
+                result = manager.handle_control({"action": "restart", "worker": "camera-capture"})
+                manager.tick()
+            self.assertTrue(result["ok"])
+            self.assertTrue(manager._retain_gstreamer_during_capture_restart)
+            processes[1].terminate.assert_not_called()
+            processes[2].terminate.assert_called_once()
+            start.assert_called_once_with(entries[0])
+
 
     def test_control_socket_serves_status_requests(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -159,6 +194,31 @@ class SupervisorTests(unittest.TestCase):
                     manager.stop_control_server()
         self.assertTrue(response["ok"])
         self.assertIn("workers", response["snapshot"])
+    def test_native_h264_uses_integrated_frame_branch_instead_of_rtsp_sampler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / "motion").mkdir()
+            (state / "timelapse").mkdir()
+            (state / "motion" / "config.json").write_text('{"enabled": true}', encoding="utf-8")
+            (state / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            (state / "camera-status.json").write_text(
+                json.dumps({"native_h264": True}), encoding="utf-8",
+            )
+            with mock.patch.object(supervisor, "STATE", state):
+                self.assertFalse(supervisor.sampler_needed())
+
+    def test_mjpeg_frame_consumers_still_use_rtsp_sampler(self):
+        with tempfile.TemporaryDirectory() as directory:
+            state = Path(directory)
+            (state / "motion").mkdir()
+            (state / "timelapse").mkdir()
+            (state / "motion" / "config.json").write_text('{"enabled": true}', encoding="utf-8")
+            (state / "timelapse" / "config.json").write_text('{"enabled": false}', encoding="utf-8")
+            (state / "camera-status.json").write_text(
+                json.dumps({"native_h264": False}), encoding="utf-8",
+            )
+            with mock.patch.object(supervisor, "STATE", state):
+                self.assertTrue(supervisor.sampler_needed())
 
 
 if __name__ == "__main__":
