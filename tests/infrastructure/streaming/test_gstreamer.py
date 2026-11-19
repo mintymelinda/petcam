@@ -235,6 +235,12 @@ class GStreamerOutputTests(unittest.TestCase):
         })
         self.assertIn("tee name=source_tee", pipeline)
         self.assertIn("appsink name=rtsp_sink", pipeline)
+        self.assertIn(
+            f"queue max-size-buffers=0 max-size-bytes={MODULE.RTSP_QUEUE_MAX_BYTES} "
+            "max-size-time=0 leaky=downstream",
+            pipeline,
+        )
+        self.assertEqual(MODULE.RTSP_QUEUE_MAX_BYTES, 100 * 1024 * 1024)
         self.assertIn("valve name=frame_valve drop=true", pipeline)
         self.assertIn("videorate drop-only=true max-rate=1", pipeline)
         self.assertIn("appsink name=frame_sink", pipeline)
