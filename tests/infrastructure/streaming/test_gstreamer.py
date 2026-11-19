@@ -133,6 +133,30 @@ class GStreamerOutputTests(unittest.TestCase):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
         self.assertFalse((Path(__file__).parents[3] / "deploy" / "systemd").exists())
+    def test_camera_status_signature_changes_when_resolution_or_capture_pid_changes(self):
+        original = {
+            "pid": 100,
+            "backend": "usb",
+            "device": "/dev/video0",
+            "resolution": "1280x720",
+            "fps": "30",
+            "native_h264": True,
+        }
+        changed_resolution = {**original, "resolution": "640x480"}
+        changed_pid = {**original, "pid": 101}
+        self.assertNotEqual(
+            MODULE.camera_status_signature(original),
+            MODULE.camera_status_signature(changed_resolution),
+        )
+        self.assertNotEqual(
+            MODULE.camera_status_signature(original),
+            MODULE.camera_status_signature(changed_pid),
+        )
+        self.assertEqual(
+            MODULE.camera_status_signature(original),
+            MODULE.camera_status_signature(dict(original)),
+        )
+
     def test_native_h264_capture_pipeline_tees_compressed_video_before_decode(self):
         pipeline = MODULE.build_native_capture_launch({
             "native_h264": True,

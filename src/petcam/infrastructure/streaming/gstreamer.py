@@ -382,8 +382,9 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, mounts, camera_status, sou
         if latest.get("native_h264") is not True:
             if active["pipeline"] is not None:
                 stop_capture_pipeline()
-            logging.error("Camera source changed away from native H.264; RTSP server requires mode restart")
-            return True
+            logging.error("Camera source changed away from native H.264; restarting RTSP mode")
+            loop.quit()
+            return False
 
         signature = camera_status_signature(latest)
         if signature != active["signature"]:
