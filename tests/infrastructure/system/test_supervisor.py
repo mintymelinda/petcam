@@ -163,8 +163,9 @@ class SupervisorTests(unittest.TestCase):
                 supervisor.Worker("rtsp-sampler", ("sampler",)),
             ]
             processes = [mock.Mock() for _ in entries]
-            for worker, process in zip(entries, processes):
+            for index, (worker, process) in enumerate(zip(entries, processes)):
                 process.poll.return_value = None
+                process.pid = 2000 + index
                 worker.process = process
             manager = supervisor.Supervisor(entries)
             with (
