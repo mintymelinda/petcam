@@ -164,9 +164,10 @@ class GStreamerOutputTests(unittest.TestCase):
                 self.close_calls += 1
 
         clients = [FakeClient(), FakeClient()]
+        original_clients = tuple(clients)
         closed = MODULE.close_rtsp_clients(clients, "camera mode changed")
         self.assertEqual(closed, 2)
-        self.assertEqual([client.close_calls for client in clients], [1, 1])
+        self.assertEqual([client.close_calls for client in original_clients], [1, 1])
         self.assertEqual(clients, [])
 
     def test_rtsp_client_close_failures_do_not_block_other_clients(self):
