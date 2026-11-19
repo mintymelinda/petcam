@@ -107,13 +107,19 @@ def _cookie(handler) -> str:
 def _new_session():
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(24)
+    manager_token, _manager_csrf = web_auth.new_session()
     with _sessions_lock:
         now = time.time()
         for key, value in list(_sessions.items()):
             if value["expires_at"] <= now:
+                web_auth.invalidate_session(value.get("manager_token", ""))
                 del _sessions[key]
-        _sessions[token] = {"csrf": csrf, "expires_at": now + SESSION_TTL}
-    return token, csrf
+        _sessions[token] = {
+            "csrf": csrf,
+            "manager_token": manager_token,
+            "expires_at": now + SESSION_TTL,
+        }
+    return token, csrf, manager_token
 
 
 def _get_session(token):
@@ -155,7 +161,8 @@ def _json(handler, status, payload, headers=None):
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Cache-Control", "no-store")
     for name, value in (headers or {}).items():
-        handler.send_header(name, value)
+        for header_value in value if isinstance(value, (list, tuple)) else (value,):
+            handler.send_header(name, header_value)
     handler.end_headers()
     handler.wfile.write(body)
 
@@ -268,9 +275,12 @@ class Handler(BaseHTTPRequestHandler):
                     _json(self, 400, {"error": "Passwords do not match."})
                     return
                 web_auth.initialize_password(data.get("password", ""))
-                token, csrf = _new_session()
+                token, csrf, manager_token = _new_session()
                 _json(self, 201, {"ok": True, "csrf_token": csrf}, {
-                    "Set-Cookie": f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}"
+                    "Set-Cookie": [
+                        f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                        f"petcam_session={manager_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                    ]
                 })
                 return
             if path == "/setup/api/login":
@@ -287,9 +297,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 with _login_lock:
                     _login_attempts.pop(peer, None)
-                token, csrf = _new_session()
+                token, csrf, manager_token = _new_session()
                 _json(self, 200, {"ok": True, "csrf_token": csrf}, {
-                    "Set-Cookie": f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}"
+                    "Set-Cookie": [
+                        f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                        f"petcam_session={manager_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                    ]
                 })
                 return
             session = _get_session(_cookie(self))
@@ -304,9 +317,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token = _cookie(self)
             with _sessions_lock:
-                _sessions.pop(token, None)
+                session = _sessions.pop(token, None)
+            if session:
+                web_auth.invalidate_session(session.get("manager_token", ""))
             _json(self, 200, {"ok": True}, {
-                "Set-Cookie": "petcam_setup_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+                "Set-Cookie": [
+                    "petcam_setup_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+                    "petcam_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+                ]
             })
         except ValueError as error:
             _json(self, 400, {"error": str(error)})
