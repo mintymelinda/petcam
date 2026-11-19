@@ -1,4 +1,5 @@
 import contextlib
+import inspect
 import io
 import json
 import tempfile
@@ -11,6 +12,11 @@ from petcam.infrastructure.persistence import configuration as MODULE
 
 
 class ConfigValidationTests(unittest.TestCase):
+    def test_camera_capture_startup_timeout_defaults_to_sixty_seconds(self):
+        self.assertEqual(MODULE.CAPTURE_STARTUP_TIMEOUT, 60)
+        self.assertEqual(inspect.signature(MODULE.wait_for_stream).parameters["timeout"].default, 60)
+        self.assertEqual(inspect.signature(MODULE.wait_for_native_h264).parameters["timeout"].default, 60)
+
     def test_existing_default_config_is_compatible(self):
         values = {
             "SOURCE": "auto",

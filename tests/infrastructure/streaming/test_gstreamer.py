@@ -133,7 +133,7 @@ class GStreamerOutputTests(unittest.TestCase):
         names = {worker.name for worker in workers()}
         self.assertTrue({"gstreamer-rtsp", "rtsp-sampler", "setup-portal"}.issubset(names))
         self.assertFalse((Path(__file__).parents[3] / "deploy" / "systemd").exists())
-    def test_rtsp_client_tracking_removes_closed_clients(self):
+    def test_rtsp_client_tracking_logs_connections_and_removes_closed_clients(self):
         class FakeClient:
             def __init__(self):
                 self.closed_callback = None
@@ -142,18 +142,31 @@ class GStreamerOutputTests(unittest.TestCase):
                 self.assert_signal = signal
                 self.closed_callback = callback
 
-            def close(self):
-                if self.closed_callback:
-                    self.closed_callback(self)
-
         clients = []
         client = FakeClient()
-        MODULE.track_rtsp_client(clients, client)
-        self.assertEqual(clients, [client])
-        self.assertEqual(client.assert_signal, "closed")
+        with self.assertLogs(level="INFO") as logs:
+            MODULE.track_rtsp_client(clients, client)
+            self.assertEqual(clients, [client])
+            self.assertEqual(client.assert_signal, "closed")
+            client.closed_callback(client)
+            self.assertEqual(clients, [])
+        self.assertIn("RTSP client connected (1 active)", logs.output[0])
+        self.assertIn("RTSP client disconnected (0 active)", logs.output[1])
 
-        client.closed_callback(client)
-        self.assertEqual(clients, [])
+    def test_camera_capture_restart_retains_existing_rtsp_sessions(self):
+        class FakeClient:
+            def __init__(self):
+                self.close_calls = 0
+
+            def close(self):
+                self.close_calls += 1
+
+        clients = [FakeClient(), FakeClient()]
+        with self.assertLogs(level="INFO") as logs:
+            retained = MODULE.retain_rtsp_clients(clients, "camera mode change")
+        self.assertEqual(retained, 2)
+        self.assertEqual([client.close_calls for client in clients], [0, 0])
+        self.assertIn("Retaining 2 RTSP client session(s)", logs.output[0])
 
     def test_camera_mode_recovery_closes_existing_rtsp_clients(self):
         class FakeClient:

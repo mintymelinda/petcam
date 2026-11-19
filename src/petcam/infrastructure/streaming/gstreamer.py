@@ -260,19 +260,28 @@ def camera_status_signature(camera_status):
 
 
 def track_rtsp_client(clients, client):
-    """Track a connected RTSP client until its control connection closes."""
+    """Track and log a connected RTSP client until its control connection closes."""
     if client in clients:
         return
 
     clients.append(client)
+    logging.info("RTSP client connected (%d active)", len(clients))
 
     def forget_closed_client(closed_client):
         try:
             clients.remove(closed_client)
         except ValueError:
             pass
+        logging.info("RTSP client disconnected (%d active)", len(clients))
 
     client.connect("closed", forget_closed_client)
+
+
+def retain_rtsp_clients(clients, reason):
+    """Keep existing RTSP sessions alive while the native camera source is rebuilt."""
+    if clients:
+        logging.info("Retaining %d RTSP client session(s) during %s", len(clients), reason)
+    return len(clients)
 
 
 def close_rtsp_clients(clients, reason):
@@ -420,7 +429,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if not latest:
             camera_unavailable["value"] = True
             if active["pipeline"] is not None:
-                close_rtsp_clients(rtsp_clients, "camera capture is restarting")
+                retain_rtsp_clients(rtsp_clients, "camera capture restart")
                 logging.info("Camera capture marker disappeared; holding RTSP server for camera restart")
                 stop_capture_pipeline()
             return True
@@ -435,7 +444,9 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         signature = camera_status_signature(latest)
         if signature != active["signature"]:
             if active["pipeline"] is not None or camera_unavailable["value"] or active["signature"] is not None:
-                close_rtsp_clients(rtsp_clients, "camera mode changed; renegotiating RTSP media")
+                retain_rtsp_clients(
+                    rtsp_clients, f"camera mode change to {latest.get('resolution')}"
+                )
             if active["pipeline"] is not None:
                 logging.info(
                     "Camera mode changed to %s at %s FPS; rebuilding capture while keeping RTSP mounted",
