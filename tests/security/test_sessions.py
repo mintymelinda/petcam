@@ -63,6 +63,12 @@ class WebAuthenticationTests(unittest.TestCase):
         self.assertEqual(MODULE.get_session(token, now=1001)["csrf"], csrf)
         self.assertIsNone(MODULE.get_session(token, now=1000 + MODULE.SESSION_TTL))
 
+    def test_sessions_are_shared_through_the_persistent_store(self):
+        token, csrf = MODULE.new_session(now=1000)
+        with MODULE._lock:
+            MODULE._sessions.clear()
+        self.assertEqual(MODULE.get_session(token, now=1001)["csrf"], csrf)
+
     def test_password_change_invalidates_all_existing_sessions(self):
         MODULE.save_password("first password value")
         token, _ = MODULE.new_session(now=1000)
