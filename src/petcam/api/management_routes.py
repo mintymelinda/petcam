@@ -10,6 +10,9 @@ def handle_get(handler, services):
     if path.startswith("/static/"):
         services.serve_static_asset(handler, path.removeprefix("/static/"))
         return
+    if path == "/api/ready":
+        handler.send_json(200, {"ready": True})
+        return
     if path == "/":
         body = services.PAGE.replace("__PETCAM_HOST__", services.device_mdns_hostname()).encode()
         handler.send_response(200)

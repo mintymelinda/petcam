@@ -43,8 +43,10 @@ class SetupPortalTests(unittest.TestCase):
     def setUp(self):
         self.directory = tempfile.TemporaryDirectory()
         self.auth_patch = mock.patch.object(web_auth, "AUTH_FILE", Path(self.directory.name) / "auth.json")
+        self.session_file_patch = mock.patch.object(web_auth, "SESSION_FILE", Path(self.directory.name) / "web-sessions.json")
         self.config_patch = mock.patch.object(MODULE, "WEB_CONFIG", Path(self.directory.name) / "web-manager.json")
         self.auth_patch.start()
+        self.session_file_patch.start()
         self.config_patch.start()
         with MODULE._sessions_lock:
             MODULE._sessions.clear()
@@ -54,6 +56,7 @@ class SetupPortalTests(unittest.TestCase):
 
     def tearDown(self):
         self.auth_patch.stop()
+        self.session_file_patch.stop()
         self.config_patch.stop()
         self.directory.cleanup()
 
@@ -85,6 +88,39 @@ class SetupPortalTests(unittest.TestCase):
         self.assertIn(b"PetCam Setup", payload)
         self.assertFalse(MODULE.web_ui_enabled())
 
+    def test_full_ui_redirects_to_lightweight_ui_when_manager_is_not_ready(self):
+        web_auth.initialize_password("correct horse battery staple")
+        MODULE.set_web_ui_enabled(True)
+
+        with mock.patch.object(MODULE, "manager_ready", return_value=False):
+            status, headers, payload = self.request("GET", "/")
+
+        self.assertEqual(status, 302)
+        self.assertEqual(payload, b"")
+        self.assertIn(
+            ("Location", "/setup/"),
+            [(key, value) for key, value in headers],
+        )
+        self.assertTrue(any(key.lower() == "cache-control" and value == "no-store" for key, value in headers))
+
+    def test_proxy_uses_extended_timeout_for_slow_device_authentication(self):
+        handler = mock.Mock()
+        handler.headers = {"Content-Length": "0", "Host": "localhost"}
+        handler.command = "GET"
+        handler.path = "/api/ready"
+        response = mock.Mock()
+        response.status = 200
+        response.reason = "OK"
+        response.read.return_value = b'{"ready": true}'
+        response.getheaders.return_value = []
+        connection = mock.Mock()
+        connection.getresponse.return_value = response
+
+        with mock.patch.object(MODULE.http.client, "HTTPSConnection", return_value=connection) as connect:
+            MODULE._proxy(handler)
+
+        self.assertEqual(connect.call_args.kwargs["timeout"], 60)
+
     def test_first_run_setup_login_and_web_ui_toggle(self):
         status, _, payload = self.request("GET", "/setup/api/status")
         self.assertEqual(status, 200)
@@ -95,7 +131,10 @@ class SetupPortalTests(unittest.TestCase):
             {"password": "correct horse battery staple", "password_confirmation": "correct horse battery staple"},
         )
         self.assertEqual(status, 201)
-        cookie = next(value for key, value in headers if key.lower() == "set-cookie").split(";", 1)[0]
+        cookie = next(value for key, value in headers if key.lower() == "set-cookie" and value.startswith("petcam_setup_session=")).split(";", 1)[0]
+        manager_cookie = next(value for key, value in headers if key.lower() == "set-cookie" and value.startswith("petcam_session=")).split(";", 1)[0]
+        manager_token = manager_cookie.split("=", 1)[1]
+        self.assertIsNotNone(web_auth.get_session(manager_token))
         csrf = json.loads(payload)["csrf_token"]
         self.assertTrue(web_auth.verify_password("correct horse battery staple"))
 
@@ -114,8 +153,10 @@ class SetupPortalTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(json.loads(payload)["csrf_token"], csrf)
 
-        status, _, _ = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
+        status, logout_headers, _ = self.request("POST", "/setup/api/logout", {}, cookie=cookie, csrf=csrf)
         self.assertEqual(status, 200)
+        self.assertTrue(any(key.lower() == "set-cookie" and value.startswith("petcam_session=") for key, value in logout_headers))
+        self.assertIsNone(web_auth.get_session(manager_token))
         status, _, _ = self.request("GET", "/setup/api/session", cookie=cookie)
         self.assertEqual(status, 401)
 

@@ -11,11 +11,14 @@ class WebAuthenticationTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.auth_file = Path(self.directory.name) / "web-auth.json"
         self.file_patch = mock.patch.object(MODULE, "AUTH_FILE", self.auth_file)
+        self.session_file_patch = mock.patch.object(MODULE, "SESSION_FILE", Path(self.directory.name) / "web-sessions.json")
         self.file_patch.start()
+        self.session_file_patch.start()
         with MODULE._lock:
             MODULE._sessions.clear()
 
     def tearDown(self):
+        self.session_file_patch.stop()
         self.file_patch.stop()
         self.directory.cleanup()
 
@@ -59,6 +62,12 @@ class WebAuthenticationTests(unittest.TestCase):
         token, csrf = MODULE.new_session(now=1000)
         self.assertEqual(MODULE.get_session(token, now=1001)["csrf"], csrf)
         self.assertIsNone(MODULE.get_session(token, now=1000 + MODULE.SESSION_TTL))
+
+    def test_sessions_are_shared_through_the_persistent_store(self):
+        token, csrf = MODULE.new_session(now=1000)
+        with MODULE._lock:
+            MODULE._sessions.clear()
+        self.assertEqual(MODULE.get_session(token, now=1001)["csrf"], csrf)
 
     def test_password_change_invalidates_all_existing_sessions(self):
         MODULE.save_password("first password value")

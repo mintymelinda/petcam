@@ -22,6 +22,7 @@ MANAGER_HOST = "127.0.0.1"
 MANAGER_PORT = 8444
 SESSION_TTL = 8 * 60 * 60
 MAX_BODY = 16 * 1024 * 1024
+PROXY_TIMEOUT_SECONDS = 60
 _sessions: dict[str, dict] = {}
 _sessions_lock = threading.RLock()
 _login_attempts: dict[str, list[float]] = {}
@@ -35,7 +36,7 @@ PAGE = """<!doctype html>
 body{max-width:34rem;margin:8vh auto;padding:0 1rem}main{background:#22262c;border:1px solid #383e47;border-radius:12px;padding:1.4rem}
 h1{font-size:1.5rem}label{display:block;margin:.9rem 0 .3rem}input{box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #59616d;border-radius:6px;background:#303741;color:inherit}
 button,a.button{display:inline-block;font:inherit;padding:.7rem 1rem;border:1px solid #68788c;border-radius:6px;background:#3b4654;color:#fff;text-decoration:none;cursor:pointer;margin-top:.7rem}
-small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-control[hidden],#setup-form[hidden],#login-form[hidden]{display:none}
+small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-control[hidden],#setup-form[hidden],#login-form[hidden],#open-manager[hidden]{display:none}
 .switch{display:flex;align-items:center;gap:.7rem;margin:1rem 0}.switch input{width:auto}
 </style></head><body><main><h1>PetCam <small>Device setup</small></h1>
 <p class="muted">This lightweight page remains available even when the full management dashboard is switched off.</p>
@@ -50,7 +51,8 @@ small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-con
 <label class="switch"><input id="web-enabled" type="checkbox"> Enable full Web UI</label>
 <p class="muted">The full dashboard is a separate service. Turning it off does not disable this setup page, camera streaming, or other enabled features.</p>
 <button id="save" type="button">Save Web UI setting</button><button id="logout" type="button">Sign out</button>
-<p><a id="open-manager" class="button" href="/">Open full dashboard</a></p></section>
+<p><a id="open-manager" class="button" href="/" hidden>Open full dashboard</a></p><p id="manager-readiness" class="muted" role="status">Full Web UI is not ready.</p>
+<section id="stream-info"><h3>RTSP camera stream</h3><label for="rtsp-url">Stream URL</label><input id="rtsp-url" type="text" readonly><button id="copy-rtsp-url" type="button">Copy stream URL</button><p class="muted">Use this URL in OBS or another RTSP client.</p></section></section>
 <p id="message" role="status" aria-live="polite"></p></main>
 <script>
 const $=id=>document.getElementById(id);let csrf="";
@@ -58,16 +60,21 @@ async function api(path,body){const headers={"Content-Type":"application/json"};
  const response=await fetch("/setup/api/"+path,{method:body===undefined?"GET":"POST",headers,body:body===undefined?undefined:JSON.stringify(body)});
  const data=await response.json().catch(()=>({error:"Unexpected server response"}));if(!response.ok)throw Error(data.error||"Request failed");return data;}
 function message(value){$("message").textContent=value;}
+function rtspStreamUrl(){let host=window.location.hostname;if(host.startsWith("[")&&host.endsWith("]"))host=host.slice(1,-1);if(host.includes(":"))host="["+host+"]";return "rtsp://"+host+":8554/petcam";}
+let readinessTimer=null;
+async function refreshManagerReadiness(){const link=$("open-manager"),status=$("manager-readiness");try{const result=await api("manager-status");link.hidden=!result.ready;status.textContent=result.ready?"Full Web UI is ready.":"Full Web UI is starting or unavailable.";}catch(_){link.hidden=true;status.textContent="Full Web UI readiness could not be confirmed.";}}
+function startReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
  if(status.configured){try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;
- $("web-enabled").checked=status.enabled;$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";$("open-manager").hidden=!status.enabled;
+ $("web-enabled").checked=status.enabled;$("rtsp-url").value=rtspStreamUrl();$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(status.enabled)startReadinessChecks();else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}
  }catch(_){$("manager-control").hidden=true;$("login-form").hidden=false;}}
  }catch(error){message(error.message);}}
 $("setup-form").addEventListener("submit",async event=>{event.preventDefault();try{if($("new-password").value!==$("confirm-password").value)throw Error("Passwords do not match.");
  const result=await api("setup",{password:$("new-password").value,password_confirmation:$("confirm-password").value});csrf=result.csrf_token;message("Administrator password created.");await refresh();}catch(error){message(error.message);}});
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
-$("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";$("open-manager").hidden=!result.enabled;message("Setting saved. The service will reconcile within a few seconds.");}catch(error){message(error.message);}});
-$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";$("manager-control").hidden=true;await refresh();});
+$("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(result.enabled){$("open-manager").hidden=true;startReadinessChecks();}else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}message("Setting saved. Waiting for the full console to become ready.");}catch(error){message(error.message);}});
+$("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP stream URL copied.");}catch(_){message("Unable to copy automatically. Select and copy the URL above.");}});
+$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-control").hidden=true;await refresh();});
 refresh();
 </script></body></html>"""
 
@@ -101,13 +108,19 @@ def _cookie(handler) -> str:
 def _new_session():
     token = secrets.token_urlsafe(32)
     csrf = secrets.token_urlsafe(24)
+    manager_token, _manager_csrf = web_auth.new_session()
     with _sessions_lock:
         now = time.time()
         for key, value in list(_sessions.items()):
             if value["expires_at"] <= now:
+                web_auth.invalidate_session(value.get("manager_token", ""))
                 del _sessions[key]
-        _sessions[token] = {"csrf": csrf, "expires_at": now + SESSION_TTL}
-    return token, csrf
+        _sessions[token] = {
+            "csrf": csrf,
+            "manager_token": manager_token,
+            "expires_at": now + SESSION_TTL,
+        }
+    return token, csrf, manager_token
 
 
 def _get_session(token):
@@ -149,9 +162,32 @@ def _json(handler, status, payload, headers=None):
     handler.send_header("Content-Length", str(len(body)))
     handler.send_header("Cache-Control", "no-store")
     for name, value in (headers or {}).items():
-        handler.send_header(name, value)
+        values = value if isinstance(value, (list, tuple)) else (value,)
+        for header_value in values:
+            handler.send_header(name, header_value)
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def manager_ready() -> bool:
+    """Report ready only after the full manager serves its dashboard page."""
+    if not web_ui_enabled():
+        return False
+    connection = None
+    try:
+        connection = http.client.HTTPSConnection(
+            MANAGER_HOST, MANAGER_PORT,
+            context=ssl._create_unverified_context(), timeout=2,
+        )
+        connection.request("GET", "/api/ready")
+        response = connection.getresponse()
+        payload = json.loads(response.read(4096))
+        return response.status == 200 and payload == {"ready": True}
+    except (OSError, http.client.HTTPException, ValueError):
+        return False
+    finally:
+        if connection is not None:
+            connection.close()
 
 
 def _proxy(handler):
@@ -168,7 +204,7 @@ def _proxy(handler):
     headers["Connection"] = "close"
     try:
         connection = http.client.HTTPSConnection(
-            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=15
+            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=PROXY_TIMEOUT_SECONDS
         )
         connection.request(handler.command, handler.path, body=body, headers=headers)
         response = connection.getresponse()
@@ -205,6 +241,9 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/setup/api/status":
             _json(self, 200, {"configured": web_auth.is_configured(), "enabled": web_ui_enabled()})
             return
+        if path == "/setup/api/manager-status":
+            _json(self, 200, {"enabled": web_ui_enabled(), "ready": manager_ready()})
+            return
         if path == "/setup/api/session":
             session = _get_session(_cookie(self))
             if not session:
@@ -213,6 +252,13 @@ class Handler(BaseHTTPRequestHandler):
                 _json(self, 200, {"csrf_token": session["csrf"]})
             return
         if web_auth.is_configured() and web_ui_enabled():
+            if path == "/" and not manager_ready():
+                self.send_response(302)
+                self.send_header("Location", "/setup/")
+                self.send_header("Cache-Control", "no-store")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
             _proxy(self)
         else:
             self._serve_page()
@@ -238,9 +284,12 @@ class Handler(BaseHTTPRequestHandler):
                     _json(self, 400, {"error": "Passwords do not match."})
                     return
                 web_auth.initialize_password(data.get("password", ""))
-                token, csrf = _new_session()
+                token, csrf, manager_token = _new_session()
                 _json(self, 201, {"ok": True, "csrf_token": csrf}, {
-                    "Set-Cookie": f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}"
+                    "Set-Cookie": [
+                        f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                        f"petcam_session={manager_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                    ]
                 })
                 return
             if path == "/setup/api/login":
@@ -257,9 +306,12 @@ class Handler(BaseHTTPRequestHandler):
                     return
                 with _login_lock:
                     _login_attempts.pop(peer, None)
-                token, csrf = _new_session()
+                token, csrf, manager_token = _new_session()
                 _json(self, 200, {"ok": True, "csrf_token": csrf}, {
-                    "Set-Cookie": f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}"
+                    "Set-Cookie": [
+                        f"petcam_setup_session={token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                        f"petcam_session={manager_token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age={SESSION_TTL}",
+                    ]
                 })
                 return
             session = _get_session(_cookie(self))
@@ -274,9 +326,14 @@ class Handler(BaseHTTPRequestHandler):
                 return
             token = _cookie(self)
             with _sessions_lock:
-                _sessions.pop(token, None)
+                session = _sessions.pop(token, None)
+            if session:
+                web_auth.invalidate_session(session.get("manager_token", ""))
             _json(self, 200, {"ok": True}, {
-                "Set-Cookie": "petcam_setup_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0"
+                "Set-Cookie": [
+                    "petcam_setup_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+                    "petcam_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0",
+                ]
             })
         except ValueError as error:
             _json(self, 400, {"error": str(error)})

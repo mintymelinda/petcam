@@ -129,8 +129,18 @@ async function refreshDiagnostics() {
           .map(([k]) => k.replaceAll("_", " ") + ": attention needed")
           .join(" · ")
       : "Local camera, listener, and network checks look healthy.";
-    $("diagnostic-details").textContent =
-      (d.problems || []).join("\n") + "\n" + d.remote_client_note;
+    const problems = d.problems || [];
+    const remoteCheckRelevant = problems.some((problem) =>
+      /network|mDNS|RTSP server|HTTPS management|listening socket/i.test(
+        problem,
+      ),
+    );
+    $("diagnostic-details").textContent = [
+      ...problems,
+      ...(remoteCheckRelevant && d.remote_client_note
+        ? [d.remote_client_note]
+        : []),
+    ].join("\n");
   } catch (e) {
     $("diagnostic-summary").textContent =
       "Diagnostics unavailable: " + e.message;

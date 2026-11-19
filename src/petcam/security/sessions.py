@@ -1,4 +1,5 @@
-"""Password hashing and in-memory sessions for the PetCam web manager."""
+"""Password hashing and process-shared sessions for the PetCam web manager."""
+import fcntl
 import hashlib
 import hmac
 import json
@@ -6,13 +7,52 @@ import os
 import secrets
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 
 AUTH_FILE = Path("/etc/petcam/web-auth.json")
+SESSION_FILE = Path("/run/petcam/web-sessions.json")
 SESSION_TTL = 8 * 60 * 60
 PBKDF2_ITERATIONS = 310_000
 _sessions = {}
 _lock = threading.RLock()
+
+
+@contextmanager
+def _session_store():
+    """Serialize session reads and writes across the setup and manager processes."""
+    SESSION_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = SESSION_FILE.with_suffix(SESSION_FILE.suffix + ".lock")
+    with lock_path.open("a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            try:
+                data = json.loads(SESSION_FILE.read_text(encoding="utf-8"))
+                if not isinstance(data, dict):
+                    data = {}
+            except (OSError, ValueError):
+                data = {}
+            yield data
+            temporary = SESSION_FILE.with_suffix(SESSION_FILE.suffix + ".tmp")
+            temporary.write_text(json.dumps(data) + "\n", encoding="utf-8")
+            temporary.chmod(0o600)
+            os.replace(temporary, SESSION_FILE)
+            with _lock:
+                _sessions.clear()
+                _sessions.update(data)
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
+def _prune(data, now):
+    for token, session in list(data.items()):
+        if not isinstance(session, dict) or session.get("expires_at", 0) <= now:
+            del data[token]
+
+
+def _clear_sessions():
+    with _session_store() as data:
+        data.clear()
 
 
 def hash_password(password):
@@ -72,7 +112,7 @@ def initialize_password(password):
                 output.write(payload)
                 output.flush()
                 os.fsync(output.fileno())
-            _sessions.clear()
+            _clear_sessions()
         except Exception:
             try:
                 AUTH_FILE.unlink()
@@ -88,34 +128,36 @@ def save_password(password):
     temporary.write_text(json.dumps(data) + "\n", encoding="utf-8")
     os.replace(temporary, AUTH_FILE)
     with _lock:
-        _sessions.clear()
+        _clear_sessions()
 
 
 def new_session(now=None):
     now = time.time() if now is None else now
     token, csrf = secrets.token_urlsafe(32), secrets.token_urlsafe(24)
-    with _lock:
-        prune_sessions(now)
-        _sessions[token] = {"csrf": csrf, "expires_at": now + SESSION_TTL}
+    with _lock, _session_store() as sessions:
+        _prune(sessions, now)
+        sessions[token] = {"csrf": csrf, "expires_at": now + SESSION_TTL}
     return token, csrf
 
 
 def prune_sessions(now=None):
     now = time.time() if now is None else now
-    with _lock:
-        for token, session in list(_sessions.items()):
-            if session["expires_at"] <= now:
-                del _sessions[token]
+    with _lock, _session_store() as sessions:
+        _prune(sessions, now)
 
 
 def get_session(token, now=None):
     if not token:
         return None
-    prune_sessions(now)
-    with _lock:
-        return _sessions.get(token)
+    now = time.time() if now is None else now
+    with _lock, _session_store() as sessions:
+        _prune(sessions, now)
+        session = sessions.get(token)
+        return dict(session) if session else None
 
 
 def invalidate_session(token):
-    with _lock:
-        _sessions.pop(token, None)
+    if not token:
+        return
+    with _lock, _session_store() as sessions:
+        sessions.pop(token, None)
