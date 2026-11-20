@@ -714,6 +714,8 @@ def main():
         return Gst.PadProbeReturn.OK
 
     media_started_at = {"value": None}
+    capture_marker_signature = {"value": None}
+    capture_seen_at = {"value": None}
 
     def media_unprepared(_media):
         media_started_at["value"] = None
@@ -751,11 +753,23 @@ def main():
         return True
 
     def heartbeat():
-        started = media_started_at["value"]
-        if started is not None and current_state.get("last_frame_at") is None and time.monotonic() - started > 10:
-            marker = load_camera_status()
-            if marker and request_camera_fallback(marker, "MJPEG capture produced no frames within 10 seconds"):
-                media_started_at["value"] = None
+        marker = load_camera_status()
+        now = time.monotonic()
+        if not marker:
+            capture_marker_signature["value"] = None
+            capture_seen_at["value"] = None
+        elif media_started_at["value"] is not None:
+            signature = camera_status_signature(marker)
+            if signature != capture_marker_signature["value"]:
+                capture_marker_signature["value"] = signature
+                capture_seen_at["value"] = now
+            if (
+                current_state.get("last_frame_at") is None
+                and capture_seen_at["value"] is not None
+                and now - capture_seen_at["value"] > 20
+            ):
+                if request_camera_fallback(marker, "MJPEG capture produced no frames within 20 seconds"):
+                    media_started_at["value"] = None
         return _write_heartbeat(current_state, source)
 
     GLib.timeout_add_seconds(1, reconcile_camera_source)
