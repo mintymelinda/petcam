@@ -29,4 +29,4 @@ done
 
 log "Installed PetCam application version $version at $INSTALL_ROOT."
 log "Existing /etc/petcam configuration and /var/lib/petcam state are left in place."
-PETCAM_VERSION="$version" exec "$INSTALL_ROOT/deploy/install.sh"
+PETCAM_VERSION="$version" exec /bin/bash "$INSTALL_ROOT/deploy/install.sh"
