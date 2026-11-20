@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Validate deployment scripts and architecture checks
         run: |
-          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh deploy/image/stage-petcam/00-install-petcam/00-run.sh deploy/image/stage-petcam/00-install-petcam/00-run-chroot.sh tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
+          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh deploy/image/stage-petcam/00-install-petcam/00-run.sh deploy/image/stage-petcam/00-install-petcam/00-run-chroot.sh deploy/image/stage-petcam/prerun.sh deploy/image/stage-petcam/EXPORT_IMAGE tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
@@ -64,7 +64,8 @@ jobs:
           bash deploy/image/build.sh release/package/petcam-armhf.tar.gz dist
           IMAGE="$(find dist -maxdepth 1 -type f -name '*.img.xz' -print -quit)"
           test -n "$IMAGE" && test -s "$IMAGE"
-          sha256sum "$IMAGE" > "$IMAGE.sha256"
+          IMAGE_NAME="$(basename "$IMAGE")"
+          (cd dist && sha256sum "$IMAGE_NAME" > "$IMAGE_NAME.sha256")
           test -s "$IMAGE.sha256"
       - uses: actions/upload-artifact@v4
         with:
@@ -115,7 +116,14 @@ jobs:
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else
-            gh release create "$TAG" --draft --verify-tag --title "PetCam release" --generate-notes
+            gh release create "$TAG" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
           fi
           gh release upload "$TAG" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" --clobber
+          ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
+          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256"; do
+            if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
+              echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
+              exit 1
+            fi
+          done
           gh release edit "$TAG" --draft=false

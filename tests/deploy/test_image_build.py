@@ -34,6 +34,8 @@ class PetCamImageBuildTests(unittest.TestCase):
         self.assertIn("needs: [build-package, build-image]", workflow)
         self.assertIn("github.sha", workflow)
         self.assertIn("*.img.xz.sha256", workflow)
+        self.assertIn('(cd dist && sha256sum "$IMAGE_NAME" > "$IMAGE_NAME.sha256")', workflow)
+        self.assertIn("for REQUIRED_ASSET in", workflow)
         self.assertIn("tests.deploy.test_image_build", workflow)
 if __name__ == "__main__":
     unittest.main()
