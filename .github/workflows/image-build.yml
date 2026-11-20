@@ -105,8 +105,9 @@ jobs:
           timezone: America/Toronto
           keyboard-keymap: us
           keyboard-layout: English (US)
-          # Keep the pi-gen work-directory cache disabled for a clean single-architecture build.
-          enable-pigen-cache: false
+          # Refresh the cache on main; PR builds restore it without publishing branch-specific caches.
+          enable-pigen-cache: true
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
           extra-host-dependencies: git
           verbose-output: true
 
