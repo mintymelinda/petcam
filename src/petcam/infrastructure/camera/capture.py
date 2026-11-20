@@ -204,6 +204,8 @@ def run_capture(config: dict) -> int:
         ]
         if native_h264:
             command.append("--h264")
+        if str(config.get("FORMAT", "auto")).lower() == "auto":
+            command.append("--auto-mode")
         # The supervisor gates RTSP startup on this PID marker for every CSI
         # mode, including native H.264 capture.
         _write_marker({
