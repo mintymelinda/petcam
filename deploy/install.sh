@@ -7,8 +7,12 @@ RUN_ROOT=/run/petcam
 log() { printf '[petcam-install] %s\n' "$*"; }
 fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
-command -v apt-get >/dev/null || fail "Debian/Raspberry Pi OS with apt is required."
+
+source "$REPO_ROOT/deploy/lib/platform.sh"
+validate_petcam_platform
+command -v apt-get >/dev/null || fail "Raspberry Pi OS / Debian with apt is required."
 [[ -f "$REPO_ROOT/src/petcam/infrastructure/system/supervisor.py" ]] || fail "Run this installer from the PetCam source checkout."
+
 version="${PETCAM_VERSION:-}"
 if [[ -z "$version" ]] && command -v git >/dev/null && [[ -e "$REPO_ROOT/.git" ]]; then
   version="$(git -C "$REPO_ROOT" rev-parse --verify HEAD 2>/dev/null || true)"
