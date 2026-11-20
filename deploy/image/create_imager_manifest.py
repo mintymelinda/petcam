@@ -159,7 +159,7 @@ def main() -> None:
         help="Raspberry Pi Imager v4 OS manifest URL",
     )
     args = parser.parse_args()
-    output = args.output or args.image.withSuffix("").withSuffix(".rpi-imager-manifest")
+    output = args.output or args.image.with_suffix("").with_suffix(".rpi-imager-manifest")
     create_manifest(args.image, output, args.source_url, args.repository_url)
 
 
