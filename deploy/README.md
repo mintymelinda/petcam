@@ -77,7 +77,7 @@ manager is disabled by default and can be enabled from the setup portal.
 From a source checkout, run:
 
 ```sh
-PETCAM_VERSION=1.2.3 deploy/package/build.sh dist
+bash deploy/package/build.sh dist
 ```
 
 This creates the single `dist/petcam-armhf.tar.gz` release package. The
