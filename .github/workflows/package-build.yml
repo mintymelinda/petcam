@@ -18,7 +18,7 @@ jobs:
       - uses: actions/checkout@v5
       - name: Validate deployment scripts and architecture checks
         run: |
-          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh deploy/image/stage-petcam/00-install-petcam/00-run.sh deploy/image/stage-petcam/00-install-petcam/00-run-chroot.sh deploy/image/stage-petcam/prerun.sh deploy/image/stage-petcam/EXPORT_IMAGE tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
+          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
@@ -44,8 +44,8 @@ jobs:
           retention-days: 7
           compression-level: 0
   build-image:
-    name: Build stock Raspberry Pi OS Lite image
-    if: startsWith(github.ref, 'refs/tags/v')
+    name: Customize stock Raspberry Pi OS Lite image
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     needs: build-package
     runs-on: ubuntu-24.04
     timeout-minutes: 180
@@ -55,13 +55,20 @@ jobs:
         with:
           name: petcam-armhf-package-${{ github.sha }}
           path: release/package
-      - name: Build Raspberry Pi OS Lite with PetCam installed
+      - name: Install image customization tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
+          sudo update-binfmts --enable qemu-arm
+          grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-arm
+      - name: Customize the official Raspberry Pi OS Lite image
         env:
-          PETCAM_VERSION: ${{ github.ref_name }}
+          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
         run: |
           set -euo pipefail
           mkdir -p dist
-          bash deploy/image/build.sh release/package/petcam-armhf.tar.gz dist
+          sudo bash deploy/image/build.sh release/package/petcam-armhf.tar.gz dist
           IMAGE="$(find dist -maxdepth 1 -type f -name '*.img.xz' -print -quit)"
           test -n "$IMAGE" && test -s "$IMAGE"
           IMAGE_NAME="$(basename "$IMAGE")"
