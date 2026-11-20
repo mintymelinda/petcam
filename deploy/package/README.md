@@ -51,7 +51,7 @@ not already exist.
 From a source checkout:
 
 ```sh
-PETCAM_VERSION=1.2.3 deploy/package/build.sh dist
+bash deploy/package/build.sh dist
 ```
 
 This produces exactly one release package: `dist/petcam-armhf.tar.gz`.
