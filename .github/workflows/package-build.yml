@@ -58,7 +58,7 @@ jobs:
       - name: Install image customization tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support
+          sudo apt-get install -y --no-install-recommends qemu-user-static binfmt-support parted e2fsprogs
           sudo mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc 2>/dev/null || true
           sudo update-binfmts --enable qemu-arm
           grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-arm

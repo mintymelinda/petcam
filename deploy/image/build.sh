@@ -12,7 +12,7 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
 [[ -s "$PACKAGE" ]] || fail "ARMHF application package not found: $PACKAGE"
-for tool in curl xz losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
+for tool in curl xz truncate parted resize2fs losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
 [[ -x /usr/bin/qemu-arm-static ]] || fail "qemu-arm-static is not installed at /usr/bin/qemu-arm-static."
@@ -68,6 +68,13 @@ log "Decompressing the verified stock image."
 xz --decompress --threads=0 --keep "$BASE_ARCHIVE"
 [[ -s "$BASE_IMAGE" ]] || fail "The decompressed Raspberry Pi OS image is empty."
 
+# The stock Lite root partition is sized for the base OS, not PetCam's
+# camera/streaming runtime. Extend only the final root partition; keep the
+# existing boot partition and its start sector untouched.
+log "Extending the stock root filesystem to provide room for PetCam dependencies."
+truncate -s +2G "$BASE_IMAGE"
+parted --script "$BASE_IMAGE" resizepart 2 100%
+
 LOOP_DEVICE="$(losetup --find --show --partscan "$BASE_IMAGE")"
 if [[ ! -b "${LOOP_DEVICE}p1" || ! -b "${LOOP_DEVICE}p2" ]]; then
   udevadm settle || true
@@ -79,6 +86,7 @@ fi
 [[ -b "${LOOP_DEVICE}p1" && -b "${LOOP_DEVICE}p2" ]] || fail "Expected boot and root partitions were not found in the official image."
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p1")" == vfat ]] || fail "The first image partition is not the expected FAT boot partition."
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p2")" == ext4 ]] || fail "The second image partition is not the expected ext4 root partition."
+resize2fs "${LOOP_DEVICE}p2"
 
 mkdir -p "$ROOTFS"
 mount "${LOOP_DEVICE}p2" "$ROOTFS"
