@@ -108,10 +108,16 @@ def extracted_hash_and_size(path: Path) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
-def create_manifest(image: Path, output: Path, source_url: str, repository_url: str) -> None:
+def create_manifest(
+    image: Path, output: Path, image_url: str, source_url: str, repository_url: str
+) -> None:
     image = image.expanduser().resolve(strict=True)
     if not image.is_file() or image.suffix != ".xz":
         fail("Pass the compressed PetCam .img.xz file.")
+
+    parsed_image_url = urlparse(image_url)
+    if parsed_image_url.scheme != "https" or not parsed_image_url.netloc:
+        fail("The published image URL must be an absolute HTTPS URL.")
 
     repository, upstream_entry = load_source_entry(source_url, repository_url)
     compressed_sha, compressed_size = file_hash_and_size(image)
@@ -122,7 +128,7 @@ def create_manifest(image: Path, output: Path, source_url: str, repository_url: 
         {
             "name": "PetCam — Raspberry Pi OS Lite (32-bit)",
             "description": "Raspberry Pi OS Lite 32-bit with PetCam preinstalled. Configure hostname, user, password and Wi-Fi in Raspberry Pi Imager before writing.",
-            "url": image.as_uri(),
+            "url": image_url,
             "image_download_size": compressed_size,
             "image_download_sha256": compressed_sha,
             "extract_size": extracted_size,
@@ -147,7 +153,7 @@ def create_manifest(image: Path, output: Path, source_url: str, repository_url: 
     output.write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
     print(f"[petcam-imager] Wrote {output}")
     print(f"[petcam-imager] Preserved upstream customization format: {entry['init_format']}")
-    print(f"[petcam-imager] Local image: {image}")
+    print(f"[petcam-imager] Published image URL: {image_url}")
 
 
 def main() -> None:
@@ -155,7 +161,11 @@ def main() -> None:
     parser.add_argument("image", type=Path, help="local PetCam .img.xz file")
     parser.add_argument(
         "output", nargs="?", type=Path,
-        help="manifest output path (default: alongside the image with .rpi-imager-manifest suffix)",
+        help="JSON manifest output path (default: petcam.rpi-imager-manifest.json beside the image)",
+    )
+    parser.add_argument(
+        "--image-url", required=True,
+        help="public HTTPS URL where the release image will be downloaded",
     )
     parser.add_argument(
         "--source-url",
@@ -168,8 +178,8 @@ def main() -> None:
         help="Raspberry Pi Imager v4 OS manifest URL",
     )
     args = parser.parse_args()
-    output = args.output or args.image.with_suffix("").with_suffix(".rpi-imager-manifest")
-    create_manifest(args.image, output, args.source_url, args.repository_url)
+    output = args.output or args.image.parent / "petcam.rpi-imager-manifest.json"
+    create_manifest(args.image, output, args.image_url, args.source_url, args.repository_url)
 
 
 if __name__ == "__main__":

@@ -4,50 +4,30 @@ PetCam is installed on the official Raspberry Pi OS Lite (32-bit) foundation.
 Version-tag releases provide both a ready-to-flash image with PetCam already
 installed and the standalone ARMHF application package for upgrades.
 
-## Customize a local image with Raspberry Pi Imager
+## Customize the release image with Raspberry Pi Imager
 
-The PetCam image is a locally downloaded image, so Raspberry Pi Imager 2.x
-needs a companion local manifest before it will offer OS customization. The
-manifest must be generated on the computer that holds the image: it embeds the
-image's absolute local file path.
+Each versioned release includes `petcam.rpi-imager-manifest.json`. This is a
+Raspberry Pi Imager repository manifest that points directly to that release's
+published image and carries forward the official Raspberry Pi OS customization
+metadata (including the correct `init_format` for that OS release).
 
-1. Download the `petcam-*-raspios-lite-armhf.img.xz` asset, its `.sha256`
-   checksum, and `create_imager_manifest.py` from the
+1. Download `petcam.rpi-imager-manifest.json` from the
    [latest PetCam release](https://github.com/mintymelinda/petcam/releases/latest).
-2. Verify the image before using it:
-
-   ```sh
-   sha256sum -c petcam-*-raspios-lite-armhf.img.xz.sha256
-   ```
-
-3. Generate the local manifest (the script needs internet access to retrieve
-   the official Raspberry Pi OS customization metadata):
-
-   ```sh
-   python3 create_imager_manifest.py petcam-vX.Y.Z-raspios-lite-armhf.img.xz
-   ```
-
-   This creates a matching `.rpi-imager-manifest` file beside the image. The
-   generator resolves the upstream base-image URL, finds its exact entry in
-   Raspberry Pi's Imager v4 repository, and carries its `init_format` and
-   supported-device metadata forward. It calculates fresh compressed and
-   decompressed image sizes and SHA-256 checksums for the PetCam image. It
-   fails rather than guessing if the upstream entry cannot be identified.
-4. Open the `.rpi-imager-manifest` file in Raspberry Pi Imager (double-click
-   it), or select it under **App Options → Content Repository → Edit → Use
-   custom file**, then apply and restart.
-5. Choose the PetCam image, select the target Raspberry Pi, and use Imager's
-   customization step to configure hostname, username/password, Wi-Fi, and
-   other options supported by the upstream OS image.
-6. Write the SD card and boot the Pi. SSH is enabled. Open
+2. In Raspberry Pi Imager, open **App Options → Content Repository → Edit →
+   Use custom file**, select the downloaded JSON file, then choose **Apply &
+   Restart**. Alternatively, use **Use custom URL** with the manifest's
+   GitHub release download URL.
+3. Select the **PetCam — Raspberry Pi OS Lite (32-bit)** entry, choose the
+   target Raspberry Pi, and use Imager's customization step to configure
+   hostname, username/password, Wi-Fi, and other supported options.
+4. Write the SD card and boot the Pi. SSH is enabled. Open
    `https://<device-hostname>.local:8443/` to continue PetCam setup.
 
-The manifest deliberately reuses the customization format declared by the
-matching official Raspberry Pi OS image. It does not assume that every
-Raspberry Pi OS release uses the same mechanism (for example, older releases
-use `systemd`, while current Trixie releases use `cloudinit-rpi`). The manifest
-is local to the computer where it was generated; regenerate it if you move the
-image to a different computer or directory.
+The manifest references the versioned image asset hosted by the same GitHub
+release; it is not tied to a local filesystem path. Its image size and SHA-256
+checksums are generated from the exact image being published. The
+`.img.xz` image and its `.sha256` sidecar remain available as separate
+release assets.
 
 ## Ready-to-flash image without Imager customization
 
