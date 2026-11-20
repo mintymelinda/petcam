@@ -8,10 +8,12 @@ class PetCamImageBuildTests(unittest.TestCase):
     def test_image_customizer_uses_verified_official_prebuilt_image(self):
         builder = (ROOT / "deploy/image/build.sh").read_text(encoding="utf-8")
         self.assertIn("https://downloads.raspberrypi.com/raspios_lite_armhf_latest", builder)
-        self.assertIn('"${RASPIOS_IMAGE_URL}.sha256"', builder)
+        self.assertIn('"\u0024{RASPIOS_IMAGE_URL}.sha256"', builder)
         self.assertIn("sha256sum --check --status", builder)
         self.assertIn('truncate -s +2G "$BASE_IMAGE"', builder)
         self.assertIn('parted --script "$BASE_IMAGE" resizepart 2 100%', builder)
+        self.assertIn('e2fsck -f -p "${LOOP_DEVICE}p2"', builder)
+        self.assertIn('(( FSCK_STATUS <= 1 ))', builder)
         self.assertIn('resize2fs "${LOOP_DEVICE}p2"', builder)
         self.assertIn('losetup --find --show --partscan "$BASE_IMAGE"', builder)
         self.assertIn('mount "${LOOP_DEVICE}p2" "$ROOTFS"', builder)
