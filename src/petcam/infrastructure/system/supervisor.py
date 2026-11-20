@@ -142,7 +142,7 @@ def workers() -> list[Worker]:
     return [
         Worker("setup-portal", (py, "-m", "petcam.bootstrap.setup_portal")),
         Worker("camera-capture", (py, "-m", "petcam.infrastructure.camera.capture")),
-        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer"), capture_source_ready),
+        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer")),
         Worker(
             "rtsp-sampler",
             (py, "-m", "petcam.infrastructure.streaming.sampler"),
@@ -232,7 +232,13 @@ class Supervisor:
                 runtime = now - worker.started_at
                 worker.process = None
                 worker.failures = 0 if runtime >= 60 else worker.failures + 1
-                delay = min(RESTART_BASE_SECONDS * 2 ** min(worker.failures, 5), RESTART_MAX_SECONDS)
+                if worker.name == "camera-capture":
+                    # Camera enumeration can lag boot by several seconds. Retry
+                    # promptly instead of backing off to a minute after boot misses.
+                    delay = RESTART_BASE_SECONDS
+                    worker.failures = 0
+                else:
+                    delay = min(RESTART_BASE_SECONDS * 2 ** min(worker.failures, 5), RESTART_MAX_SECONDS)
                 worker.next_start = now + delay
                 logging.warning("%s exited (%s); retrying in %.0fs", worker.name, process.returncode, delay)
             self.start(worker)

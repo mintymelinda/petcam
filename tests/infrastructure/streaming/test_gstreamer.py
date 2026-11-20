@@ -347,3 +347,28 @@ class GStreamerOutputTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_automatic_native_h264_fallback_request_is_written_for_camera_owner(tmp_path):
+    request = tmp_path / "camera-fallback-request.json"
+    status = {
+        "pid": 1234,
+        "owner_pid": 5678,
+        "native_h264": True,
+        "automatic_format": True,
+    }
+    assert MODULE.request_camera_fallback(status, "no frames", request)
+    payload = json.loads(request.read_text(encoding="utf-8"))
+    assert payload["pid"] == 5678
+    assert payload["reason"] == "no frames"
+
+
+def test_explicit_native_h264_mode_does_not_request_automatic_fallback(tmp_path):
+    request = tmp_path / "camera-fallback-request.json"
+    status = {
+        "pid": 1234,
+        "native_h264": True,
+        "automatic_format": False,
+    }
+    assert not MODULE.request_camera_fallback(status, "no frames", request)
+    assert not request.exists()

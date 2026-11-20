@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import os
 import secrets
 import ssl
 import threading
@@ -61,7 +62,7 @@ small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-con
 <p class="muted">The full dashboard is a separate service. Turning it off does not disable this setup page, camera streaming, or other enabled features.</p>
 <button id="save" type="button">Save Web UI setting</button><button id="logout" type="button">Sign out</button>
 <p><a id="open-manager" class="button" href="/" hidden>Open full dashboard</a></p><p id="manager-readiness" class="muted" role="status">Full Web UI is not ready.</p>
-<section id="stream-info"><h3>RTSP camera stream</h3><label for="rtsp-url">Stream URL</label><input id="rtsp-url" type="text" readonly><button id="copy-rtsp-url" type="button">Copy stream URL</button><p class="muted">Use this URL in OBS or another RTSP client.</p></section></section>
+<section id="stream-info"><h3>RTSP camera stream</h3><label for="rtsp-url">Stream URL</label><input id="rtsp-url" type="text" readonly><button id="copy-rtsp-url" type="button">Copy stream URL</button><p class="muted">Use this URL in OBS or another RTSP client.</p><h4>Camera configuration</h4><p id="camera-mode-status" class="muted" role="status">Loading configured camera mode…</p><p id="camera-active-status" class="muted">Waiting for active camera capture…</p><h4>RTSP service</h4><p id="rtsp-service-status" class="muted" role="status">Checking RTSP status…</p><small id="stream-status-updated" class="muted"></small></section></section>
 <p id="message" role="status" aria-live="polite"></p></main>
 <script>
 const $=id=>document.getElementById(id);let csrf="";
@@ -70,12 +71,20 @@ async function api(path,body){const headers={"Content-Type":"application/json"};
  const data=await response.json().catch(()=>({error:"Unexpected server response"}));if(!response.ok)throw Error(data.error||"Request failed");return data;}
 function message(value){$("message").textContent=value;}
 function rtspStreamUrl(){let host=window.location.hostname;if(host.startsWith("[")&&host.endsWith("]"))host=host.slice(1,-1);if(host.includes(":"))host="["+host+"]";return "rtsp://"+host+":8554/petcam";}
-let readinessTimer=null;
+let readinessTimer=null,streamStatusTimer=null;
+async function refreshStreamStatus(){try{const status=await api("stream-status");const configured=status.configured||{};const active=status.active_camera||{};
+ $("camera-mode-status").textContent="Configured: "+(configured.format||"Auto")+" · "+(configured.resolution||"Auto")+" · "+(configured.fps||"Auto")+" FPS";
+ $("camera-active-status").textContent=active.resolution?"Active: "+(active.format||"Unknown")+" · "+active.resolution+" · "+(active.fps||"—")+" FPS ("+(active.backend||"camera")+")":"Active capture: "+(status.capture_state||"discovering");
+ const rtsp=status.rtsp||{};let label=rtsp.state||"starting";if(rtsp.state==="publishing")label="Publishing video";else if(rtsp.state==="ready")label="RTSP server ready; waiting for video/client";else if(rtsp.state==="stalled")label="RTSP service status is stale";else if(rtsp.state==="stopped")label="RTSP service stopped";else if(rtsp.state==="starting")label="Starting RTSP service";
+ $("rtsp-service-status").textContent=label+(rtsp.fps?" · "+rtsp.fps+" FPS":"")+(rtsp.error?" · "+rtsp.error:"");
+ $("stream-status-updated").textContent=status.updated_at?"Updated "+new Date(status.updated_at*1000).toLocaleTimeString():"";
+ }catch(error){$("rtsp-service-status").textContent="Unable to read stream status: "+error.message;}}
+function startStreamStatusChecks(){if(streamStatusTimer!==null)clearInterval(streamStatusTimer);refreshStreamStatus();streamStatusTimer=setInterval(refreshStreamStatus,5000);}
 async function refreshManagerReadiness(){const link=$("open-manager"),status=$("manager-readiness");try{const result=await api("manager-status");link.hidden=!result.ready;status.textContent=result.ready?"Full Web UI is ready.":"Full Web UI is starting or unavailable.";}catch(_){link.hidden=true;status.textContent="Full Web UI readiness could not be confirmed.";}}
 function startReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
  if(status.configured){try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;
- $("web-enabled").checked=status.enabled;$("rtsp-url").value=rtspStreamUrl();$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(status.enabled)startReadinessChecks();else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}
+ $("web-enabled").checked=status.enabled;$("rtsp-url").value=rtspStreamUrl();$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";startStreamStatusChecks();if(status.enabled)startReadinessChecks();else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}
  }catch(_){$("manager-control").hidden=true;$("login-form").hidden=false;}}
  }catch(error){message(error.message);}}
 $("setup-form").addEventListener("submit",async event=>{event.preventDefault();try{if($("new-password").value!==$("confirm-password").value)throw Error("Passwords do not match.");
@@ -83,7 +92,7 @@ $("setup-form").addEventListener("submit",async event=>{event.preventDefault();t
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
 $("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(result.enabled){$("open-manager").hidden=true;startReadinessChecks();}else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}message("Setting saved. Waiting for the full console to become ready.");}catch(error){message(error.message);}});
 $("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP stream URL copied.");}catch(_){message("Unable to copy automatically. Select and copy the URL above.");}});
-$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-control").hidden=true;await refresh();});
+$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;if(streamStatusTimer!==null)clearInterval(streamStatusTimer);streamStatusTimer=null;$("open-manager").hidden=true;$("manager-control").hidden=true;await refresh();});
 refresh();
 </script></body></html>"""
 
@@ -176,6 +185,85 @@ def _json(handler, status, payload, headers=None):
             handler.send_header(name, header_value)
     handler.end_headers()
     handler.wfile.write(body)
+
+
+def stream_status_snapshot() -> dict:
+    """Return camera configuration and RTSP status without probing hardware."""
+    config = {}
+    try:
+        for line in Path("/etc/petcam/petcam.conf").read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            config[key.strip()] = value.strip()
+    except OSError:
+        pass
+
+    marker = {}
+    try:
+        marker = json.loads(Path("/var/lib/petcam/camera-status.json").read_text(encoding="utf-8"))
+        if not isinstance(marker, dict):
+            marker = {}
+    except (OSError, ValueError):
+        pass
+
+    rtsp = {}
+    try:
+        rtsp = json.loads(Path("/run/petcam/g-streamer-status.json").read_text(encoding="utf-8"))
+        if not isinstance(rtsp, dict):
+            rtsp = {}
+    except (OSError, ValueError):
+        pass
+
+    supervisor = {}
+    try:
+        supervisor = json.loads(Path("/run/petcam/supervisor-status.json").read_text(encoding="utf-8"))
+        if not isinstance(supervisor, dict):
+            supervisor = {}
+    except (OSError, ValueError):
+        pass
+
+    workers = supervisor.get("workers", {})
+    worker = workers.get("gstreamer-rtsp", {}) if isinstance(workers, dict) else {}
+    marker_pid = marker.get("pid")
+    if marker:
+        try:
+            if not isinstance(marker_pid, int) or marker_pid <= 1:
+                marker = {}
+            else:
+                os.kill(marker_pid, 0)
+        except OSError:
+            marker = {}
+    now = time.time()
+    updated_at = rtsp.get("updated_at")
+    fresh = isinstance(updated_at, (int, float)) and 0 <= now - updated_at <= 10
+    service_running = worker.get("running") is True
+    state = rtsp.get("state", "starting") if service_running else "stopped"
+    if service_running and not fresh:
+        state = "stalled"
+
+    return {
+        "configured": {
+            "format": config.get("FORMAT", "auto"),
+            "resolution": config.get("RESOLUTION", "auto"),
+            "fps": config.get("FPS", "auto"),
+        },
+        "active_camera": {
+            "backend": marker.get("backend"),
+            "format": marker.get("format"),
+            "resolution": marker.get("resolution"),
+            "fps": marker.get("fps"),
+        } if marker else None,
+        "capture_state": "running" if marker else "discovering",
+        "rtsp": {
+            "state": state,
+            "fps": rtsp.get("fps") if fresh else None,
+            "source": rtsp.get("source") if fresh else None,
+            "error": rtsp.get("last_error") if fresh else None,
+        },
+        "updated_at": now,
+    }
 
 
 def _manager_get(path: str, *, timeout: float = 2) -> tuple[int, str, bytes]:
@@ -290,6 +378,12 @@ class Handler(BaseHTTPRequestHandler):
             return
         if path == "/setup/api/manager-status":
             _json(self, 200, {"enabled": web_ui_enabled(), "ready": manager_ready()})
+            return
+        if path == "/setup/api/stream-status":
+            if not _get_session(_cookie(self)):
+                _json(self, 401, {"error": "Authentication required"})
+                return
+            _json(self, 200, stream_status_snapshot())
             return
         if path == "/setup/api/session":
             session = _get_session(_cookie(self))
