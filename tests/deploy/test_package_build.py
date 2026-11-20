@@ -49,6 +49,7 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('INSTALL_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"', installer)
         self.assertIn('rm -rf "$INSTALL_ROOT/$item"', installer)
         self.assertIn('PETCAM_VERSION="$version" exec', installer)
+        self.assertIn('exec /bin/bash "$INSTALL_ROOT/deploy/install.sh"', installer)
         self.assertIn('[[ "$PACKAGE_ROOT" != "$INSTALL_ROOT" ]]', installer)
         self.assertIn('for item in src deploy VERSION; do', installer)
         deployment = (ROOT / "deploy/install.sh").read_text(encoding="utf-8")
