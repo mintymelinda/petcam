@@ -212,7 +212,7 @@ def run_hardware_h264(args, width, height):
     process = None
     marker = {
         "pid": os.getpid(), "owner_pid": os.getppid(),
-        "automatic_format": args.automatic_format,
+        "automatic_format": getattr(args, "automatic_format", False),
         "native_h264": True, "backend": "csi",
         "device": capability.get("device"), "encoder": capability.get("encoder"),
         "resolution": f"{width}x{height}", "fps": args.fps,
