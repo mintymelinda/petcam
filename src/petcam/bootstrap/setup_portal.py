@@ -24,6 +24,15 @@ MANAGER_PORT = 8444
 SESSION_TTL = 8 * 60 * 60
 MAX_BODY = 16 * 1024 * 1024
 PROXY_TIMEOUT_SECONDS = 60
+PROXY_GET_ATTEMPTS = 3
+PROXY_RETRY_DELAY_SECONDS = 0.15
+MANAGER_STATIC_ASSETS = (
+    "/static/dashboard-api.js",
+    "/static/dashboard-core.js",
+    "/static/dashboard-camera.js",
+    "/static/dashboard-features.js",
+    "/static/dashboard.js",
+)
 _sessions: dict[str, dict] = {}
 _sessions_lock = threading.RLock()
 _login_attempts: dict[str, list[float]] = {}
@@ -257,25 +266,42 @@ def stream_status_snapshot() -> dict:
     }
 
 
+def _manager_get(path: str, *, timeout: float = 2) -> tuple[int, str, bytes]:
+    """Fetch one unauthenticated manager resource for a bounded readiness probe."""
+    connection = http.client.HTTPSConnection(
+        MANAGER_HOST, MANAGER_PORT,
+        context=ssl._create_unverified_context(), timeout=timeout,
+    )
+    try:
+        connection.request("GET", path, headers={"Connection": "close"})
+        response = connection.getresponse()
+        return response.status, response.getheader("Content-Type", ""), response.read(2 * 1024 * 1024)
+    finally:
+        connection.close()
+
+
 def manager_ready() -> bool:
-    """Report ready only after the full manager serves its dashboard page."""
+    """Require the dashboard document and every referenced local script to be servable."""
     if not web_ui_enabled():
         return False
-    connection = None
     try:
-        connection = http.client.HTTPSConnection(
-            MANAGER_HOST, MANAGER_PORT,
-            context=ssl._create_unverified_context(), timeout=2,
-        )
-        connection.request("GET", "/api/ready")
-        response = connection.getresponse()
-        payload = json.loads(response.read(4096))
-        return response.status == 200 and payload == {"ready": True}
+        status, content_type, document = _manager_get("/")
+        if status != 200 or "text/html" not in content_type.lower() or not document:
+            return False
+        if any(asset.encode("ascii") not in document for asset in MANAGER_STATIC_ASSETS):
+            return False
+        for asset in MANAGER_STATIC_ASSETS:
+            asset_status, asset_type, asset_body = _manager_get(asset)
+            if (
+                asset_status != 200
+                or "javascript" not in asset_type.lower()
+                or not asset_body
+            ):
+                return False
+        return True
     except (OSError, http.client.HTTPException, ValueError):
+        logging.debug("Full Web UI readiness probe failed", exc_info=True)
         return False
-    finally:
-        if connection is not None:
-            connection.close()
 
 
 def _proxy(handler):
@@ -290,24 +316,45 @@ def _proxy(handler):
     }
     headers["Host"] = handler.headers.get("Host", "localhost")
     headers["Connection"] = "close"
-    try:
-        connection = http.client.HTTPSConnection(
-            MANAGER_HOST, MANAGER_PORT, context=ssl._create_unverified_context(), timeout=PROXY_TIMEOUT_SECONDS
-        )
-        connection.request(handler.command, handler.path, body=body, headers=headers)
-        response = connection.getresponse()
-        payload = response.read()
-        handler.send_response(response.status, response.reason)
-        for key, value in response.getheaders():
-            if key.lower() not in {"connection", "keep-alive", "transfer-encoding", "server", "date"}:
-                handler.send_header(key, value)
-        handler.send_header("Connection", "close")
-        handler.end_headers()
-        handler.wfile.write(payload)
-        connection.close()
-    except (OSError, http.client.HTTPException) as error:
-        logging.warning("Full Web UI proxy unavailable: %s", error)
-        _json(handler, 503, {"error": "The full Web UI is enabled but is not currently available."})
+    retry_safe = handler.command in {"GET", "HEAD"}
+    attempts = PROXY_GET_ATTEMPTS if retry_safe else 1
+    last_error = None
+    for attempt in range(1, attempts + 1):
+        connection = None
+        try:
+            connection = http.client.HTTPSConnection(
+                MANAGER_HOST, MANAGER_PORT,
+                context=ssl._create_unverified_context(),
+                timeout=PROXY_TIMEOUT_SECONDS,
+            )
+            connection.request(handler.command, handler.path, body=body, headers=headers)
+            response = connection.getresponse()
+            payload = response.read()
+            handler.send_response(response.status, response.reason)
+            for key, value in response.getheaders():
+                if key.lower() not in {"connection", "keep-alive", "transfer-encoding", "server", "date"}:
+                    handler.send_header(key, value)
+            handler.send_header("Connection", "close")
+            handler.end_headers()
+            if payload:
+                handler.wfile.write(payload)
+            return
+        except (OSError, http.client.HTTPException) as error:
+            last_error = error
+            if attempt < attempts:
+                logging.info(
+                    "Full Web UI %s proxy attempt %d/%d failed (%s); retrying",
+                    handler.command, attempt, attempts, type(error).__name__,
+                )
+                time.sleep(PROXY_RETRY_DELAY_SECONDS * attempt)
+        finally:
+            if connection is not None:
+                connection.close()
+    logging.warning(
+        "Full Web UI proxy unavailable after %d attempt(s): %s: %s",
+        attempts, type(last_error).__name__, last_error,
+    )
+    _json(handler, 503, {"error": "The full Web UI is enabled but is not currently available."})
 
 
 class Handler(BaseHTTPRequestHandler):
