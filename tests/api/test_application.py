@@ -540,8 +540,10 @@ class WebManagerTests(unittest.TestCase):
         self.assertIn("Capture status refreshes every 5 seconds", PAGE_AND_JS)
         self.assertIn('id="capture-status-freshness"', PAGE_AND_JS)
 
-    def test_system_tab_displays_the_installed_application_version_without_dead_telemetry_nodes(self):
+    def test_system_tab_displays_the_release_version_without_dead_telemetry_nodes(self):
         self.assertIn('id="installed-version"', PAGE_AND_JS)
+        self.assertIn('"Release version: " + (data.installed_version || "unknown")', PAGE_AND_JS)
+        self.assertNotIn('"Installed version: "', PAGE_AND_JS)
         self.assertIn('id="system-health-grid"', PAGE_AND_JS)
         self.assertIn('id="statistics-updated"', PAGE_AND_JS)
         self.assertNotIn('id="frame-statistics"', PAGE_AND_JS)

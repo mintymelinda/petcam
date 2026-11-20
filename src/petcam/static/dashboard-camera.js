@@ -102,14 +102,14 @@ async function refreshSystemInfo() {
   try {
     const data = await request("/api/system");
     $("installed-version").textContent =
-      "Installed version: " + (data.installed_version || "unknown");
+      "Release version: " + (data.installed_version || "unknown");
     $("disable-full-ui").checked = data.web_ui_enabled === false;
     $("full-ui-status").textContent = data.web_ui_enabled
       ? "Full Web UI is enabled."
       : "Full Web UI is disabled. Use the lightweight setup page to re-enable it.";
   } catch (error) {
     $("installed-version").textContent =
-      "Installed version unavailable: " + error.message;
+      "Release version unavailable: " + error.message;
   }
 }
 

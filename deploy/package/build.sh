@@ -5,9 +5,6 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUTPUT_DIR="${1:-$REPO_ROOT/dist}"
 VERSION="${PETCAM_VERSION:-}"
 
-if [[ -z "$VERSION" ]] && command -v git >/dev/null 2>&1 && [[ -e "$REPO_ROOT/.git" ]]; then
-  VERSION="$(git -C "$REPO_ROOT" rev-parse --verify HEAD 2>/dev/null || true)"
-fi
 VERSION="${VERSION:-development}"
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || {
   printf '[petcam-package] ERROR: Invalid package version: %s\n' "$VERSION" >&2
