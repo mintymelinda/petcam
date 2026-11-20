@@ -19,6 +19,7 @@ STATUS_PATH = Path(os.environ.get("PETCAM_G_STREAMER_STATUS", "/run/petcam/g-str
 RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
 FRAME_STATUS_PATH = Path("/run/petcam/rtsp-sampler-status.json")
+FALLBACK_REQUEST_PATH = Path(os.environ.get("PETCAM_RUN", "/run/petcam")) / "camera-fallback-request.json"
 STATE_PATH = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
 RTSP_QUEUE_MAX_BYTES = 100 * 1024 * 1024
 
@@ -109,6 +110,24 @@ def refresh_camera_source(factory, camera_status, active_launch, active_source):
     factory.set_launch(launch)
     active_launch["value"] = launch
     active_source["value"] = source
+    return True
+
+
+def request_camera_fallback(camera_status, reason, path=FALLBACK_REQUEST_PATH):
+    """Ask the camera owner to switch from automatic native H.264 to MJPEG."""
+    if camera_status.get("native_h264") is not True or camera_status.get("automatic_format") is not True:
+        return False
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "pid": camera_status.get("pid"),
+        "reason": str(reason),
+        "requested_at": time.time(),
+    }
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+    os.replace(temporary, target)
+    logging.error("Requesting automatic camera fallback from native H.264: %s", reason)
     return True
 
 
@@ -350,7 +369,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
 
     frame_state = {"enabled": frame_consumers_enabled(), "published": False}
     current_state = {"value": "starting", "fps": None, "source": source}
-    active = {"pipeline": None, "bus": None, "signature": None}
+    active = {"pipeline": None, "bus": None, "signature": None, "started_at": None, "fallback_requested": False}
     camera_unavailable = {"value": False}
     rtsp_clients = []
     rtsp_media = {"appsrc": None, "prepared": False}
@@ -410,7 +429,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         pipeline = active["pipeline"]
         if pipeline is not None:
             pipeline.set_state(Gst.State.NULL)
-        active.update(pipeline=None, bus=None, signature=None)
+        active.update(pipeline=None, bus=None, signature=None, started_at=None, fallback_requested=False)
         frame_buffer.clear()
         frame_state["published"] = False
         frame_times.clear()
@@ -474,6 +493,8 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             pipeline=pipeline,
             bus=bus,
             signature=camera_status_signature(status),
+            started_at=time.monotonic(),
+            fallback_requested=False,
         )
         current_state["source"] = (
             "native_h264_csi" if status.get("backend") == "csi" else "native_h264"
@@ -493,6 +514,10 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
                 retain_rtsp_clients(rtsp_clients, "camera capture restart")
                 logging.info("Camera capture marker disappeared; holding RTSP server for camera restart")
                 stop_capture_pipeline()
+            return True
+        if latest.get("fallback_attempted") is True:
+            camera_unavailable["value"] = True
+            _set_status_state(current_state, "error", current_state["source"])
             return True
         if latest.get("native_h264") is not True:
             close_rtsp_clients(rtsp_clients, "camera source changed away from native H.264")
@@ -518,8 +543,11 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             try:
                 start_capture_pipeline(latest)
                 camera_unavailable["value"] = False
-            except Exception:
+            except Exception as error:
                 logging.exception("Unable to start the updated native H.264 camera pipeline")
+                active["signature"] = signature
+                request_camera_fallback(latest, error)
+                _set_status_state(current_state, "error", current_state["source"])
                 _write_frame_status("error", error="Updated H.264 capture pipeline failed to start")
         return True
 
@@ -580,16 +608,29 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             else:
                 logging.error("Persistent H.264 capture pipeline reached EOS.")
             close_rtsp_clients(rtsp_clients, "capture pipeline stopped producing valid media")
+            request_camera_fallback(load_camera_status(), "capture pipeline reported ERROR/EOS")
             camera_unavailable["value"] = True
             stop_capture_pipeline()
         return True
 
     def heartbeat():
+        now = time.monotonic()
         last_frame_at = current_state.get("last_frame_at")
-        if last_frame_at is not None and time.monotonic() - last_frame_at > 3.0:
+        if last_frame_at is not None and now - last_frame_at > 3.0:
             current_state["fps"] = None
             if current_state["value"] == "publishing":
                 _set_status_state(current_state, "ready", current_state["source"])
+        if (
+            active["pipeline"] is not None
+            and not active["fallback_requested"]
+            and active["started_at"] is not None
+            and now - (last_frame_at or active["started_at"]) > 8.0
+        ):
+            active["fallback_requested"] = request_camera_fallback(
+                load_camera_status(), "no H.264 video buffers received within eight seconds"
+            )
+            if active["fallback_requested"]:
+                _set_status_state(current_state, "error", current_state["source"])
         _write_heartbeat(current_state, current_state["source"])
         return True
 
@@ -603,7 +644,13 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     GLib.timeout_add_seconds(2, reconcile_frame_branch)
     GLib.timeout_add_seconds(2, heartbeat)
     try:
-        start_capture_pipeline(camera_status)
+        try:
+            start_capture_pipeline(camera_status)
+        except Exception as error:
+            logging.exception("Initial native H.264 camera pipeline failed")
+            active["signature"] = camera_status_signature(camera_status)
+            request_camera_fallback(camera_status, error)
+            _set_status_state(current_state, "error", current_state["source"])
         loop.run()
     finally:
         stop_capture_pipeline()

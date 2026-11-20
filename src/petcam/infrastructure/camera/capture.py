@@ -16,6 +16,7 @@ from ..persistence.configuration import parse_config
 STATE = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
 CONFIG = Path(os.environ.get("PETCAM_CONFIG", "/etc/petcam/petcam.conf"))
 CAMERA_STATUS = STATE / "camera-status.json"
+FALLBACK_REQUEST = Path(os.environ.get("PETCAM_RUN", "/run/petcam")) / "camera-fallback-request.json"
 CAMERA_CLI = "petcam.infrastructure.camera.cli"
 CSI_MODULE = "petcam.infrastructure.camera.csi"
 
@@ -105,6 +106,24 @@ def select_backend(config: dict) -> tuple[str, dict]:
     raise RuntimeError("No supported USB or CSI camera is currently available")
 
 
+def select_fallback_backend(source: str, config: dict) -> dict:
+    """Select a non-H.264 capture mode after native H.264 fails at runtime."""
+    if source == "usb":
+        failures = []
+        for pixel_format in ("MJPG", "YUYV"):
+            fallback_config = {**config, "FORMAT": pixel_format}
+            try:
+                return _run_selection("select", fallback_config, source="usb")
+            except (RuntimeError, ValueError) as error:
+                failures.append(f"{pixel_format}: {error}")
+        raise RuntimeError("No usable USB fallback mode was found: " + "; ".join(failures))
+    if source == "csi":
+        selected = _run_selection("select-csi", config, source="csi")
+        selected["_native_h264"] = False
+        return selected
+    raise ValueError(f"Unsupported fallback camera source: {source}")
+
+
 def _write_marker(payload: dict) -> None:
     CAMERA_STATUS.parent.mkdir(parents=True, exist_ok=True)
     temporary = CAMERA_STATUS.with_suffix(".json.tmp")
@@ -130,11 +149,15 @@ def run_capture(config: dict) -> int:
         if source == "csi"
         else str(selected.get("format", "")).upper() == "H264"
     )
+    automatic_format = str(config.get("FORMAT", "auto")).lower() == "auto"
+    FALLBACK_REQUEST.parent.mkdir(parents=True, exist_ok=True)
+    FALLBACK_REQUEST.unlink(missing_ok=True)
     if source == "usb":
         marker = {
             "pid": os.getpid(), "backend": "usb", "device": selected["device"],
             "resolution": resolution, "fps": fps, "format": "H264" if native_h264 else "MJPEG",
             "native_h264": native_h264,
+            "automatic_format": automatic_format,
         }
         _write_marker(marker)
         if native_h264:
@@ -144,12 +167,45 @@ def run_capture(config: dict) -> int:
                 stopping[0] = True
             signal.signal(signal.SIGTERM, stop_native)
             signal.signal(signal.SIGINT, stop_native)
-            try:
-                while not stopping[0]:
-                    signal.pause()
-            finally:
+            while not stopping[0]:
+                try:
+                    request = json.loads(FALLBACK_REQUEST.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    request = {}
+                if request.get("pid") == os.getpid():
+                    FALLBACK_REQUEST.unlink(missing_ok=True)
+                    if not automatic_format:
+                        marker["fallback_attempted"] = True
+                        marker["fallback_error"] = "Automatic fallback is disabled by the explicit FORMAT setting"
+                        _write_marker(marker)
+                    else:
+                        try:
+                            selected = select_fallback_backend(source, config)
+                            resolution = str(selected["resolution"])
+                            fps = str(selected["fps"])
+                            marker.update(
+                                device=selected["device"],
+                                resolution=resolution,
+                                fps=fps,
+                                format=selected["format"],
+                                native_h264=False,
+                            )
+                            _write_marker(marker)
+                            logging.warning(
+                                "Native H.264 produced no usable stream; falling back to USB %s at %s %s FPS",
+                                selected["format"], resolution, fps,
+                            )
+                            native_h264 = False
+                            break
+                        except Exception as error:
+                            marker["fallback_attempted"] = True
+                            marker["fallback_error"] = str(error)
+                            _write_marker(marker)
+                            logging.exception("No working USB fallback mode is available")
+                time.sleep(1)
+            if stopping[0]:
                 _remove_marker()
-            return 0
+                return 0
         command = [
             "ustreamer", "--device", selected["device"], "--host", "127.0.0.1",
             "--port", "8081", "--format", selected["format"],
@@ -169,6 +225,7 @@ def run_capture(config: dict) -> int:
             "resolution": resolution, "fps": fps,
             "format": "H264" if native_h264 else "MJPEG",
             "native_h264": native_h264,
+            "automatic_format": automatic_format,
         })
     child = None
     stopping = False
