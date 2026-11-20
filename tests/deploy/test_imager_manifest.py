@@ -1,5 +1,4 @@
 import hashlib
-import io
 import json
 import lzma
 from pathlib import Path
@@ -11,7 +10,11 @@ from deploy.image.create_imager_manifest import create_manifest
 
 
 class Response:
-    def __init__(self, payload, url="https://downloads.raspberrypi.com/raspios_lite_armhf/images/test/raspios-lite-armhf.img.xz"):
+    def __init__(
+        self,
+        payload,
+        url="https://downloads.raspberrypi.com/raspios_lite_armhf/images/test/raspios-lite-armhf.img.xz",
+    ):
         self.payload = payload
         self.url = url
 
@@ -61,7 +64,12 @@ class ImagerManifestTests(unittest.TestCase):
                 "deploy.image.create_imager_manifest.urlopen",
                 side_effect=[Response(b""), Response(json.dumps(repository).encode())],
             ):
-                create_manifest(image, output, "https://downloads.raspberrypi.com/raspios_lite_armhf_latest", "https://example.invalid/os.json")
+                create_manifest(
+                    image,
+                    output,
+                    "https://downloads.raspberrypi.com/raspios_lite_armhf_latest",
+                    "https://example.invalid/os.json",
+                )
 
             manifest = json.loads(output.read_text(encoding="utf-8"))
             entry = manifest["os_list"][0]

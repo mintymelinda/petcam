@@ -9,7 +9,7 @@ import json
 import lzma
 import os
 from pathlib import Path
-import sys
+from typing import NoReturn
 from urllib.error import URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -20,7 +20,7 @@ VALID_INIT_FORMATS = {"none", "systemd", "cloudinit", "cloudinit-rpi", "rpi-pres
 CHUNK_SIZE = 1024 * 1024
 
 
-def fail(message: str) -> "NoReturn":
+def fail(message: str) -> NoReturn:
     raise SystemExit(f"[petcam-imager] ERROR: {message}")
 
 
@@ -36,7 +36,11 @@ def image_entries(entries: list[dict]) -> list[dict]:
 
 
 def resolve_source_filename(source_url: str) -> str:
-    request = Request(source_url, method="HEAD", headers={"User-Agent": "PetCam-Imager-Manifest/1"})
+    request = Request(
+        source_url,
+        method="HEAD",
+        headers={"User-Agent": "PetCam-Imager-Manifest/1"},
+    )
     try:
         with urlopen(request, timeout=30) as response:
             final_url = response.geturl()
@@ -144,10 +148,18 @@ def main() -> None:
         "output", nargs="?", type=Path,
         help="manifest output path (default: alongside the image with .rpi-imager-manifest suffix)",
     )
-    parser.add_argument("--source-url", default=DEFAULT_SOURCE_URL, help="official upstream image URL used as the build base")
-    parser.add_argument("--repository-url", default=DEFAULT_REPOSITORY_URL, help="Raspberry Pi Imager v4 OS manifest URL")
+    parser.add_argument(
+        "--source-url",
+        default=DEFAULT_SOURCE_URL,
+        help="official upstream image URL used as the build base",
+    )
+    parser.add_argument(
+        "--repository-url",
+        default=DEFAULT_REPOSITORY_URL,
+        help="Raspberry Pi Imager v4 OS manifest URL",
+    )
     args = parser.parse_args()
-    output = args.output or args.image.with_suffix("").with_suffix(".rpi-imager-manifest")
+    output = args.output or args.image.withSuffix("").withSuffix(".rpi-imager-manifest")
     create_manifest(args.image, output, args.source_url, args.repository_url)
 
 
