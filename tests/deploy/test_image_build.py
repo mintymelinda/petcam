@@ -51,6 +51,10 @@ class PetCamImageBuildTests(unittest.TestCase):
         self.assertIn('(cd dist && sha256sum "$IMAGE_NAME" > "$IMAGE_NAME.sha256")', workflow)
         self.assertIn("for REQUIRED_ASSET in", workflow)
         self.assertIn("tests.deploy.test_image_build", workflow)
+        self.assertIn('gh release view "$TAG" --repo "$GITHUB_REPOSITORY"', workflow)
+        self.assertIn('gh release create "$TAG" --repo "$GITHUB_REPOSITORY"', workflow)
+        self.assertIn('gh release upload "$TAG" --repo "$GITHUB_REPOSITORY"', workflow)
+        self.assertIn('gh release edit "$TAG" --repo "$GITHUB_REPOSITORY"', workflow)
 
 
 if __name__ == "__main__":
