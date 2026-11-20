@@ -215,6 +215,7 @@ def run_hardware_h264(args, width, height):
         "device": capability.get("device"), "encoder": capability.get("encoder"),
         "resolution": f"{width}x{height}", "fps": args.fps,
         "camera": args.camera, "tcp_port": args.tcp_port,
+        "auto_mode": args.auto_mode,
     }
     CAMERA_STATUS_PATH.parent.mkdir(parents=True, exist_ok=True)
     CAMERA_STATUS_PATH.write_text(json.dumps(marker) + "\n", encoding="utf-8")
@@ -325,6 +326,7 @@ def main():
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--h264", action="store_true", help="use hardware H.264 only; requires a confirmed V4L2 encoder")
+    parser.add_argument("--auto-mode", action="store_true", help="allow PetCam to fall back automatically if this mode fails")
     parser.add_argument("--tcp-port", type=int, default=8556)
     args = parser.parse_args()
     width, height = (int(value) for value in args.resolution.lower().split("x", 1))
