@@ -736,8 +736,6 @@ def main():
 
     factory.connect("media-configure", media_configured)
     mounts.add_factory("/petcam", factory)
-    if server.attach(None) == 0:
-        raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
     set_state("ready")
     GLib.timeout_add_seconds(2, lambda: _write_heartbeat(current_state, source))
     logging.info("Serving %s directly over RTSP at %s", source, RTSP_URL)
