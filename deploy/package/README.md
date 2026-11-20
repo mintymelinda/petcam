@@ -21,40 +21,40 @@ ARMHF application package.
    (32-bit)** image for your board.
 2. Configure the OS username, hostname, and network in Imager, then boot the Pi
    and complete first-boot setup.
-3. Download the single petcam-armhf.tar.gz asset from the
+3. Download the single `petcam-armhf.tar.gz` asset from the
    [latest PetCam release](https://github.com/mintymelinda/petcam/releases/latest).
 4. Extract it and run the included installer:
 
-   \`\`\`sh
+   ```sh
    tar -xzf petcam-armhf.tar.gz
    sudo ./install.sh
-   \`\`\`
+   ```
 
 The installer verifies the 32-bit ARMHF userspace and ARMv6-or-newer CPU,
 installs OS dependencies from the feature-owned APT manifests, installs the
 boot launcher, and starts the PetCam supervisor through the existing boot
 trigger.
 
-Open https://<hostname>.local:8443/ after installation. The HTTPS
+Open `https://<hostname>.local:8443/` after installation. The HTTPS
 certificate is self-signed, so the browser may ask you to acknowledge it.
 
 ## Upgrade and persistent data
 
 Install a newer release package using the same steps. The package replaces
-application code under /opt/petcam, then reruns the idempotent installer.
-Existing configuration under /etc/petcam and application state under
-/var/lib/petcam are preserved; defaults are copied only when a file does
+application code under `/opt/petcam`, then reruns the idempotent installer.
+Existing configuration under `/etc/petcam` and application state under
+`/var/lib/petcam` are preserved; defaults are copied only when a file does
 not already exist.
 
 ## Build
 
 From a source checkout:
 
-\`\`\`sh
+```sh
 PETCAM_VERSION=1.2.3 deploy/package/build.sh dist
-\`\`\`
+```
 
-This produces exactly one release package: dist/petcam-armhf.tar.gz.
+This produces exactly one release package: `dist/petcam-armhf.tar.gz`.
 The package contains the source runtime and installer, not an operating-system
 image. Native OS dependencies are installed on the target from Raspberry Pi
 OS's APT repositories.
