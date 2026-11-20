@@ -353,12 +353,13 @@ def test_automatic_native_h264_fallback_request_is_written_for_camera_owner(tmp_
     request = tmp_path / "camera-fallback-request.json"
     status = {
         "pid": 1234,
+        "owner_pid": 5678,
         "native_h264": True,
         "automatic_format": True,
     }
     assert MODULE.request_camera_fallback(status, "no frames", request)
     payload = json.loads(request.read_text(encoding="utf-8"))
-    assert payload["pid"] == 1234
+    assert payload["pid"] == 5678
     assert payload["reason"] == "no frames"
 
 
