@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
-from urlib.error import URLError
+from urllib.error import URLError
 
 from deploy.image.create_imager_manifest import create_manifest, resolve_source_filename
 
