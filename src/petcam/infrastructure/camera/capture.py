@@ -206,8 +206,7 @@ def run_capture(config: dict) -> int:
             command.append("--h264")
         if str(config.get("FORMAT", "auto")).lower() == "auto":
             command.append("--auto-mode")
-        # The supervisor gates RTSP startup on this PID marker for every CSI
-        # mode, including native H.264 capture.
+        # Publish the selected CSI mode for the RTSP worker and status console.
         _write_marker({
             "pid": os.getpid(), "backend": "csi", "camera": selected["camera"],
             "resolution": resolution, "fps": fps,
@@ -245,6 +244,13 @@ def run_capture(config: dict) -> int:
                     return run_capture(fallback)
             code = child.poll()
             if code is not None:
+                fallback = _fallback_config(config, source, selected, {
+                    "reason": f"capture backend exited with status {code}",
+                })
+                if fallback is not None:
+                    _remove_marker()
+                    logging.warning("Capture backend exited before producing a stable stream; trying the next automatic candidate")
+                    return run_capture(fallback)
                 return code
             time.sleep(0.5)
         try:
