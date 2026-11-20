@@ -182,6 +182,45 @@ class SetupPortalTests(unittest.TestCase):
         status, _, _ = self.request("POST", "/setup/api/login", {"password": "wrong"})
         self.assertEqual(status, 429)
 
+    def test_stream_status_is_private_and_requires_an_authenticated_setup_session(self):
+        status, _, _ = self.request("GET", "/setup/api/stream-status")
+        self.assertEqual(status, 401)
+
+    def test_stream_snapshot_reports_active_camera_mode_and_rtsp_health(self):
+        root = Path(self.directory.name)
+        config = root / "petcam.conf"
+        camera = root / "camera-status.json"
+        stream = root / "g-streamer-status.json"
+        supervisor = root / "supervisor-status.json"
+        config.write_text("SOURCE=auto\\nFORMAT=auto\\nRESOLUTION=auto\\nFPS=auto\\n", encoding="utf-8")
+        camera.write_text(json.dumps({
+            "backend": "usb", "device": "/dev/video0", "format": "H264",
+            "resolution": "1280x720", "fps": "30",
+        }), encoding="utf-8")
+        stream.write_text(json.dumps({
+            "state": "publishing", "active": True, "fps": 29.97,
+            "source": "native_h264", "updated_at": __import__("time").time(),
+        }), encoding="utf-8")
+        supervisor.write_text(json.dumps({
+            "workers": {"gstreamer-rtsp": {"running": True}},
+        }), encoding="utf-8")
+        with (
+            mock.patch.object(MODULE, "CAMERA_CONFIG", config),
+            mock.patch.object(MODULE, "CAMERA_STATUS", camera),
+            mock.patch.object(MODULE, "GSTREAMER_STATUS", stream),
+            mock.patch.object(MODULE, "SUPERVISOR_STATUS", supervisor),
+        ):
+            result = MODULE.camera_stream_snapshot()
+        self.assertEqual(result["camera"]["format"], "H264")
+        self.assertEqual(result["camera"]["resolution"], "1280x720")
+        self.assertEqual(result["camera"]["fps"], "30")
+        self.assertEqual(result["rtsp"]["state"], "publishing")
+        self.assertTrue(result["rtsp"]["active"])
+        self.assertEqual(result["rtsp"]["fps"], 29.97)
+
+    def test_stream_status_polling_is_five_seconds(self):
+        self.assertIn("setInterval(refreshStreamStatus,5000)", MODULE.PAGE)
+
     def test_web_ui_setting_requires_boolean(self):
         with self.assertRaisesRegex(ValueError, "boolean"):
             MODULE.set_web_ui_enabled("yes")
