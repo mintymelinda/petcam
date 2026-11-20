@@ -12,7 +12,7 @@ class PetCamImageBuildTests(unittest.TestCase):
         self.assertIn("sha256sum --check --status", builder)
         self.assertIn('truncate -s +2G "$BASE_IMAGE"', builder)
         self.assertIn('parted --script "$BASE_IMAGE" resizepart 2 100%', builder)
-        self.assertIn('resize2fs "${LOOP_DEVICE}p2"', builder)
+        self.assertIn('e2fsck -f -p "${LOOP_DEVICE}p2"', builder)\n        self.assertIn('(( FSCK_STATUS <= 1 ))', builder)\n        self.assertIn('resize2fs "${LOOP_DEVICE}p2"', builder)
         self.assertIn('losetup --find --show --partscan "$BASE_IMAGE"', builder)
         self.assertIn('mount "${LOOP_DEVICE}p2" "$ROOTFS"', builder)
         self.assertIn('mount "${LOOP_DEVICE}p1" "$BOOT_MOUNT"', builder)

@@ -12,7 +12,7 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
 [[ -s "$PACKAGE" ]] || fail "ARMHF application package not found: $PACKAGE"
-for tool in curl xz truncate parted resize2fs losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
+for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
 [[ -x /usr/bin/qemu-arm-static ]] || fail "qemu-arm-static is not installed at /usr/bin/qemu-arm-static."
@@ -86,6 +86,13 @@ fi
 [[ -b "${LOOP_DEVICE}p1" && -b "${LOOP_DEVICE}p2" ]] || fail "Expected boot and root partitions were not found in the official image."
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p1")" == vfat ]] || fail "The first image partition is not the expected FAT boot partition."
 [[ "$(blkid -s TYPE -o value "${LOOP_DEVICE}p2")" == ext4 ]] || fail "The second image partition is not the expected ext4 root partition."
+
+# The filesystem must be clean before its size can be changed. Preen mode
+# repairs only issues e2fsck considers safe to fix automatically.
+log "Checking the root filesystem before resizing it."
+FSCK_STATUS=0
+e2fsck -f -p "${LOOP_DEVICE}p2" || FSCK_STATUS=$?
+(( FSCK_STATUS <= 1 )) || fail "Root filesystem check failed with e2fsck status $FSCK_STATUS."
 resize2fs "${LOOP_DEVICE}p2"
 
 mkdir -p "$ROOTFS"
