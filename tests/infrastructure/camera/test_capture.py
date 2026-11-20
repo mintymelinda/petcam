@@ -171,3 +171,47 @@ def test_csi_native_h264_worker_publishes_marker_and_cleans_it_on_shutdown(tmp_p
             mock.patch.object(MODULE.subprocess, "Popen", side_effect=spawn):
         assert MODULE.run_capture({"SOURCE": "csi", "FORMAT": "H264"}) == 0
     assert not marker.exists()
+
+
+def test_automatic_usb_h264_failure_falls_back_to_usb_mjpeg():
+    fallback = MODULE._fallback_config(
+        {"SOURCE": "auto", "FORMAT": "auto"},
+        "usb",
+        {"format": "H264"},
+        {"reason": "no packets"},
+    )
+    assert fallback["SOURCE"] == "auto"
+    assert fallback["FORMAT"] == "MJPEG"
+
+
+def test_automatic_usb_mjpeg_failure_falls_back_to_csi():
+    fallback = MODULE._fallback_config(
+        {"SOURCE": "auto", "FORMAT": "auto"},
+        "usb",
+        {"format": "MJPEG"},
+        {"reason": "no frames"},
+    )
+    assert fallback["SOURCE"] == "csi"
+    assert fallback["FORMAT"] == "auto"
+    assert fallback["DEVICE"] == ""
+    assert fallback["USB_PHYSICAL_PATH"] == ""
+
+
+def test_explicit_camera_format_does_not_silently_fallback():
+    fallback = MODULE._fallback_config(
+        {"SOURCE": "usb", "FORMAT": "H264"},
+        "usb",
+        {"format": "H264"},
+        {"reason": "no packets"},
+    )
+    assert fallback is None
+
+
+def test_automatic_csi_h264_failure_falls_back_to_csi_mjpeg():
+    fallback = MODULE._fallback_config(
+        {"SOURCE": "csi", "FORMAT": "auto"},
+        "csi",
+        {"_native_h264": True},
+        {"reason": "no packets"},
+    )
+    assert fallback["FORMAT"] == "MJPEG"
