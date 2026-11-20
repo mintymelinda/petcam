@@ -4,8 +4,8 @@ Use this page to find the documentation for installing, configuring, operating, 
 
 ## Installation and deployment
 
-- [Source deployment](../deploy/README.md) — install runtime dependencies, initialise configuration, and launch PetCam on an existing Debian or Raspberry Pi OS system.
-- [Raspberry Pi image build](../deploy/image/README.md) — supported image target, Raspberry Pi Imager custom repository, build pipeline, and release assets.
+- [ARMHF package installation](../deploy/package/README.md) — install PetCam on the official Raspberry Pi OS Lite (32-bit) image, upgrade the application, and understand the ARMv6 baseline.
+- [Source deployment](../deploy/README.md) — install runtime dependencies, initialise configuration, and launch PetCam from a source checkout.
 
 ## Operation
 
@@ -15,4 +15,4 @@ Use this page to find the documentation for installing, configuring, operating, 
 
 ## Release engineering
 
-- [Pre-release checklist](operations/pre-release-checklist.md) — automated gates, on-device validation, image verification, and production tagging requirements.
+- [Pre-release checklist](operations/pre-release-checklist.md) — automated gates, stock-OS installation validation, hardware coverage, and production tagging requirements.
