@@ -34,7 +34,7 @@ class GStreamerOutputTests(unittest.TestCase):
             "resolution": "1280x720",
             "fps": "30",
         })
-        self.assertIn("v4l2src", pipeline)
+        self.assertIn("v4l2src name=camera_source", pipeline)
         self.assertIn("video/x-h264,width=1280,height=720,framerate=30/1", pipeline)
         self.assertIn("h264parse", pipeline)
         self.assertIn("rtph264pay name=pay0 pt=96", pipeline)
@@ -225,6 +225,37 @@ class GStreamerOutputTests(unittest.TestCase):
             MODULE.camera_status_signature(original),
             MODULE.camera_status_signature(dict(original)),
         )
+
+    def test_native_v4l2_caps_verification_rejects_driver_mode_mismatch(self):
+        class Structure:
+            def get_name(self): return "video/x-h264"
+            def get_value(self, key): return {"width": 1920, "height": 1080, "framerate": (30, 1)}[key]
+        class Caps:
+            def is_empty(self): return False
+            def get_structure(self, _index): return Structure()
+        class Pad:
+            def get_current_caps(self): return Caps()
+        class Source:
+            def get_static_pad(self, _name): return Pad()
+        class Pipeline:
+            def get_by_name(self, _name): return Source()
+        with self.assertRaisesRegex(MODULE.GStreamerError, "negotiated video/x-h264 1920x1080"):
+            MODULE.verify_native_h264_v4l2_caps(Pipeline(), {"resolution": "1280x720", "fps": "30"})
+
+    def test_native_v4l2_caps_verification_accepts_matching_driver_mode(self):
+        class Structure:
+            def get_name(self): return "video/x-h264"
+            def get_value(self, key): return {"width": 1280, "height": 720, "framerate": (30, 1)}[key]
+        class Caps:
+            def is_empty(self): return False
+            def get_structure(self, _index): return Structure()
+        class Pad:
+            def get_current_caps(self): return Caps()
+        class Source:
+            def get_static_pad(self, _name): return Pad()
+        class Pipeline:
+            def get_by_name(self, _name): return Source()
+        MODULE.verify_native_h264_v4l2_caps(Pipeline(), {"resolution": "1280x720", "fps": "30"})
 
     def test_native_h264_capture_pipeline_tees_compressed_video_before_decode(self):
         pipeline = MODULE.build_native_capture_launch({

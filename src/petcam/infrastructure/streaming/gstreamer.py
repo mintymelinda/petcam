@@ -179,6 +179,30 @@ def frame_consumers_enabled(state_path=STATE_PATH):
     return False
 
 
+def verify_native_h264_v4l2_caps(pipeline, camera_status):
+    """Confirm the live V4L2 source negotiated the requested H.264 mode."""
+    source = pipeline.get_by_name("camera_source")
+    if source is None:
+        raise GStreamerError("Native H.264 pipeline is missing its V4L2 source.")
+    pad = source.get_static_pad("src")
+    caps = pad.get_current_caps() if pad is not None else None
+    if caps is None or caps.is_empty():
+        raise GStreamerError("V4L2 did not negotiate capture caps; refusing to report the requested camera mode as active.")
+    structure = caps.get_structure(0)
+    expected_width, expected_height = (int(value) for value in camera_status["resolution"].split("x", 1))
+    expected_fps = float(camera_status["fps"])
+    try:
+        media_type = structure.get_name()
+        width = structure.get_value("width")
+        height = structure.get_value("height")
+        numerator, denominator = structure.get_value("framerate")
+        actual_fps = float(numerator) / float(denominator)
+    except (AttributeError, TypeError, ValueError, ZeroDivisionError) as error:
+        raise GStreamerError("V4L2 returned incomplete or invalid negotiated capture caps.") from error
+    if media_type != "video/x-h264" or int(width) != expected_width or int(height) != expected_height or abs(actual_fps - expected_fps) >= 0.1:
+        raise GStreamerError(f"V4L2 negotiated {media_type} {width}x{height} at {actual_fps:g} FPS, but PetCam requested H.264 {expected_width}x{expected_height} at {expected_fps:g} FPS.")
+    logging.info("V4L2 negotiated native H.264 capture caps: %sx%s at %s FPS", width, height, actual_fps)
+
 def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
     """Build one persistent H.264 source with direct RTSP and sampled-frame branches."""
     if decoder_name not in {"v4l2h264dec", "avdec_h264"}:
@@ -201,7 +225,7 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
             raise GStreamerError("Native H.264 camera device path is invalid.")
         width, height = resolution.split("x", 1)
         source = (
-            f"v4l2src device={shlex.quote(device)} ! "
+            f"v4l2src name=camera_source device={shlex.quote(device)} ! "
             f"video/x-h264,width={width},height={height},framerate={fps}/1"
         )
 
@@ -419,10 +443,23 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if state_result == Gst.StateChangeReturn.FAILURE:
             pipeline.set_state(Gst.State.NULL)
             raise GStreamerError("The persistent H.264 capture pipeline failed to enter PLAYING.")
+        bus = pipeline.get_bus()
+        error_message = bus.pop_filtered(Gst.MessageType.ERROR)
+        if error_message is not None:
+            error, debug = error_message.parse_error()
+            pipeline.set_state(Gst.State.NULL)
+            detail = f": {debug}" if debug else ""
+            raise GStreamerError(f"Native H.264 capture negotiation failed: {error}{detail}")
+        if status.get("backend") != "csi":
+            try:
+                verify_native_h264_v4l2_caps(pipeline, status)
+            except GStreamerError:
+                pipeline.set_state(Gst.State.NULL)
+                raise
 
         active.update(
             pipeline=pipeline,
-            bus=pipeline.get_bus(),
+            bus=bus,
             signature=camera_status_signature(status),
         )
         current_state["source"] = (
