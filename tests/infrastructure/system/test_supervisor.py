@@ -123,9 +123,11 @@ class SupervisorTests(unittest.TestCase):
                 entries = {worker.name: worker for worker in supervisor.workers()}
                 self.assertTrue(entries["home-assistant"].should_run())
 
-    def test_worker_order_gates_gstreamer_and_sampler_behind_camera_capture(self):
-        names = [worker.name for worker in supervisor.workers()]
-        self.assertLess(names.index("camera-capture"), names.index("gstreamer-rtsp"))
+    def test_rtsp_listener_starts_before_camera_discovery(self):
+        entries = {worker.name: worker for worker in supervisor.workers()}
+        names = list(entries)
+        self.assertLess(names.index("gstreamer-rtsp"), names.index("camera-capture"))
+        self.assertTrue(entries["gstreamer-rtsp"].should_run())
         self.assertLess(names.index("gstreamer-rtsp"), names.index("rtsp-sampler"))
 
     def test_camera_restart_stops_rtsp_dependents_for_mjpeg_capture(self):
