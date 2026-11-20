@@ -129,6 +129,8 @@ class RaspberryPiImageBuildTests(unittest.TestCase):
         self.assertNotIn("pi-gen-version: arm64", workflow)
         self.assertNotIn("petcam-image-arm64", workflow)
         self.assertIn("compression-level: 1", workflow)
+        self.assertIn("enable-pigen-cache: true", workflow)
+        self.assertIn("cache-read-only: ${{ github.ref != 'refs/heads/main' }}", workflow)
         self.assertIn("compression-level: 0", workflow)
         self.assertIn("release: trixie", workflow)
         self.assertIn("./deploy/image/stages/stage-petcam-apt-mirror stage0 stage1 stage2", workflow)
