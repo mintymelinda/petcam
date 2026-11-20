@@ -77,6 +77,7 @@ class ImagerManifestTests(unittest.TestCase):
                 create_manifest(
                     image,
                     output,
+                    "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam.img.xz",
                     "https://downloads.raspberrypi.com/raspios_lite_armhf_latest",
                     "https://example.invalid/os.json",
                 )
@@ -84,7 +85,10 @@ class ImagerManifestTests(unittest.TestCase):
             manifest = json.loads(output.read_text(encoding="utf-8"))
             entry = manifest["os_list"][0]
             self.assertEqual(entry["init_format"], "cloudinit-rpi")
-            self.assertEqual(entry["url"], image.resolve().as_uri())
+            self.assertEqual(
+                entry["url"],
+                "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam.img.xz",
+            )
             self.assertEqual(entry["image_download_size"], len(compressed))
             self.assertEqual(entry["image_download_sha256"], hashlib.sha256(compressed).hexdigest())
             self.assertEqual(entry["extract_size"], len(disk_image))

@@ -120,16 +120,20 @@ jobs:
           cp "$PACKAGE_SOURCE" petcam-armhf.tar.gz
           cp "$IMAGE_SOURCE" .
           cp "$IMAGE_SOURCE.sha256" .
-          cp deploy/image/create_imager_manifest.py .
+          IMAGE_NAME="$(basename "$IMAGE_SOURCE")"
+          IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
+          python3 deploy/image/create_imager_manifest.py \
+            "$IMAGE_SOURCE" petcam.rpi-imager-manifest.json \
+            --image-url "$IMAGE_URL"
           sha256sum petcam-armhf.tar.gz > petcam-armhf.tar.gz.sha256
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
           fi
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" create_imager_manifest.py --clobber
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" petcam.rpi-imager-manifest.json --clobber
           ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" create_imager_manifest.py; do
+          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" petcam.rpi-imager-manifest.json; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
