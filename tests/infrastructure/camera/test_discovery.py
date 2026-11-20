@@ -47,7 +47,7 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
         self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
 
-    def test_auto_selection_uses_first_hardware_mode_and_its_advertised_max_fps(self):
+    def test_auto_selection_prefers_720p_and_nearest_available_fps(self):
         devices = [{
             "device": "/dev/video0",
             "modes": MODULE.parse_modes(SAMPLE),
@@ -62,6 +62,7 @@ class CameraDiscoveryTests(unittest.TestCase):
             self.assertEqual(MODULE.main(), 0)
         selected = json.loads(output.getvalue())
         self.assertEqual(selected["format"], "MJPEG")
+        self.assertEqual(selected["resolution"], "1280x720")
         self.assertEqual(selected["fps"], "60")
 
     def test_parses_formats_resolutions_and_frame_rates(self):
@@ -74,12 +75,12 @@ class CameraDiscoveryTests(unittest.TestCase):
         self.assertTrue(MODULE.mode_supports_fps(modes[0], 30))
         self.assertFalse(MODULE.mode_supports_fps(modes[0], 45))
 
-    def test_auto_selection_uses_first_hardware_advertised_mode_without_ranking(self):
+    def test_auto_selection_ranks_advertised_modes_by_default_preference(self):
         devices = [{"device": "/dev/video0", "modes": MODULE.parse_modes(SAMPLE)}]
         device, mode, native = MODULE.select_mode(devices)
         self.assertTrue(native)
         self.assertEqual(mode["format"], "MJPG")
-        self.assertEqual((mode["width"], mode["height"]), (1920, 1080))
+        self.assertEqual((mode["width"], mode["height"]), (1280, 720))
         self.assertEqual(device["device"], "/dev/video0")
 
     def test_native_mjpeg_is_mapped_to_ustreamer_passthrough_format(self):

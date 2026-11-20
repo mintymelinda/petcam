@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -14,7 +13,6 @@ from pathlib import Path
 from ...domain.camera.capabilities import (
     NATIVE_JPEG_FORMATS,
     camera_identity,
-    mode_max_fps,
     mode_supports_fps,
     mode_supports_resolution,
     parse_csi_cameras,
@@ -32,6 +30,7 @@ from ...domain.camera.capture_modes import (
     filter_devices_by_format,
     select_csi_mode,
     select_mode,
+    select_mode_fps,
 )
 from ..persistence.configuration import parse_config
 from ..network.diagnostics import collect_diagnostics
@@ -85,29 +84,18 @@ def main():
         return 0
     if args.command == "select":
         devices = filter_devices_by_format(devices, args.format)
-        selected = select_mode(devices)
+        try:
+            selected = select_mode(devices, resolution=args.resolution, fps=args.fps)
+        except ValueError as error:
+            print(str(error), file=sys.stderr)
+            return 2
         if not selected:
             print("No usable V4L2 capture device or supported mode found.", file=sys.stderr)
             return 1
         device, mode, native = selected
-        if args.resolution != "auto":
-            match = re.fullmatch(r"(\d+)x(\d+)", args.resolution)
-            if not match:
-                print("Resolution must be 'auto' or WIDTHxHEIGHT.", file=sys.stderr)
-                return 2
-            width_value, height_value = map(int, match.groups())
-            matching = [m for m in device["modes"] if m["format"] == mode["format"] and mode_supports_resolution(m, width_value, height_value)]
-            if not matching:
-                print(f"Requested resolution {args.resolution} is not advertised by {device['device']}.", file=sys.stderr)
-                return 2
-            mode = matching[0]
-            native = mode["format"] in NATIVE_JPEG_FORMATS
         width = args.resolution if args.resolution != "auto" else f'{mode["width"]}x{mode["height"]}'
-        if args.fps != "auto":
-            fps = args.fps
-        else:
-            default_fps = float(mode_max_fps(mode))
-            fps = str(int(default_fps)) if default_fps.is_integer() else str(default_fps)
+        selected_fps = select_mode_fps(mode, args.fps)
+        fps = str(int(selected_fps)) if float(selected_fps).is_integer() else str(selected_fps)
         fmt = mode["format"]
         encoder = "HW" if fmt in NATIVE_JPEG_FORMATS else "CPU"
         if args.fps != "auto":

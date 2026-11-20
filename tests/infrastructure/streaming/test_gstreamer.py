@@ -59,6 +59,15 @@ class GStreamerOutputTests(unittest.TestCase):
                 "resolution": "1280x720", "fps": 30,
             })
 
+    def test_native_h264_pipeline_preserves_fractional_advertised_frame_rates(self):
+        pipeline = MODULE.build_native_capture_launch({
+            "native_h264": True,
+            "device": "/dev/video0",
+            "resolution": "1280x720",
+            "fps": "29.97",
+        })
+        self.assertIn("framerate=2997/100", pipeline)
+
     def test_native_h264_pipeline_rejects_invalid_camera_metadata(self):
         with self.assertRaisesRegex(MODULE.GStreamerError, "device path is invalid"):
             MODULE.build_gstreamer_launch({
@@ -226,6 +235,39 @@ class GStreamerOutputTests(unittest.TestCase):
             MODULE.camera_status_signature(dict(original)),
         )
 
+    def test_native_v4l2_caps_verification_rejects_driver_mode_mismatch(self):
+        class Structure:
+            def get_name(self): return "video/x-h264"
+            def get_value(self, key): return {"width": 1920, "height": 1080}[key]
+            def get_fraction(self, _key): return (True, 30, 1)
+        class Caps:
+            def is_empty(self): return False
+            def get_structure(self, _index): return Structure()
+        class Pad:
+            def get_current_caps(self): return Caps()
+        class Source:
+            def get_static_pad(self, _name): return Pad()
+        class Pipeline:
+            def get_by_name(self, _name): return Source()
+        with self.assertRaisesRegex(MODULE.GStreamerError, "negotiated video/x-h264 1920x1080"):
+            MODULE.verify_native_h264_v4l2_caps(Pipeline(), {"resolution": "1280x720", "fps": "30"})
+
+    def test_native_v4l2_caps_verification_accepts_matching_driver_mode(self):
+        class Structure:
+            def get_name(self): return "video/x-h264"
+            def get_value(self, key): return {"width": 1280, "height": 720}[key]
+            def get_fraction(self, _key): return (True, 30, 1)
+        class Caps:
+            def is_empty(self): return False
+            def get_structure(self, _index): return Structure()
+        class Pad:
+            def get_current_caps(self): return Caps()
+        class Source:
+            def get_static_pad(self, _name): return Pad()
+        class Pipeline:
+            def get_by_name(self, _name): return Source()
+        MODULE.verify_native_h264_v4l2_caps(Pipeline(), {"resolution": "1280x720", "fps": "30"})
+
     def test_native_h264_capture_pipeline_tees_compressed_video_before_decode(self):
         pipeline = MODULE.build_native_capture_launch({
             "native_h264": True,
@@ -233,6 +275,7 @@ class GStreamerOutputTests(unittest.TestCase):
             "resolution": "1280x720",
             "fps": "30",
         })
+        self.assertIn("v4l2src name=camera_source", pipeline)
         self.assertIn("tee name=source_tee", pipeline)
         self.assertIn("appsink name=rtsp_sink", pipeline)
         self.assertIn(
