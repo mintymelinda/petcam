@@ -14,6 +14,7 @@ from ...domain.camera.capabilities import (
     NATIVE_JPEG_FORMATS,
     camera_identity,
     mode_supports_fps,
+    mode_supports_resolution,
     parse_csi_cameras,
     parse_modes,
     ustreamer_format,
