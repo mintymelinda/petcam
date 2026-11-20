@@ -46,7 +46,11 @@ fi
 printf '@reboot root /usr/local/sbin/petcam-start %q >>/var/log/petcam-supervisor.log 2>&1\n' "$REPO_ROOT" > /etc/cron.d/petcam
 chmod 0644 /etc/cron.d/petcam
 update-rc.d cron defaults || true
-service cron start
+if [[ "${PETCAM_SKIP_SERVICE_START:-0}" == 1 ]]; then
+  log "Deferring cron startup until the image boots."
+else
+  service cron start
+fi
 log "Installed PetCam boot entry."
 log "Supervisor command: PETCAM_ROOT=$REPO_ROOT /usr/local/sbin/petcam-start"
 log "Setup portal: https://$(hostname -f 2>/dev/null || hostname):8443/setup"
