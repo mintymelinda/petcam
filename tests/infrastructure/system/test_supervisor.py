@@ -223,3 +223,22 @@ class SupervisorTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+    def test_rtsp_worker_starts_without_waiting_for_camera_marker(self):
+        entries = {worker.name: worker for worker in supervisor.workers()}
+        self.assertTrue(entries["gstreamer-rtsp"].should_run())
+
+    def test_camera_capture_retries_without_exponential_boot_backoff(self):
+        worker = supervisor.Worker("camera-capture", ("camera",))
+        dead = mock.Mock()
+        dead.poll.return_value = 1
+        dead.returncode = 1
+        worker.process = dead
+        worker.started_at = 99.0
+        manager = supervisor.Supervisor([worker], clock=lambda: 100.0)
+        with mock.patch.object(supervisor.subprocess, "Popen") as popen:
+            manager.tick()
+        self.assertEqual(worker.next_start, 102.0)
+        self.assertEqual(worker.failures, 0)
+        popen.assert_not_called()

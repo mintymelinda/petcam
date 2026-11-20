@@ -5,6 +5,7 @@ from __future__ import annotations
 import http.client
 import json
 import logging
+import os
 import secrets
 import ssl
 import threading
@@ -214,7 +215,17 @@ def stream_status_snapshot() -> dict:
     except (OSError, ValueError):
         pass
 
-    worker = supervisor.get("workers", {}).get("gstreamer-rtsp", {})
+    workers = supervisor.get("workers", {})
+    worker = workers.get("gstreamer-rtsp", {}) if isinstance(workers, dict) else {}
+    marker_pid = marker.get("pid")
+    if marker:
+        try:
+            if not isinstance(marker_pid, int) or marker_pid <= 1:
+                marker = {}
+            else:
+                os.kill(marker_pid, 0)
+        except OSError:
+            marker = {}
     now = time.time()
     updated_at = rtsp.get("updated_at")
     fresh = isinstance(updated_at, (int, float)) and 0 <= now - updated_at <= 10
