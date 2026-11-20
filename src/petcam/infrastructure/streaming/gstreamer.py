@@ -551,8 +551,8 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         def media_prepared(_media):
             if rtsp_media["appsrc"] is appsrc:
                 rtsp_media["prepared"] = True
-                if active["pipeline"] is not None:
-                    _set_status_state(current_state, "publishing", current_state["source"])
+                # A prepared RTSP media pipeline does not prove that the camera
+                # is delivering buffers. count_frame() marks publishing on data.
 
         def media_unprepared(_media):
             if rtsp_media["appsrc"] is appsrc:
@@ -617,6 +617,14 @@ def main():
     parser.add_argument("--check", action="store_true", help="validate GStreamer RTSP dependencies and camera selection")
     args = parser.parse_args()
     camera_status = load_camera_status()
+    if not args.check:
+        # The RTSP worker starts independently while the camera worker retries
+        # USB/CSI discovery and creates the first valid capture marker.
+        while not camera_status:
+            _write_status("starting", "camera_discovery")
+            logging.info("Waiting for camera discovery before configuring RTSP media")
+            time.sleep(1)
+            camera_status = load_camera_status()
     native_h264 = camera_status.get("native_h264") is True
     source = (
         ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264")
@@ -673,6 +681,8 @@ def main():
             elapsed = frame_times[-1] - frame_times[0]
             if elapsed > 0:
                 current_state["fps"] = (len(frame_times) - 1) / elapsed
+        if current_state["value"] != "publishing":
+            set_state("publishing")
         return Gst.PadProbeReturn.OK
 
     def media_unprepared(_media):
@@ -688,7 +698,7 @@ def main():
         sink_pad = payloader.get_static_pad("sink") if payloader else None
         if sink_pad is not None:
             sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
-        media.connect("prepared", lambda _media: set_state("publishing"))
+        media.connect("prepared", lambda _media: set_state("ready"))
         media.connect("unprepared", media_unprepared)
 
     factory.connect("media-configure", media_configured)
