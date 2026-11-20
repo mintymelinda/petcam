@@ -617,23 +617,17 @@ def main():
     parser.add_argument("--check", action="store_true", help="validate GStreamer RTSP dependencies and camera selection")
     args = parser.parse_args()
     camera_status = load_camera_status()
-    if not args.check:
-        # The RTSP worker starts independently while the camera worker retries
-        # USB/CSI discovery and creates the first valid capture marker.
-        while not camera_status:
-            _write_status("starting", "camera_discovery")
-            logging.info("Waiting for camera discovery before configuring RTSP media")
-            time.sleep(1)
-            camera_status = load_camera_status()
-    native_h264 = camera_status.get("native_h264") is True
-    source = (
-        ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264")
-        if native_h264 else "mjpeg_copy"
-    )
-    launch = build_gstreamer_launch(camera_status)
     check_gstreamer_runtime()
     GLib, Gst, GstRtspServer = _load_gstreamer()
     if args.check:
+        if not camera_status:
+            raise GStreamerError("No active camera capture marker is available.")
+        native_h264 = camera_status.get("native_h264") is True
+        source = (
+            ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264")
+            if native_h264 else "mjpeg_copy"
+        )
+        launch = build_gstreamer_launch(camera_status)
         output = {
             "source": source,
             "pipeline": launch,
@@ -653,10 +647,49 @@ def main():
     server = GstRtspServer.RTSPServer()
     configure_rtsp_server(server)
     mounts = server.get_mount_points()
+    # Bind the RTSP socket before waiting for camera discovery. The mount is
+    # installed as soon as a viable capture marker appears; until then clients
+    # can reach the service but the camera path is not advertised as ready.
+    if server.attach(None) == 0:
+        raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
+
+    if not camera_status:
+        wait_loop = GLib.MainLoop()
+        waiting = {"status": None, "stopping": False}
+
+        def discover_camera():
+            status = load_camera_status()
+            if not status:
+                _write_status("starting", "camera_discovery")
+                return True
+            waiting["status"] = status
+            wait_loop.quit()
+            return False
+
+        def stop_waiting(_signum, _frame):
+            waiting["stopping"] = True
+            wait_loop.quit()
+
+        signal.signal(signal.SIGTERM, stop_waiting)
+        signal.signal(signal.SIGINT, stop_waiting)
+        GLib.timeout_add_seconds(1, discover_camera)
+        logging.info("RTSP listener is bound; waiting for camera discovery")
+        wait_loop.run()
+        if waiting["stopping"]:
+            _write_status("stopped", "camera_discovery")
+            return
+        camera_status = waiting["status"] or load_camera_status()
+        if not camera_status:
+            raise GStreamerError("Camera discovery ended without an active capture marker.")
+
+    native_h264 = camera_status.get("native_h264") is True
+    source = (
+        ("native_h264_csi" if camera_status.get("backend") == "csi" else "native_h264")
+        if native_h264 else "mjpeg_copy"
+    )
+    launch = build_gstreamer_launch(camera_status)
 
     if native_h264:
-        if server.attach(None) == 0:
-            raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
         _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_status, source)
         return
 
