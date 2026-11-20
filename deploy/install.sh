@@ -53,4 +53,6 @@ else
 fi
 log "Installed PetCam boot entry."
 log "Supervisor command: PETCAM_ROOT=$REPO_ROOT /usr/local/sbin/petcam-start"
-log "Setup portal: https://$(hostname -f 2>/dev/null || hostname):8443/setup"
+if [[ "${PETCAM_DEFER_INITIALIZE:-0}" == 1 ]]; then
+  log "Setup portal address will be reported when the device boots."
+fi
