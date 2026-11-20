@@ -345,5 +345,25 @@ class GStreamerOutputTests(unittest.TestCase):
             self.assertFalse(MODULE.frame_consumers_enabled(root))
 
 
+    def test_automatic_mode_requests_capture_fallback_after_pipeline_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request_path = Path(directory) / "camera-fallback.json"
+            camera = {"pid": os.getpid(), "auto_mode": True}
+            with patch.object(MODULE, "FALLBACK_REQUEST_PATH", request_path):
+                self.assertTrue(MODULE.request_camera_fallback(camera, "no H.264 packets"))
+            payload = json.loads(request_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["capture_pid"], os.getpid())
+            self.assertEqual(payload["reason"], "no H.264 packets")
+
+    def test_explicit_mode_does_not_request_automatic_capture_fallback(self):
+        with tempfile.TemporaryDirectory() as directory:
+            request_path = Path(directory) / "camera-fallback.json"
+            with patch.object(MODULE, "FALLBACK_REQUEST_PATH", request_path):
+                self.assertFalse(MODULE.request_camera_fallback(
+                    {"pid": os.getpid(), "auto_mode": False}, "negotiation failed",
+                ))
+            self.assertFalse(request_path.exists())
+
+
 if __name__ == "__main__":
     unittest.main()
