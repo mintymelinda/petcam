@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 REPO_ROOT="${1:-${PETCAM_ROOT:-/opt/petcam}}"
 ETC_ROOT="${PETCAM_ETC:-/etc/petcam}"
-[[ -d "$REPO_ROOT/src/petcam" ]] || { printf '[petcam-start] ERROR: source checkout not found at %s\\n' "$REPO_ROOT" >&2; exit 1; }
+[[ -d "$REPO_ROOT/src/petcam" ]] || { printf '[petcam-start] ERROR: source checkout not found at %s\n' "$REPO_ROOT" >&2; exit 1; }
 command -v openssl >/dev/null || { echo '[petcam-start] ERROR: openssl is required.' >&2; exit 1; }
 install -d -m 0755 "$ETC_ROOT"
 
@@ -20,7 +20,7 @@ if [[ -s "$ETC_ROOT/web-manager.crt" && -s "$ETC_ROOT/web-manager.key" ]] &&
 fi
 
 if (( ! certificate_valid )); then
-  printf '[petcam-start] Generating the device HTTPS certificate for %s.\\n' "$mdns_hostname"
+  printf '[petcam-start] Generating the device HTTPS certificate for %s.\n' "$mdns_hostname"
   san_entries=("DNS:$hostname_value" "DNS:$mdns_hostname")
   if command -v ip >/dev/null 2>&1; then
     while IFS= read -r address; do
@@ -43,7 +43,7 @@ if (( ! certificate_valid )); then
   trap - EXIT
 fi
 chmod 0600 "$ETC_ROOT/web-manager.key"
-printf '[petcam-start] Setup portal: https://%s:8443/setup\\n' "$mdns_hostname"
+printf '[petcam-start] Setup portal: https://%s:8443/setup\n' "$mdns_hostname"
 [[ "${PETCAM_INITIALIZE_ONLY:-0}" == 1 ]] && exit 0
 cd "$REPO_ROOT"
 exec env PYTHONPATH="$REPO_ROOT/src" /usr/bin/python3 -m petcam.infrastructure.system.supervisor
