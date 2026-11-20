@@ -5,8 +5,9 @@ from pathlib import Path
 import tempfile
 import unittest
 from unittest.mock import patch
+from urlib.error import URLError
 
-from deploy.image.create_imager_manifest import create_manifest
+from deploy.image.create_imager_manifest import create_manifest, resolve_source_filename
 
 
 class Response:
@@ -32,6 +33,15 @@ class Response:
 
 
 class ImagerManifestTests(unittest.TestCase):
+    def test_source_url_resolution_falls_back_when_head_is_unsupported(self):
+        with patch(
+            "deploy.image.create_imager_manifest.urlopen",
+            side_effect=[URLError("HEAD unsupported"), Response(b"")],
+        ) as open_url:
+            filename = resolve_source_filename("https://downloads.raspberrypi.com/raspios_lite_armhf_latest")
+        self.assertEqual(filename, "raspios-lite-armhf.img.xz")
+        self.assertEqual(open_url.call_count, 2)
+
     def test_release_workflow_publishes_the_manifest_generator(self):
         root = Path(__file__).resolve().parents[2]
         workflow = (root / ".github/workflows/package-build.yml").read_text(encoding="utf-8")
@@ -48,7 +58,7 @@ class ImagerManifestTests(unittest.TestCase):
                 {"name": "Pi Zero", "description": "Zero family", "tags": ["pi0"]},
                 {"name": "Pi 4", "description": "Pi 4", "tags": ["pi4"]},
             ]},
-            "os_list": [{
+            "os_list": [{ 
                 "name": "Raspberry Pi OS Lite (32-bit)",
                 "url": "https://downloads.raspberrypi.com/raspios_lite_armhf/images/test/raspios-lite-armhf.img.xz",
                 "init_format": "cloudinit-rpi",

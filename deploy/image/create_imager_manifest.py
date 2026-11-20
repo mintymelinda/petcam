@@ -44,8 +44,17 @@ def resolve_source_filename(source_url: str) -> str:
     try:
         with urlopen(request, timeout=30) as response:
             final_url = response.geturl()
-    except (OSError, URLError) as exc:
-        fail(f"Could not resolve the official Raspberry Pi OS image URL {source_url}: {exc}")
+    except (OSError, URLError):
+        # Some mirrors reject HEAD even though the image itself is downloadable.
+        fallback = Request(
+            source_url,
+            headers={"Range": "bytes=0-0", "User-Agent": "PetCam-Imager-Manifest/1"},
+        )
+        try:
+            with urlopen(fallback, timeout=30) as response:
+                final_url = response.geturl()
+        except (OSError, URLError) as exc:
+            fail(f"Could not resolve the official Raspberry Pi OS image URL {source_url}: {exc}")
     filename = os.path.basename(urlparse(final_url).path)
     if not filename:
         fail(f"The resolved official image URL has no filename: {final_url}")
