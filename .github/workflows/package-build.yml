@@ -120,17 +120,17 @@ jobs:
           cp "$IMAGE_SOURCE" .
           cp "$IMAGE_SOURCE.sha256" .
           sha256sum petcam-armhf.tar.gz > petcam-armhf.tar.gz.sha256
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else
-            gh release create "$TAG" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
+            gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
           fi
-          gh release upload "$TAG" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" --clobber
-          ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" --clobber
+          ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]')"
           for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256"; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
             fi
           done
-          gh release edit "$TAG" --draft=false
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --draft=false
