@@ -42,8 +42,11 @@ class PetCamPackageBuildTests(unittest.TestCase):
     def test_package_installer_validates_platform_before_copying_application(self):
         installer = (ROOT / "deploy/package/install.sh").read_text(encoding="utf-8")
         self.assertIn("validate_petcam_platform", installer)
-        self.assertLess(installer.index("validate_petcam_platform"), installer.index('install -d -m 0755 "$INSTALL_ROOT"'))
-        self.assertIn('INSTALL_ROOT="\${PETCAM_INSTALL_ROOT:-/opt/petcam}"', installer)
+        self.assertLess(
+            installer.index("validate_petcam_platform"),
+            installer.index('install -d -m 0755 "$INSTALL_ROOT"'),
+        )
+        self.assertIn('INSTALL_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"', installer)
         self.assertIn('rm -rf "$INSTALL_ROOT/$item"', installer)
         self.assertIn('PETCAM_VERSION="$version" exec', installer)
 
