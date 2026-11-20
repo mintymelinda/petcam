@@ -161,7 +161,7 @@ def main() -> None:
     parser.add_argument("image", type=Path, help="local PetCam .img.xz file")
     parser.add_argument(
         "output", nargs="?", type=Path,
-        help="manifest output path (default: alongside the image with .rpi-imager-manifest suffix)",
+        help="JSON manifest output path (default: petcam.rpi-imager-manifest.json beside the image)",
     )
     parser.add_argument(
         "--image-url", required=True,
@@ -178,7 +178,7 @@ def main() -> None:
         help="Raspberry Pi Imager v4 OS manifest URL",
     )
     args = parser.parse_args()
-    output = args.output or args.image.with_suffix("").with_suffix(".rpi-imager-manifest")
+    output = args.output or args.image.parent / "petcam.rpi-imager-manifest.json"
     create_manifest(args.image, output, args.image_url, args.source_url, args.repository_url)
 
 

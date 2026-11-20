@@ -1,4 +1,0 @@
-# Intentionally empty: PetCam currently uses Python's standard library only.
-# Python bindings and native runtime modules are installed from Debian packages
-# declared in deploy/features/*/requirements.apt. If a pip dependency is added,
-# add a target-compatible offline wheelhouse build before proceeding.

@@ -42,15 +42,16 @@ class ImagerManifestTests(unittest.TestCase):
         self.assertEqual(filename, "raspios-lite-armhf.img.xz")
         self.assertEqual(open_url.call_count, 2)
 
-    def test_release_workflow_publishes_the_manifest_generator(self):
+    def test_release_workflow_publishes_the_manifest_json(self):
         root = Path(__file__).resolve().parents[2]
         workflow = (root / ".github/workflows/package-build.yml").read_text(encoding="utf-8")
         self.assertIn("tests.deploy.test_imager_manifest", workflow)
-        self.assertIn("cp deploy/image/create_imager_manifest.py .", workflow)
-        self.assertIn("create_imager_manifest.py --clobber", workflow)
-        self.assertIn("create_imager_manifest.py; do", workflow)
+        self.assertIn("petcam.rpi-imager-manifest.json", workflow)
+        self.assertIn('--image-url "$IMAGE_URL"', workflow)
+        self.assertIn("petcam.rpi-imager-manifest.json --clobber", workflow)
+        self.assertNotIn("create_imager_manifest.py --clobber", workflow)
 
-    def test_manifest_uses_local_image_and_preserves_upstream_customization_metadata(self):
+    def test_manifest_points_to_release_image_and_preserves_upstream_customization_metadata(self):
         disk_image = b"test disk image bytes"
         compressed = lzma.compress(disk_image)
         repository = {

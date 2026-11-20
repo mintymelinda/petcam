@@ -1,9 +1,0 @@
-# Dependencies required by the PetCam runtime and setup portal.
-ca-certificates
-avahi-daemon
-libnss-mdns
-openssl
-cron
-python3
-python3-pil
-python3-gi

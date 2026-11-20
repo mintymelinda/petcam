@@ -1,1 +1,0 @@
-"""Ambient light sensor feature."""
