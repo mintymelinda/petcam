@@ -74,3 +74,22 @@ def test_csi_explicit_resolution_and_fps_take_precedence():
     selected = select_csi_mode([camera], resolution="1920x1080", fps="60")
     assert selected["resolution"] == "1920x1080"
     assert selected["fps"] == 60
+
+def test_stepwise_fps_fallback_selects_an_advertised_rate_nearest_to_30():
+    mode_with_stepwise_fps = {
+        "format": "MJPG",
+        "width": 1280,
+        "height": 720,
+        "fps": [],
+        "fps_range": {
+            "min": 10.0,
+            "max": 100.0,
+            "min_interval_seconds": 0.01,
+            "max_interval_seconds": 0.1,
+            "interval_step_seconds": 0.001,
+        },
+    }
+    selected_fps = select_mode_fps(mode_with_stepwise_fps)
+    from petcam.domain.camera.capabilities import mode_supports_fps
+    assert mode_supports_fps(mode_with_stepwise_fps, selected_fps)
+    assert abs(selected_fps - 30) < 1

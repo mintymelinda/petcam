@@ -38,7 +38,19 @@ def _mode_fps(mode, requested="auto"):
         return min((float(value) for value in advertised), key=lambda value: (abs(value - DEFAULT_FPS), -value))
     limits = mode.get("fps_range")
     if limits:
-        return min(max(DEFAULT_FPS, limits["min"]), limits["max"])
+        target = min(max(DEFAULT_FPS, limits["min"]), limits["max"])
+        step = limits.get("interval_step_seconds")
+        if step:
+            minimum = limits["min_interval_seconds"]
+            maximum = limits["max_interval_seconds"]
+            target_interval = 1 / target
+            last_step = max(0, round((maximum - minimum) / step))
+            selected_step = min(
+                max(round((target_interval - minimum) / step), 0),
+                last_step,
+            )
+            return 1 / (minimum + selected_step * step)
+        return target
     return DEFAULT_FPS
 
 
