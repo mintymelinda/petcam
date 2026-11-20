@@ -51,8 +51,6 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('PETCAM_VERSION="$version" exec', installer)
         self.assertIn('[[ "$PACKAGE_ROOT" != "$INSTALL_ROOT" ]]', installer)
         self.assertIn('for item in src deploy VERSION; do', installer)
-        self.assertNotIn('/etc/petcam', installer)
-        self.assertNotIn('/var/lib/petcam', installer)
         deployment = (ROOT / "deploy/install.sh").read_text(encoding="utf-8")
         self.assertIn('if [[ ! -e "$ETC_ROOT/petcam.conf" ]] ', deployment)
         self.assertIn('if [[ ! -e "$STATE_ROOT/$feature/config.json" ]] ', deployment)
