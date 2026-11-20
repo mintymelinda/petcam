@@ -1,45 +1,33 @@
-name: PetCam ARMHF Package
-
+name: PetCam ARMHF Package and Raspberry Pi OS Image
 on:
   pull_request:
   push:
     branches: [main]
     tags: ["v*"]
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
-  group: petcam-package-${{ github.ref }}
+  group: petcam-package-${ github.ref }
   cancel-in-progress: true
-
 jobs:
   build-package:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - name: Check out source
-        uses: actions/checkout@v5
-
+      - uses: actions/checkout@v5
       - name: Validate deployment scripts and architecture checks
         run: |
-          for script in \
-            deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh \
-            deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh \
-            tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
+          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh deploy/image/stage-petcam/00-install-petcam/00-run.sh deploy/image/stage-petcam/00-install-petcam/00-run-chroot.sh tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
           bash tests/deploy/test_platform_validation.sh
-          python3 -m unittest \
-            tests.infrastructure.system.test_deployment_assets \
-            tests.deploy.test_package_build
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_package_build
           python3 -m compileall -q src tests tools
-
       - name: Build the single ARMHF application package
         env:
-          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
+          PETCAM_VERSION: ${ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }
         run: |
           bash deploy/package/build.sh dist
           test -s dist/petcam-armhf.tar.gz
@@ -48,60 +36,86 @@ jobs:
           grep -q '^./install.sh$' dist/package-contents.txt
           grep -q '^./deploy/lib/platform.sh$' dist/package-contents.txt
           ! grep -q '^./deploy/image/' dist/package-contents.txt
-
-      - name: Upload ARMHF package
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: petcam-armhf-package-${{ github.sha }}
+          name: petcam-armhf-package-${ github.sha }
           path: dist/petcam-armhf.tar.gz
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
-
-  publish-release:
-    name: Publish production ARMHF package
+  build-image:
+    name: Build stock Raspberry Pi OS Lite image
     if: startsWith(github.ref, 'refs/tags/v')
     needs: build-package
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/download-artifact@v4
+        with:
+          name: petcam-armhf-package-${ github.sha }
+          path: release/package
+      - name: Build Raspberry Pi OS Lite with PetCam installed
+        env:
+          PETCAM_VERSION: ${ github.ref_name }
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          bash deploy/image/build.sh release/package/petcam-armhf.tar.gz dist
+          IMAGE="$(find dist -maxdepth 1 -type f -name '*.img.xz' -print -quit)"
+          test -n "$IMAGE" && test -s "$IMAGE"
+          sha256sum "$IMAGE" > "$IMAGE.sha256"
+          test -s "$IMAGE.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: petcam-raspios-lite-image-${ github.sha }
+          path: |
+            dist/*.img.xz
+            dist/*.img.xz.sha256
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+  publish-release:
+    name: Publish PetCam package and OS image
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build-package, build-image]
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: write
     steps:
-      - name: Download validated ARMHF package
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
-          name: petcam-armhf-package-${{ github.sha }}
+          name: petcam-armhf-package-${ github.sha }
           path: release/package
-
-      - name: Prepare and publish application release
+      - uses: actions/download-artifact@v4
+        with:
+          name: petcam-raspios-lite-image-${ github.sha }
+          path: release/image
+      - name: Prepare and publish release assets
         env:
-          GH_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${ github.token }
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
-          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
-            echo "Release tag $TAG must use SemVer: vMAJOR.MINOR.PATCH with optional -PRERELEASE or +BUILD metadata." >&2
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Invalid SemVer release tag: $TAG" >&2
             exit 1
           fi
-          PACKAGE_SOURCE="$(find release/package -maxdepth 2 -type f -name 'petcam-armhf.tar.gz' -print -quit)"
-          if [[ -z "$PACKAGE_SOURCE" || ! -s "$PACKAGE_SOURCE" ]]; then
-            echo "Validated ARMHF application package is missing." >&2
+          PACKAGE_SOURCE="release/package/petcam-armhf.tar.gz"
+          IMAGE_SOURCE="$(find release/image -maxdepth 2 -type f -name '*.img.xz' -print -quit)"
+          if [[ ! -s "$PACKAGE_SOURCE" || -z "$IMAGE_SOURCE" || ! -s "$IMAGE_SOURCE" ]]; then
+            echo "A validated application package or flashable OS image is missing." >&2
             exit 1
           fi
           cp "$PACKAGE_SOURCE" petcam-armhf.tar.gz
+          cp "$IMAGE_SOURCE" .
+          cp "$IMAGE_SOURCE.sha256" .
           sha256sum petcam-armhf.tar.gz > petcam-armhf.tar.gz.sha256
-
           if gh release view "$TAG" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else
-            gh release create "$TAG" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
+            gh release create "$TAG" --draft --verify-tag --title "PetCam release" --generate-notes
           fi
-          gh release upload "$TAG" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 --clobber
-          ASSETS="$(gh release view "$TAG" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256; do
-            if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
-              echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
-              exit 1
-            fi
-          done
+          gh release upload "$TAG" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" --clobber
           gh release edit "$TAG" --draft=false
