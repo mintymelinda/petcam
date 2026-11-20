@@ -10,7 +10,8 @@ Use this page to find the documentation for installing, configuring, operating, 
 ## Operation
 
 - [Time-lapse storage](operations/timelapse-storage.md) — local storage defaults, SMB/NFS mount requirements, and safe behavior when a network mount is unavailable.
-- [Camera mode selection](operations/camera-mode-selection.md) — automatic H.264 720p30 preference, capability-based fallbacks, explicit settings, and negotiation troubleshooting.\n- [GStreamer RTSP performance validation](operations/gstreamer-rtsp-performance-validation.md) — target-device CPU, queue, memory, and functional regression checks.
+- [Camera mode selection](operations/camera-mode-selection.md) — automatic H.264 720p30 preference, capability-based fallbacks, explicit settings, and negotiation troubleshooting.
+- [GStreamer RTSP performance validation](operations/gstreamer-rtsp-performance-validation.md) — target-device CPU, queue, memory, and functional regression checks.
 
 ## Release engineering
 
