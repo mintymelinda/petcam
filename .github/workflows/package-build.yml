@@ -27,7 +27,7 @@ jobs:
           python3 -m compileall -q src tests tools
       - name: Build the single ARMHF application package
         env:
-          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
+          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'development' }}
         run: |
           bash deploy/package/build.sh dist
           test -s dist/petcam-armhf.tar.gz
@@ -64,7 +64,7 @@ jobs:
           grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-arm
       - name: Customize the official Raspberry Pi OS Lite image
         env:
-          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || github.sha }}
+          PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'development' }}
         run: |
           set -euo pipefail
           mkdir -p dist

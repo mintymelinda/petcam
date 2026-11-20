@@ -14,7 +14,7 @@ class PetCamPackageBuildTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
             environment = os.environ.copy()
-            environment["PETCAM_VERSION"] = "test-1.2.3"
+            environment["PETCAM_VERSION"] = "v1.1.3-beta6"
             subprocess.run(
                 ["bash", str(ROOT / "deploy/package/build.sh"), str(output)],
                 cwd=ROOT,
@@ -37,7 +37,7 @@ class PetCamPackageBuildTests(unittest.TestCase):
                 self.assertFalse(any(name.startswith("./deploy/image/") for name in names))
                 version = archive.extractfile("./VERSION")
                 self.assertIsNotNone(version)
-                self.assertEqual(version.read().decode().strip(), "test-1.2.3")
+                self.assertEqual(version.read().decode().strip(), "v1.1.3-beta6")
 
     def test_package_installer_validates_platform_before_copying_application(self):
         installer = (ROOT / "deploy/package/install.sh").read_text(encoding="utf-8")
@@ -67,6 +67,24 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('Setup portal address will be reported when the device boots.', deployment)
         self.assertIn('if [[ ! -e "$ETC_ROOT/petcam.conf" ]]; then', deployment)
         self.assertIn('if [[ ! -e "$STATE_ROOT/$feature/config.json" ]]; then', deployment)
+
+    def test_unlabelled_builds_use_development_instead_of_a_git_commit_hash(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory)
+            environment = os.environ.copy()
+            environment.pop("PETCAM_VERSION", None)
+            subprocess.run(
+                ["bash", str(ROOT / "deploy/package/build.sh"), str(output)],
+                cwd=ROOT,
+                env=environment,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            with tarfile.open(output / "petcam-armhf.tar.gz", "r:gz") as archive:
+                version = archive.extractfile("./VERSION")
+                self.assertIsNotNone(version)
+                self.assertEqual(version.read().decode().strip(), "development")
 
     def test_package_builder_excludes_pi_gen_image_internals(self):
         builder = (ROOT / "deploy/package/build.sh").read_text(encoding="utf-8")
