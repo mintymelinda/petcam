@@ -20,9 +20,9 @@ partition, and partition layout are retained; this project does not run
 `pi-gen` or build a replacement operating system. Device-specific HTTPS
 certificates are generated on the first boot, not baked into the shared image.
 
-The original Raspberry Pi Zero W is the baseline target. The image uses the
-single 32-bit ARMHF/ARMv6 baseline; newer Raspberry Pi models can use it when
-running the 32-bit OS.
+The original Raspberry Pi Zero W is the baseline target. Raspberry Pi lists
+its current 32-bit OS as compatible with all Raspberry Pi models; PetCam uses
+the 32-bit ARMHF/ARMv6 baseline, so newer models can use the same image.
 
 ## Standalone application package
 
@@ -37,10 +37,11 @@ The fast application package is built with `bash deploy/package/build.sh dist`.
 It is the PR CI and application-upgrade artifact; it excludes image-builder
 internals. Image construction is intentionally excluded from pull-request CI.
 
-On a Linux host with Docker, run:
+On an Ubuntu/Debian Linux host with loop-device, mount, QEMU ARM user-mode,
+and binfmt support installed, run:
 
 ```sh
-bash deploy/image/build.sh dist/petcam-armhf.tar.gz dist
+sudo bash deploy/image/build.sh dist/petcam-armhf.tar.gz dist
 ```
 
 The script downloads the official Raspberry Pi OS Lite 32-bit image and its
