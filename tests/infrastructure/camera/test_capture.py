@@ -113,6 +113,22 @@ def test_explicit_csi_mjpeg_does_not_probe_or_enable_h264_encoder():
     assert source == "csi"
     assert selected["_native_h264"] is False
 
+
+def test_explicit_csi_unsupported_format_fails_instead_of_silently_using_mjpeg():
+    discovery = mock.Mock(returncode=0, stdout=json.dumps({
+        "usb_devices": [], "csi_cameras": [{"index": 0}]
+    }))
+    csi = mock.Mock(returncode=0, stdout=json.dumps({
+        "camera": 0, "resolution": "1280x720", "fps": 30
+    }))
+    with mock.patch.object(MODULE.subprocess, "run", side_effect=[discovery, csi]):
+        try:
+            MODULE.select_backend({"SOURCE": "csi", "FORMAT": "YUYV"})
+        except RuntimeError as error:
+            assert "does not support the explicitly requested format YUYV" in str(error)
+        else:
+            raise AssertionError("Unsupported explicit CSI format must be rejected")
+
 def test_explicit_h264_rejects_csi_without_hardware_encoder():
     discovery = mock.Mock(returncode=0, stdout=json.dumps({
         "usb_devices": [], "csi_cameras": [{"index": 0}]

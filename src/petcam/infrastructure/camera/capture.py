@@ -79,6 +79,10 @@ def select_backend(config: dict) -> tuple[str, dict]:
             try:
                 selected = _run_selection("select-csi", config, source=source)
                 requested_format = str(config.get("FORMAT", "auto")).upper()
+                if requested_format not in {"AUTO", "H264", "MJPG", "MJPEG", "JPEG"}:
+                    raise RuntimeError(
+                        f"CSI capture does not support the explicitly requested format {requested_format}"
+                    )
                 selected["_native_h264"] = False
                 if requested_format in {"AUTO", "H264"}:
                     probe = subprocess.run(
