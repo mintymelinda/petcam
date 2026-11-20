@@ -37,6 +37,7 @@ class PetCamImageBuildTests(unittest.TestCase):
     def test_release_image_is_tag_only_and_published_with_checksum(self):
         workflow = (ROOT / ".github/workflows/package-build.yml").read_text(encoding="utf-8")
         self.assertIn("build-image:", workflow)
+        self.assertIn("workflow_dispatch", workflow)
         self.assertIn("needs: [build-package, build-image]", workflow)
         self.assertIn("qemu-user-static", workflow)
         self.assertIn("update-binfmts --enable qemu-arm", workflow)

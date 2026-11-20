@@ -47,4 +47,6 @@ sudo bash deploy/image/build.sh dist/petcam-armhf.tar.gz dist
 The script downloads the official Raspberry Pi OS Lite 32-bit image and its
 upstream checksum, verifies the download, mounts its boot and root partitions,
 and runs the existing PetCam package installer in an ARMHF chroot. Release CI
-performs this longer customization only for version tags.
+performs this longer customization for version tags; it can also be run
+manually with GitHub Actions `workflow_dispatch` to validate an image
+without publishing a release.
