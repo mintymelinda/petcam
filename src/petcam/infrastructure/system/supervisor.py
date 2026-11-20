@@ -141,8 +141,9 @@ def workers() -> list[Worker]:
     py = sys.executable
     return [
         Worker("setup-portal", (py, "-m", "petcam.bootstrap.setup_portal")),
+        # Bind RTSP before camera discovery so clients can connect while capture recovers.
+        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer")),
         Worker("camera-capture", (py, "-m", "petcam.infrastructure.camera.capture")),
-        Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer"), capture_source_ready),
         Worker(
             "rtsp-sampler",
             (py, "-m", "petcam.infrastructure.streaming.sampler"),
