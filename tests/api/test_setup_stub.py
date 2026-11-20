@@ -121,6 +121,83 @@ class SetupPortalTests(unittest.TestCase):
 
         self.assertEqual(connect.call_args.kwargs["timeout"], 60)
 
+    def test_manager_readiness_requires_dashboard_and_all_local_assets(self):
+        MODULE.set_web_ui_enabled(True)
+        document = b" ".join(asset.encode("ascii") for asset in MODULE.MANAGER_STATIC_ASSETS)
+        responses = [(200, "text/html; charset=utf-8", document)] + [
+            (200, "application/javascript; charset=utf-8", b"window.petcam = true;")
+            for _ in MODULE.MANAGER_STATIC_ASSETS
+        ]
+        with mock.patch.object(MODULE, "_manager_get", side_effect=responses) as fetch:
+            self.assertTrue(MODULE.manager_ready())
+        self.assertEqual(
+            [call.args[0] for call in fetch.call_args_list],
+            ["/", *MODULE.MANAGER_STATIC_ASSETS],
+        )
+
+    def test_manager_readiness_rejects_dashboard_when_required_asset_is_missing(self):
+        MODULE.set_web_ui_enabled(True)
+        with mock.patch.object(
+            MODULE, "_manager_get",
+            return_value=(200, "text/html; charset=utf-8", b"<html>dashboard without script tags</html>"),
+        ) as fetch:
+            self.assertFalse(MODULE.manager_ready())
+        fetch.assert_called_once_with("/")
+
+    def test_manager_readiness_rejects_missing_static_asset(self):
+        MODULE.set_web_ui_enabled(True)
+        document = b" ".join(asset.encode("ascii") for asset in MODULE.MANAGER_STATIC_ASSETS)
+        responses = [(200, "text/html; charset=utf-8", document)] + [
+            (200, "application/javascript; charset=utf-8", b"ok")
+            for _ in MODULE.MANAGER_STATIC_ASSETS[:-1]
+        ] + [(404, "text/html", b"not found")]
+        with mock.patch.object(MODULE, "_manager_get", side_effect=responses):
+            self.assertFalse(MODULE.manager_ready())
+
+    def test_proxy_retries_transient_get_failure_and_preserves_response_headers(self):
+        handler = mock.Mock()
+        handler.headers = {"Content-Length": "0", "Host": "localhost"}
+        handler.command = "GET"
+        handler.path = "/"
+        response = mock.Mock()
+        response.status = 200
+        response.reason = "OK"
+        response.read.return_value = b"dashboard"
+        response.getheaders.return_value = [
+            ("Content-Type", "text/html; charset=utf-8"),
+            ("Set-Cookie", "petcam_session=abc; HttpOnly; Secure"),
+            ("Cache-Control", "no-store"),
+        ]
+        connection = mock.Mock()
+        connection.getresponse.return_value = response
+        with (
+            mock.patch.object(
+                MODULE.http.client, "HTTPSConnection",
+                side_effect=[ConnectionRefusedError("manager restarting"), connection],
+            ),
+            mock.patch.object(MODULE.time, "sleep") as sleep,
+        ):
+            MODULE._proxy(handler)
+        sleep.assert_called_once_with(MODULE.PROXY_RETRY_DELAY_SECONDS)
+        handler.send_response.assert_called_once_with(200, "OK")
+        sent_headers = [call.args for call in handler.send_header.call_args_list]
+        self.assertIn(("Set-Cookie", "petcam_session=abc; HttpOnly; Secure"), sent_headers)
+        self.assertIn(("Cache-Control", "no-store"), sent_headers)
+        handler.wfile.write.assert_called_once_with(b"dashboard")
+
+    def test_proxy_does_not_retry_non_idempotent_post(self):
+        handler = mock.Mock()
+        handler.headers = {"Content-Length": "0", "Host": "localhost"}
+        handler.command = "POST"
+        handler.path = "/api/camera"
+        with mock.patch.object(
+            MODULE.http.client, "HTTPSConnection",
+            side_effect=ConnectionRefusedError("manager stopped"),
+        ) as connect:
+            MODULE._proxy(handler)
+        connect.assert_called_once()
+        handler.send_response.assert_called_once_with(503, "Service Unavailable")
+
     def test_first_run_setup_login_and_web_ui_toggle(self):
         status, _, payload = self.request("GET", "/setup/api/status")
         self.assertEqual(status, 200)
