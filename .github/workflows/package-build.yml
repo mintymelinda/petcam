@@ -18,13 +18,13 @@ jobs:
       - uses: actions/checkout@v5
       - name: Validate deployment scripts and architecture checks
         run: |
-          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh tests/deploy/test_dependency_installer.sh tests/deploy/test_platform_validation.sh; do
+          for script in deploy/install.sh deploy/start.sh deploy/lib/dependencies.sh deploy/lib/platform.sh deploy/package/build.sh deploy/package/install.sh deploy/image/build.sh; do
             bash -n "$script"
           done
           bash tests/deploy/test_dependency_installer.sh
           bash tests/deploy/test_platform_validation.sh
-          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_package_build tests.deploy.test_image_build
-          python3 -m compileall -q src tests tools
+          python3 -m unittest tests.infrastructure.system.test_deployment_assets tests.deploy.test_package_build tests.deploy.test_image_build tests.deploy.test_imager_manifest
+          python3 -m compileall -q src tests tools deploy/image
       - name: Build the single ARMHF application package
         env:
           PETCAM_VERSION: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'development' }}
@@ -92,6 +92,7 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v5
       - uses: actions/download-artifact@v4
         with:
           name: petcam-armhf-package-${{ github.sha }}
@@ -119,15 +120,16 @@ jobs:
           cp "$PACKAGE_SOURCE" petcam-armhf.tar.gz
           cp "$IMAGE_SOURCE" .
           cp "$IMAGE_SOURCE.sha256" .
+          cp deploy/image/create_imager_manifest.py .
           sha256sum petcam-armhf.tar.gz > petcam-armhf.tar.gz.sha256
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."
           else
             gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --draft --verify-tag --title "PetCam ${TAG#v}" --generate-notes
           fi
-          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" --clobber
+          gh release upload "$TAG" --repo "$GITHUB_REPOSITORY" petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" create_imager_manifest.py --clobber
           ASSETS="$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]')"
-          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256"; do
+          for REQUIRED_ASSET in petcam-armhf.tar.gz petcam-armhf.tar.gz.sha256 "$(basename "$IMAGE_SOURCE")" "$(basename "$IMAGE_SOURCE").sha256" create_imager_manifest.py; do
             if ! jq -e --arg asset "$REQUIRED_ASSET" 'index($asset) != null' <<<"$ASSETS" >/dev/null; then
               echo "Release $TAG is missing required asset: $REQUIRED_ASSET" >&2
               exit 1
