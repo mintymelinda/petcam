@@ -195,7 +195,10 @@ def verify_native_h264_v4l2_caps(pipeline, camera_status):
         media_type = structure.get_name()
         width = structure.get_value("width")
         height = structure.get_value("height")
-        numerator, denominator = structure.get_value("framerate")
+        fraction = structure.get_fraction("framerate")
+        if not fraction or not fraction[0]:
+            raise ValueError("Missing framerate")
+        numerator, denominator = fraction[1], fraction[2]
         actual_fps = float(numerator) / float(denominator)
     except (AttributeError, TypeError, ValueError, ZeroDivisionError) as error:
         raise GStreamerError("V4L2 returned incomplete or invalid negotiated capture caps.") from error

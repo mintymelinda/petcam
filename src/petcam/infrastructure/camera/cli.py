@@ -3,7 +3,6 @@
 import argparse
 import json
 import os
-import re
 import socket
 import subprocess
 import sys
@@ -14,9 +13,7 @@ from pathlib import Path
 from ...domain.camera.capabilities import (
     NATIVE_JPEG_FORMATS,
     camera_identity,
-    mode_max_fps,
     mode_supports_fps,
-    mode_supports_resolution,
     parse_csi_cameras,
     parse_modes,
     ustreamer_format,
@@ -32,6 +29,7 @@ from ...domain.camera.capture_modes import (
     filter_devices_by_format,
     select_csi_mode,
     select_mode,
+    select_mode_fps,
 )
 from ..persistence.configuration import parse_config
 from ..network.diagnostics import collect_diagnostics

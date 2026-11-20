@@ -229,7 +229,8 @@ class GStreamerOutputTests(unittest.TestCase):
     def test_native_v4l2_caps_verification_rejects_driver_mode_mismatch(self):
         class Structure:
             def get_name(self): return "video/x-h264"
-            def get_value(self, key): return {"width": 1920, "height": 1080, "framerate": (30, 1)}[key]
+            def get_value(self, key): return {"width": 1920, "height": 1080}[key]
+            def get_fraction(self, _key): return (True, 30, 1)
         class Caps:
             def is_empty(self): return False
             def get_structure(self, _index): return Structure()
@@ -245,7 +246,8 @@ class GStreamerOutputTests(unittest.TestCase):
     def test_native_v4l2_caps_verification_accepts_matching_driver_mode(self):
         class Structure:
             def get_name(self): return "video/x-h264"
-            def get_value(self, key): return {"width": 1280, "height": 720, "framerate": (30, 1)}[key]
+            def get_value(self, key): return {"width": 1280, "height": 720}[key]
+            def get_fraction(self, _key): return (True, 30, 1)
         class Caps:
             def is_empty(self): return False
             def get_structure(self, _index): return Structure()
