@@ -12,6 +12,7 @@ class PetCamImageBuildTests(unittest.TestCase):
         self.assertIn('FIRST_USER_NAME="pi"', builder)
         self.assertIn("./build-docker.sh", builder)
         self.assertIn("raspios-lite-armhf.img.xz", builder)
+        self.assertIn('touch "$PI_GEN_DIR/stage2/SKIP_IMAGES"', builder)
         self.assertNotIn("arm64", builder.lower())
     def test_image_stage_installs_package_and_defers_device_specific_setup(self):
         stage = ROOT / "deploy/image/stage-petcam/00-install-petcam"
@@ -23,6 +24,8 @@ class PetCamImageBuildTests(unittest.TestCase):
         self.assertIn("PETCAM_INSTALL_ROOT=/opt/petcam", chroot)
         self.assertIn("PETCAM_SKIP_SERVICE_START=1", chroot)
         self.assertIn("PETCAM_DEFER_INITIALIZE=1", chroot)
+        self.assertTrue((ROOT / "deploy/image/stage-petcam/prerun.sh").is_file())
+        self.assertTrue((ROOT / "deploy/image/stage-petcam/EXPORT_IMAGE").is_file())
         self.assertIn("Deferring cron startup until the image boots", installer)
         self.assertIn("Deferring certificate initialization until the device boots", installer)
     def test_release_image_is_tag_only_and_required_before_publishing(self):

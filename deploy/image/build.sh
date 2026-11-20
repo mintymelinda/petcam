@@ -24,6 +24,7 @@ git -C "$BUILD_ROOT" init -q "$PI_GEN_DIR"
 git -C "$PI_GEN_DIR" remote add origin https://github.com/RPi-Distro/pi-gen.git
 git -C "$PI_GEN_DIR" fetch --quiet --depth 1 origin "$PI_GEN_REF"
 git -C "$PI_GEN_DIR" checkout --quiet --detach FETCH_HEAD
+touch "$PI_GEN_DIR/stage2/SKIP_IMAGES"
 install -d "$PI_GEN_DIR/stage-petcam/00-install-petcam/files"
 cp -a "$REPO_ROOT/deploy/image/stage-petcam/." "$PI_GEN_DIR/stage-petcam/"
 install -m 0644 "$PACKAGE" "$PI_GEN_DIR/stage-petcam/00-install-petcam/files/petcam-armhf.tar.gz"
