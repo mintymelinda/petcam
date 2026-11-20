@@ -16,6 +16,8 @@ from ..persistence.configuration import parse_config
 STATE = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
 CONFIG = Path(os.environ.get("PETCAM_CONFIG", "/etc/petcam/petcam.conf"))
 CAMERA_STATUS = STATE / "camera-status.json"
+RUN = Path(os.environ.get("PETCAM_RUN", "/run/petcam"))
+FALLBACK_REQUEST = RUN / "camera-fallback.json"
 CAMERA_CLI = "petcam.infrastructure.camera.cli"
 CSI_MODULE = "petcam.infrastructure.camera.csi"
 
@@ -105,6 +107,39 @@ def select_backend(config: dict) -> tuple[str, dict]:
     raise RuntimeError("No supported USB or CSI camera is currently available")
 
 
+def _consume_fallback_request(pid: int) -> dict | None:
+    try:
+        payload = json.loads(FALLBACK_REQUEST.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict) or payload.get("capture_pid") != pid:
+        return None
+    FALLBACK_REQUEST.unlink(missing_ok=True)
+    return payload
+
+
+def _fallback_config(config: dict, source: str, selected: dict, request: dict) -> dict | None:
+    """Move to the next automatic capture family after the active source fails."""
+    if str(config.get("FORMAT", "auto")).upper() != "AUTO":
+        return None
+    candidate = dict(config)
+    selected_format = str(selected.get("format", "")).upper()
+    if source == "usb" and selected_format in {"H264", "MJPG", "MJPEG", "JPEG"}:
+        if selected_format == "H264":
+            candidate["FORMAT"] = "MJPEG"
+            logging.warning("Native H.264 did not produce a viable stream; retrying USB capture as MJPEG")
+            return candidate
+        if str(config.get("SOURCE", "auto")).lower() == "auto":
+            candidate.update(SOURCE="csi", DEVICE="", USB_PHYSICAL_PATH="", FORMAT="auto")
+            logging.warning("USB MJPEG did not produce a viable stream; falling back to CSI capture")
+            return candidate
+    if source == "csi" and selected.get("_native_h264") is True:
+        candidate["FORMAT"] = "MJPEG"
+        logging.warning("CSI H.264 did not produce a viable stream; retrying CSI capture as MJPEG")
+        return candidate
+    return None
+
+
 def _write_marker(payload: dict) -> None:
     CAMERA_STATUS.parent.mkdir(parents=True, exist_ok=True)
     temporary = CAMERA_STATUS.with_suffix(".json.tmp")
@@ -135,6 +170,7 @@ def run_capture(config: dict) -> int:
             "pid": os.getpid(), "backend": "usb", "device": selected["device"],
             "resolution": resolution, "fps": fps, "format": "H264" if native_h264 else "MJPEG",
             "native_h264": native_h264,
+            "auto_mode": str(config.get("FORMAT", "auto")).lower() == "auto",
         }
         _write_marker(marker)
         if native_h264:
@@ -146,7 +182,13 @@ def run_capture(config: dict) -> int:
             signal.signal(signal.SIGINT, stop_native)
             try:
                 while not stopping[0]:
-                    signal.pause()
+                    request = _consume_fallback_request(os.getpid())
+                    if request:
+                        fallback = _fallback_config(config, source, selected, request)
+                        if fallback is not None:
+                            _remove_marker()
+                            return run_capture(fallback)
+                    time.sleep(0.5)
             finally:
                 _remove_marker()
             return 0
@@ -169,6 +211,7 @@ def run_capture(config: dict) -> int:
             "resolution": resolution, "fps": fps,
             "format": "H264" if native_h264 else "MJPEG",
             "native_h264": native_h264,
+            "auto_mode": str(config.get("FORMAT", "auto")).lower() == "auto",
         })
     child = None
     stopping = False
@@ -185,6 +228,19 @@ def run_capture(config: dict) -> int:
         logging.info("Starting %s camera capture at %s %s FPS", source, resolution, fps)
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, start_new_session=True)
         while not stopping:
+            request = _consume_fallback_request(os.getpid())
+            if request:
+                fallback = _fallback_config(config, source, selected, request)
+                if fallback is not None:
+                    if child.poll() is None:
+                        child.terminate()
+                        try:
+                            child.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            child.kill()
+                            child.wait(timeout=2)
+                    _remove_marker()
+                    return run_capture(fallback)
             code = child.poll()
             if code is not None:
                 return code
@@ -209,7 +265,12 @@ def run_capture(config: dict) -> int:
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     config = parse_config(CONFIG, check_hardware=False)
-    return run_capture(config)
+    while True:
+        try:
+            return run_capture(config)
+        except (RuntimeError, OSError, subprocess.TimeoutExpired, ValueError) as error:
+            logging.warning("Camera discovery or startup failed; retrying automatically in 5 seconds: %s", error)
+            time.sleep(5)
 
 
 if __name__ == "__main__":
