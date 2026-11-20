@@ -211,7 +211,9 @@ def run_hardware_h264(args, width, height):
     ]
     process = None
     marker = {
-        "pid": os.getpid(), "native_h264": True, "backend": "csi",
+        "pid": os.getpid(), "owner_pid": os.getppid(),
+        "automatic_format": getattr(args, "automatic_format", False),
+        "native_h264": True, "backend": "csi",
         "device": capability.get("device"), "encoder": capability.get("encoder"),
         "resolution": f"{width}x{height}", "fps": args.fps,
         "camera": args.camera, "tcp_port": args.tcp_port,
@@ -325,6 +327,7 @@ def main():
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--h264", action="store_true", help="use hardware H.264 only; requires a confirmed V4L2 encoder")
+    parser.add_argument("--automatic-format", action="store_true", help="allow the camera owner to fall back to MJPEG if native H.264 fails")
     parser.add_argument("--tcp-port", type=int, default=8556)
     args = parser.parse_args()
     width, height = (int(value) for value in args.resolution.lower().split("x", 1))

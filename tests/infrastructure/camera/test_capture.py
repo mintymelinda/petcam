@@ -56,14 +56,15 @@ def test_usb_mjpeg_worker_runs_ustreamer_and_removes_its_marker(tmp_path):
 def test_usb_native_h264_worker_cleans_marker_on_shutdown(tmp_path):
     marker = tmp_path / "camera-status.json"
 
-    def pause():
+    def sleep(_seconds):
         signal.getsignal(signal.SIGTERM)(signal.SIGTERM, None)
 
     with mock.patch.object(MODULE, "CAMERA_STATUS", marker), \
             mock.patch.object(MODULE, "select_backend", return_value=("usb", {
                 "device": "/dev/video0", "resolution": "1920x1080", "fps": 30, "format": "H264"
             })), \
-            mock.patch.object(MODULE.signal, "pause", side_effect=pause):
+            mock.patch.object(MODULE, "FALLBACK_REQUEST", marker.with_name("fallback.json")), \
+            mock.patch.object(MODULE.time, "sleep", side_effect=sleep):
         assert MODULE.run_capture({"FORMAT": "H264"}) == 0
     assert not marker.exists()
 
@@ -171,3 +172,53 @@ def test_csi_native_h264_worker_publishes_marker_and_cleans_it_on_shutdown(tmp_p
             mock.patch.object(MODULE.subprocess, "Popen", side_effect=spawn):
         assert MODULE.run_capture({"SOURCE": "csi", "FORMAT": "H264"}) == 0
     assert not marker.exists()
+
+
+def test_select_fallback_backend_tries_mjpeg_then_yuyv():
+    selected = {
+        "device": "/dev/video0",
+        "resolution": "640x480",
+        "fps": "30",
+        "format": "YUYV",
+    }
+    with mock.patch.object(
+        MODULE, "_run_selection",
+        side_effect=[RuntimeError("MJPEG mode unavailable"), selected],
+    ) as select:
+        result = MODULE.select_fallback_backend("usb", {"FORMAT": "auto"})
+    assert result == selected
+    assert [call.args[1]["FORMAT"] for call in select.call_args_list] == ["MJPG", "YUYV"]
+
+
+def test_native_h264_worker_switches_to_mjpeg_after_runtime_fallback_request(tmp_path):
+    marker = tmp_path / "camera-status.json"
+    request = tmp_path / "fallback.json"
+    child = mock.Mock()
+    child.poll.return_value = None
+    child.wait.return_value = 0
+    fallback = {
+        "device": "/dev/video0",
+        "resolution": "640x480",
+        "fps": "30",
+        "format": "MJPEG",
+    }
+
+    def sleep(_seconds):
+        request.write_text(json.dumps({"pid": __import__("os").getpid()}), encoding="utf-8")
+
+    def spawn(command, **kwargs):
+        assert command[0] == "ustreamer"
+        __import__("signal").getsignal(__import__("signal").SIGTERM)(__import__("signal").SIGTERM, None)
+        return child
+
+    with mock.patch.object(MODULE, "CAMERA_STATUS", marker), \
+            mock.patch.object(MODULE, "FALLBACK_REQUEST", request), \
+            mock.patch.object(MODULE, "select_backend", return_value=("usb", {
+                "device": "/dev/video0", "resolution": "1920x1080", "fps": 30, "format": "H264"
+            })), \
+            mock.patch.object(MODULE, "select_fallback_backend", return_value=fallback), \
+            mock.patch.object(MODULE.subprocess, "Popen", side_effect=spawn), \
+            mock.patch.object(MODULE.time, "sleep", side_effect=sleep):
+        assert MODULE.run_capture({"FORMAT": "auto"}) == 0
+    assert not marker.exists()
+    assert not request.exists()
