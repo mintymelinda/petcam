@@ -1,0 +1,341 @@
+#!/usr/bin/env python3
+"""Low-resource motion detection using frames from the shared RTSP sampler."""
+import argparse
+from datetime import datetime, timezone
+from io import BytesIO
+import json
+import os
+import resource
+import shutil
+import signal
+import time
+from pathlib import Path
+
+from PIL import Image, ImageChops
+
+from ...domain.motion.policy import (
+    DEFAULTS,
+    cooldown_elapsed,
+    in_quiet_hours,
+    pixel_delta_threshold,
+    validate_config,
+)
+from ...infrastructure.persistence.frames import capture_frame, prune_frames
+from ...infrastructure.streaming.sampler import read_latest_frame
+
+BASE = Path("/var/lib/petcam/motion")
+CONFIG = BASE / "config.json"
+STATE = BASE / "status.json"
+EVENTS = BASE / "events.json"
+FRAMES = BASE / "events"
+_running = True
+
+
+def load_config(path=CONFIG):
+    try:
+        values = json.loads(Path(path).read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        values = DEFAULTS
+    except (OSError, json.JSONDecodeError) as error:
+        raise ValueError(f"Unable to read motion settings: {error}") from error
+    return validate_config(values)
+
+
+def save_config(values, path=CONFIG):
+    config = validate_config(values)
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        json.dump(config, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+    return config
+
+
+
+class MotionDetector:
+    """Compare tiny grayscale samples; never decode every frame from the stream."""
+
+    def __init__(self, config):
+        self.config = config
+        self.baseline = None
+        self.consecutive = 0
+
+    def sample(self, jpeg):
+        with Image.open(BytesIO(jpeg)) as source:
+            source.thumbnail((160, 120), getattr(Image, "Resampling", Image).BILINEAR)
+            current = source.convert("L")
+        if self.baseline is None or self.baseline.size != current.size:
+            self.baseline = current.copy()
+            self.consecutive = 0
+            return 0.0, False
+        difference = ImageChops.difference(self.baseline, current)
+        histogram = difference.histogram()
+        threshold = pixel_delta_threshold(self.config["sensitivity"])
+        changed = sum(histogram[threshold:])
+        changed_percent = changed * 100.0 / (current.width * current.height)
+        if changed_percent >= self.config["minimum_changed_percent"]:
+            self.consecutive += 1
+            detected = self.consecutive >= self.config["confirm_samples"]
+            if detected:
+                self.baseline = current.copy()
+                self.consecutive = 0
+            return changed_percent, detected
+        self.baseline = current.copy()
+        self.consecutive = 0
+        return changed_percent, False
+
+
+def load_events(path=EVENTS):
+    try:
+        events = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    return events if isinstance(events, list) else []
+
+
+def save_events(events, path=EVENTS):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(path.name + ".tmp")
+    with temporary.open("w", encoding="utf-8") as stream:
+        json.dump(events, stream, indent=2)
+        stream.write("\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    os.replace(temporary, path)
+
+
+def prune_events(config, directory=FRAMES, events_path=EVENTS, now=None):
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    storage = prune_frames(config, directory, now)
+    existing = {path.name for path in directory.glob("*.jpg") if path.is_file()}
+    events = [event for event in load_events(events_path) if event.get("file") in existing]
+    events = events[-config["max_events"]:]
+    save_events(events, events_path)
+    return {**storage, "events": len(events)}
+
+
+def state_snapshot(config, state_path=STATE, frames_dir=FRAMES, events_path=EVENTS):
+    try:
+        state = json.loads(Path(state_path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        state = {"state": "waiting", "last_event_at": None, "last_error": None}
+    events = load_events(events_path)
+    storage = {
+        "snapshots": len(list(Path(frames_dir).glob("*.jpg"))) if Path(frames_dir).exists() else 0,
+        "storage_bytes": sum(p.stat().st_size for p in Path(frames_dir).glob("*.jpg") if p.is_file()) if Path(frames_dir).exists() else 0,
+    }
+    return {**state, **storage, "event_count": len(events), "events": list(reversed(events[-20:])), "enabled": config["enabled"], "config": config}
+
+
+def free_space_ok(config, directory=FRAMES):
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    free = shutil.disk_usage(directory).free
+    return free >= config["min_free_mb"] * 1024 * 1024, free
+
+
+def record_event(frame, changed_percent, config, directory=FRAMES, events_path=EVENTS, now=None):
+    directory = Path(directory)
+    enough_space, free = free_space_ok(config, directory)
+    if not enough_space:
+        raise OSError(f"Free space below configured minimum ({free // 1048576} MiB available).")
+    prune_events(config, directory, events_path)
+    stamp = now or datetime.now(timezone.utc)
+    path = capture_frame(frame, directory, stamp)
+    event = {
+        "timestamp": stamp.astimezone(timezone.utc).isoformat(),
+        "file": path.name,
+        "changed_percent": round(float(changed_percent), 2),
+    }
+    events = load_events(events_path)
+    events.append(event)
+    save_events(events[-config["max_events"]:], events_path)
+    return event
+
+
+def _metrics(started, cpu_started):
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    elapsed = max(time.monotonic() - started, 0.001)
+    cpu = time.process_time() - cpu_started
+    return {
+        "cpu_percent": round(cpu * 100.0 / elapsed, 2),
+        "peak_rss_kib": int(usage.ru_maxrss),
+    }
+
+
+def read_stream_frame():
+    """Return the latest fresh JPEG from the shared RTSP sampler."""
+    return read_latest_frame()
+
+
+def benchmark(duration_seconds=120, sample_interval=2):
+    if not 10 <= duration_seconds <= 3600:
+        raise ValueError("Benchmark duration must be between 10 and 3600 seconds.")
+    config = validate_config({"sample_interval_seconds": sample_interval})
+    detector = MotionDetector(config)
+    started = time.monotonic()
+    cpu_started = time.process_time()
+    samples = 0
+    while time.monotonic() - started < duration_seconds:
+        detector.sample(read_stream_frame())
+        samples += 1
+        remaining = duration_seconds - (time.monotonic() - started)
+        if remaining > 0:
+            time.sleep(min(sample_interval, remaining))
+    elapsed = time.monotonic() - started
+    metrics = _metrics(started, cpu_started)
+    return {
+        "duration_seconds": round(elapsed, 2),
+        "samples_processed": samples,
+        "sample_interval_seconds": sample_interval,
+        **metrics,
+    }
+
+
+
+def _last_event_epoch(events):
+    if not events:
+        return 0.0
+    try:
+        return datetime.fromisoformat(events[-1]["timestamp"]).timestamp()
+    except (KeyError, TypeError, ValueError):
+        return 0.0
+
+
+def run():
+    global _running
+    BASE.mkdir(parents=True, exist_ok=True)
+    FRAMES.mkdir(parents=True, exist_ok=True)
+    detector = None
+    active_config = None
+    last_event = _last_event_epoch(load_events())
+    last_state = None
+    metrics_started = time.monotonic()
+    cpu_started = time.process_time()
+    last_status_write = 0.0
+    while _running:
+        try:
+            config = load_config()
+            if not config["enabled"]:
+                if last_state != "disabled":
+                    write_state({"state": "disabled", "last_error": None})
+                    last_state = "disabled"
+                detector = None
+                active_config = None
+                time.sleep(2)
+                continue
+            now = datetime.now().astimezone()
+            if config["quiet_hours_enabled"] and in_quiet_hours(now, config["quiet_hours_start"], config["quiet_hours_end"]):
+                if last_state != "quiet_hours":
+                    write_state({"state": "quiet_hours", "last_error": None})
+                    last_state = "quiet_hours"
+                detector = None
+                active_config = None
+                time.sleep(5)
+                continue
+            if config != active_config or detector is None:
+                detector = MotionDetector(config)
+                active_config = config
+            directory = FRAMES
+            prune_events(config, directory)
+            enough_space, free = free_space_ok(config, directory)
+            if not enough_space:
+                write_state({
+                    "state": "storage_limit",
+                    "last_error": f"Free space below configured minimum ({free // 1048576} MiB available).",
+                })
+                last_state = "storage_limit"
+                time.sleep(5)
+                continue
+
+            frame = read_stream_frame()
+            changed_percent, detected = detector.sample(frame)
+            tick = time.monotonic()
+            if detected:
+                event_time = datetime.now(timezone.utc)
+                epoch = event_time.timestamp()
+                if cooldown_elapsed(epoch, last_event, config["min_event_interval_seconds"]):
+                    try:
+                        event = record_event(frame, changed_percent, config, directory, now=event_time)
+                    except OSError as error:
+                        write_state({"state": "storage_limit", "last_error": str(error)})
+                        last_state = "storage_limit"
+                    else:
+                        last_event = epoch
+                        write_state({
+                            "state": "motion_detected", "last_event_at": event["timestamp"],
+                            "last_file": event["file"], "last_motion_percent": event["changed_percent"],
+                            "last_error": None, "event_count": len(load_events()),
+                            **_metrics(metrics_started, cpu_started),
+                        })
+                        last_state = "motion_detected"
+            if tick - last_status_write >= 30 or last_state not in ("monitoring", "motion_detected", "storage_limit"):
+                write_state({
+                    "state": "monitoring", "last_motion_percent": round(changed_percent, 2),
+                    "last_error": None, "event_count": len(load_events()),
+                    **_metrics(metrics_started, cpu_started),
+                })
+                last_state = "monitoring"
+                last_status_write = tick
+                metrics_started = time.monotonic()
+                cpu_started = time.process_time()
+            time.sleep(config["sample_interval_seconds"])
+        except (OSError, ValueError) as error:
+            write_state({"state": "camera_unavailable", "last_error": str(error)})
+            last_state = "camera_unavailable"
+            detector = None
+            active_config = None
+            time.sleep(5)
+        except Exception as error:
+            write_state({"state": "error", "last_error": str(error)})
+            last_state = "error"
+            detector = None
+            active_config = None
+            time.sleep(5)
+
+
+def write_state(state, path=STATE):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        previous = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        previous = {}
+    preserved = {key: previous.get(key) for key in ("last_event_at", "last_file", "event_count")}
+    preserved.update(state)
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(preserved, indent=2) + "\n", encoding="utf-8")
+    os.replace(temporary, path)
+
+
+def _stop(_signum, _frame):
+    global _running
+    _running = False
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--validate", action="store_true")
+    parser.add_argument("--benchmark-seconds", type=int, default=0, help="Measure real-stream CPU and peak RSS without saving snapshots.")
+    parser.add_argument("--sample-interval", type=int, default=2)
+    args = parser.parse_args()
+    if args.validate:
+        print(json.dumps(load_config(), indent=2))
+        return 0
+    if args.benchmark_seconds:
+        print(json.dumps(benchmark(args.benchmark_seconds, sample_interval=args.sample_interval), indent=2))
+        return 0
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    run()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

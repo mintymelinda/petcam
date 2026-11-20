@@ -1,0 +1,222 @@
+import contextlib
+import io
+import json
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from petcam.infrastructure.camera import cli as MODULE
+from petcam.domain.camera import capabilities as camera_capabilities, capture_modes as camera_modes
+from petcam.infrastructure.camera import discovery as camera_discovery
+
+
+CSI_SAMPLE = """Available cameras
+-----------------
+0 : imx477 [4056x3040] (/base/soc/i2c0mux/i2c@1/imx477@1a)
+    Modes: 'SRGGB10_CSI2P' : 1332x990 [120.05 fps - (696, 528)/2664x1980 crop]
+           'SRGGB12_CSI2P' : 2028x1080 [50.03 fps - (0, 440)/4056x2160 crop]
+                             2028x1520 [40.01 fps - (0, 0)/4056x3040 crop]
+                             4056x3040 [10.00 fps - (0, 0)/4056x3040 crop]
+1 : imx708 [4608x2592] (/base/soc/i2c0mux/i2c@0/imx708@1a)
+    Modes: 'SRGGB10_CSI2P' : 1536x864 [120.13 fps - (768, 432)/3072x1728 crop]
+                             2304x1296 [56.03 fps - (0, 0)/4608x2592 crop]
+                             4608x2592 [14.35 fps - (0, 0)/4608x2592 crop]
+"""
+
+
+SAMPLE = """ioctl: VIDIOC_ENUM_FMT
+ Type: Video Capture
+ [0]: 'MJPG' (Motion-JPEG, compressed)
+   Size: Discrete 1920x1080
+     Interval: Discrete 0.033s (30.000 fps)
+     Interval: Discrete 0.017s (60.000 fps)
+   Size: Discrete 1280x720
+     Interval: Discrete 0.017s (60.000 fps)
+ [1]: 'YUYV' ( absent )
+   Size: Discrete 640x480
+     Interval: Discrete 0.033s (30.000 fps)
+"""
+
+
+class CameraDiscoveryTests(unittest.TestCase):
+    def test_camera_modules_preserve_the_legacy_import_surface(self):
+        self.assertIs(MODULE.camera_identity, camera_capabilities.camera_identity)
+        self.assertIs(MODULE.parse_modes, camera_capabilities.parse_modes)
+        self.assertIs(MODULE.select_mode, camera_modes.select_mode)
+        self.assertIs(MODULE.discover_devices, camera_discovery.discover_devices)
+        self.assertIs(MODULE.discover_csi_cameras, camera_discovery.discover_csi_cameras)
+
+    def test_auto_selection_prefers_720p_and_nearest_available_fps(self):
+        devices = [{
+            "device": "/dev/video0",
+            "modes": MODULE.parse_modes(SAMPLE),
+        }]
+        output = io.StringIO()
+        with (
+            patch.object(MODULE.sys, "argv", ["petcam-camera", "select"]),
+            patch.object(MODULE, "read_model", return_value="Test camera host"),
+            patch.object(MODULE, "discover_devices", return_value=devices),
+            contextlib.redirect_stdout(output),
+        ):
+            self.assertEqual(MODULE.main(), 0)
+        selected = json.loads(output.getvalue())
+        self.assertEqual(selected["format"], "MJPEG")
+        self.assertEqual(selected["resolution"], "1280x720")
+        self.assertEqual(selected["fps"], "60")
+
+    def test_parses_formats_resolutions_and_frame_rates(self):
+        modes = MODULE.parse_modes(SAMPLE)
+        self.assertEqual(len(modes), 3)
+        self.assertEqual(modes[0]["format"], "MJPG")
+        self.assertEqual((modes[0]["width"], modes[0]["height"]), (1920, 1080))
+        self.assertEqual(modes[0]["fps"], [60.0, 30.0])
+        self.assertEqual(modes[2]["format"], "YUYV")
+        self.assertTrue(MODULE.mode_supports_fps(modes[0], 30))
+        self.assertFalse(MODULE.mode_supports_fps(modes[0], 45))
+
+    def test_auto_selection_ranks_advertised_modes_by_default_preference(self):
+        devices = [{"device": "/dev/video0", "modes": MODULE.parse_modes(SAMPLE)}]
+        device, mode, native = MODULE.select_mode(devices)
+        self.assertTrue(native)
+        self.assertEqual(mode["format"], "MJPG")
+        self.assertEqual((mode["width"], mode["height"]), (1280, 720))
+        self.assertEqual(device["device"], "/dev/video0")
+
+    def test_native_mjpeg_is_mapped_to_ustreamer_passthrough_format(self):
+        self.assertEqual(MODULE.ustreamer_format("MJPG"), "MJPEG")
+        self.assertEqual(MODULE.ustreamer_format("MJPEG"), "MJPEG")
+        self.assertEqual(MODULE.ustreamer_format("YUYV"), "YUYV")
+
+    def test_discovery_excludes_platform_nodes_and_deduplicates_usb_interfaces(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sysfs = root / "sys/class/video4linux"
+            dev = root / "dev"
+            usb = root / "sys/devices/platform/usb1/1-1/1-1.4"
+            interface = usb / "1-1.4:1.0"
+            interface2 = usb / "1-1.4:1.1"
+            platform = root / "sys/devices/platform/bcm2835-codec"
+            for directory in (sysfs, dev, interface, interface2, platform):
+                directory.mkdir(parents=True, exist_ok=True)
+            (usb / "idVendor").write_text("046d")
+            (usb / "idProduct").write_text("085c")
+            (sysfs / "video0").mkdir()
+            (sysfs / "video1").mkdir()
+            (sysfs / "video10").mkdir()
+            (sysfs / "video0/device").symlink_to(interface)
+            (sysfs / "video1/device").symlink_to(interface2)
+            (sysfs / "video10/device").symlink_to(platform)
+            for name in ("video0", "video1", "video10"):
+                (dev / name).touch()
+            by_id = dev / "v4l/by-id"
+            by_id.mkdir(parents=True)
+            (by_id / "usb-camera-video-index0").symlink_to(dev / "video0")
+
+            completed = type("Result", (), {"returncode": 0, "stdout": SAMPLE})()
+            with patch.object(MODULE.subprocess, "run", return_value=completed) as run:
+                found = MODULE.discover_devices(sysfs, dev)
+
+            self.assertEqual(len(found), 1)
+            self.assertEqual(found[0]["device"], str(by_id / "usb-camera-video-index0"))
+            self.assertEqual(found[0]["physical_path"], str(usb))
+            self.assertEqual(run.call_count, 1)
+
+    def test_filters_to_user_selected_supported_pixel_format(self):
+        devices = [{"device": "/dev/video0", "modes": MODULE.parse_modes(SAMPLE)}]
+        selected = MODULE.filter_devices_by_format(devices, "yuyv")
+        self.assertEqual([mode["format"] for mode in selected[0]["modes"]], ["YUYV"])
+        h264_devices = [{"device": "/dev/video1", "modes": [
+            {"format": "H264", "width": 1920, "height": 1080, "fps": [30.0]},
+        ]}]
+        self.assertEqual(
+            [mode["format"] for mode in MODULE.filter_devices_by_format(h264_devices, "H264")[0]["modes"]],
+            ["H264"],
+        )
+
+    def test_auto_selection_does_not_hide_hardware_formats_the_streamer_may_reject(self):
+        raw_device = [{"device": "/dev/video1", "modes": [MODULE.parse_modes(SAMPLE)[2]]}]
+        device, mode, native = MODULE.select_mode(raw_device)
+        self.assertFalse(native)
+        self.assertEqual(mode["format"], "YUYV")
+        self.assertEqual(device["device"], "/dev/video1")
+        hardware_mode = [{"device": "/dev/video2", "modes": [{"format": "H264", "width": 1920, "height": 1080, "fps": [30]}]}]
+        selected_device, selected_mode, _native = MODULE.select_mode(hardware_mode)
+        self.assertEqual(selected_device["device"], "/dev/video2")
+        self.assertEqual(selected_mode["format"], "H264")
+
+    def test_parses_stepwise_sizes_and_frame_intervals(self):
+        output = """[0]: 'MJPG' (Motion-JPEG, compressed)
+  Size: Stepwise 320x240 - 1920x1080 with step 16/8
+    Interval: Stepwise 0.010s - 0.100s with step 0.001s
+"""
+        mode = MODULE.parse_modes(output)[0]
+        self.assertEqual((mode["width"], mode["height"]), (1920, 1080))
+        self.assertTrue(MODULE.mode_supports_resolution(mode, 1280, 720))
+        self.assertFalse(MODULE.mode_supports_resolution(mode, 1281, 720))
+        self.assertAlmostEqual(mode["fps_range"]["min"], 10.0)
+        self.assertAlmostEqual(mode["fps_range"]["max"], 100.0)
+        self.assertTrue(MODULE.mode_supports_fps(mode, 50))
+        self.assertFalse(MODULE.mode_supports_fps(mode, 60))
+        self.assertFalse(MODULE.mode_supports_fps(mode, 120))
+
+
+    def test_parses_csi_camera_sensor_modes(self):
+        cameras = MODULE.parse_csi_cameras(CSI_SAMPLE)
+        self.assertEqual(len(cameras), 2)
+        self.assertEqual(cameras[0]["sensor"], "imx477")
+        self.assertEqual(cameras[0]["device_path"], "/base/soc/i2c0mux/i2c@1/imx477@1a")
+        self.assertEqual((cameras[0]["sensor_width"], cameras[0]["sensor_height"]), (4056, 3040))
+        self.assertEqual(len(cameras[0]["modes"]), 4)
+        selected = MODULE.select_csi_mode(
+            cameras, requested_device_path=cameras[0]["device_path"]
+        )
+        self.assertEqual(selected["camera"], 0)
+        self.assertEqual(selected["device_path"], cameras[0]["device_path"])
+        self.assertAlmostEqual(cameras[0]["modes"][0]["fps"], 120.05)
+
+    def test_csi_auto_selection_uses_first_advertised_mode_without_board_budget(self):
+        cameras = MODULE.parse_csi_cameras(CSI_SAMPLE)
+        selected = MODULE.select_csi_mode(cameras)
+        self.assertEqual(selected["resolution"], "1332x990")
+        self.assertNotIn("performance_warning", selected)
+        explicit = MODULE.select_csi_mode(cameras, requested_camera=1, resolution="2304x1296", fps="56.03")
+        self.assertEqual(explicit["sensor"], "imx708")
+        self.assertEqual(explicit["resolution"], "2304x1296")
+        with self.assertRaises(ValueError):
+            MODULE.select_csi_mode(cameras, resolution="123x456")
+
+    def test_hardware_h264_encoder_requires_codec_encode_node_and_h264_output(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sysfs = root / "sys/class/video4linux"
+            dev = root / "dev"
+            node = sysfs / "video11"
+            node.mkdir(parents=True)
+            dev.mkdir()
+            (node / "name").write_text("bcm2835-codec-encode")
+            (dev / "video11").touch()
+            result = type("Result", (), {"returncode": 0, "stdout": "ioctl: VIDIOC_ENUM_FMT\\n [0]: 'H264' (H.264, compressed)\\n"})()
+            with patch.object(MODULE.subprocess, "run", return_value=result) as run:
+                detected = MODULE.detect_hardware_h264_encoder(sysfs, dev)
+            self.assertTrue(detected["available"])
+            self.assertEqual(detected["device"], str(dev / "video11"))
+            self.assertIn("--list-formats", run.call_args.args[0])
+
+    def test_hardware_h264_encoder_rejects_software_or_non_encoder_nodes(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            sysfs = root / "sys/class/video4linux"
+            dev = root / "dev"
+            node = sysfs / "video11"
+            node.mkdir(parents=True)
+            dev.mkdir()
+            (node / "name").write_text("rpivid-decoder")
+            (dev / "video11").touch()
+            self.assertFalse(MODULE.detect_hardware_h264_encoder(sysfs, dev)["available"])
+
+
+
+
+if __name__ == "__main__":
+    unittest.main()
