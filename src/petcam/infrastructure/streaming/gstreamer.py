@@ -442,6 +442,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         _set_status_state(current_state, "ready", current_state["source"])
 
     def start_capture_pipeline(status):
+        first_buffer.clear()
         decoder_name = sampler.select_h264_decoder(Gst)
         required = ("valve", "videoconvert", "videorate", "jpegenc", "appsink", decoder_name)
         missing = [name for name in required if Gst.ElementFactory.find(name) is None]
