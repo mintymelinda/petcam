@@ -196,7 +196,7 @@ class SetupPortalTests(unittest.TestCase):
         ) as connect:
             MODULE._proxy(handler)
         connect.assert_called_once()
-        handler.send_response.assert_called_once_with(503, "Service Unavailable")
+        handler.send_response.assert_called_once_with(503)
 
     def test_first_run_setup_login_and_web_ui_toggle(self):
         status, _, payload = self.request("GET", "/setup/api/status")
