@@ -79,8 +79,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="$GITHUB_REF_NAME"
-          if [[ ! "$TAG" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-            echo "Release tag $TAG must use vMAJOR.MINOR.PATCH." >&2
+          if [[ ! "$TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Release tag $TAG must use SemVer: vMAJOR.MINOR.PATCH with optional -PRERELEASE or +BUILD metadata." >&2
             exit 1
           fi
           PACKAGE_SOURCE="$(find release/package -maxdepth 2 -type f -name 'petcam-armhf.tar.gz' -print -quit)"
