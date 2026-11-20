@@ -3,6 +3,8 @@ set -Eeuo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 PACKAGE="${1:?Usage: build.sh petcam-armhf.tar.gz [output-directory]}"
 OUTPUT_DIR="${2:-$REPO_ROOT/dist/image}"
+mkdir -p "$OUTPUT_DIR"
+OUTPUT_DIR="$(cd "$OUTPUT_DIR" && pwd)"
 VERSION="${PETCAM_VERSION:-}"
 log() { printf '[petcam-image] %s\n' "$*"; }
 fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
@@ -32,7 +34,7 @@ DEPLOY_COMPRESSION="xz"
 DEPLOY_DIR="${OUTPUT_DIR}"
 WORK_DIR="${PI_GEN_DIR}/work"
 ENABLE_SSH=1
-FIRST_USER_NAME="petcam"
+FIRST_USER_NAME="pi"
 STAGE_LIST="stage0 stage1 stage2 stage-petcam"
 EOF
 log "Building stock Raspberry Pi OS Lite 32-bit plus PetCam."

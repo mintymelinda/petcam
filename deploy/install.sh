@@ -38,7 +38,11 @@ done
 install -d -m 0750 "$STATE_ROOT/motion/frames" "$STATE_ROOT/timelapse/frames"
 install -d -m 0755 /usr/local/sbin
 install -m 0755 "$REPO_ROOT/deploy/start.sh" /usr/local/sbin/petcam-start
-PETCAM_INITIALIZE_ONLY=1 PETCAM_ROOT="$REPO_ROOT" /usr/local/sbin/petcam-start "$REPO_ROOT"
+if [[ "${PETCAM_DEFER_INITIALIZE:-0}" == 1 ]]; then
+  log "Deferring certificate initialization until the device boots."
+else
+  PETCAM_INITIALIZE_ONLY=1 PETCAM_ROOT="$REPO_ROOT" /usr/local/sbin/petcam-start "$REPO_ROOT"
+fi
 printf '@reboot root /usr/local/sbin/petcam-start %q >>/var/log/petcam-supervisor.log 2>&1\n' "$REPO_ROOT" > /etc/cron.d/petcam
 chmod 0644 /etc/cron.d/petcam
 update-rc.d cron defaults || true
