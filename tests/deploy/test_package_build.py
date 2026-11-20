@@ -49,6 +49,13 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('INSTALL_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"', installer)
         self.assertIn('rm -rf "$INSTALL_ROOT/$item"', installer)
         self.assertIn('PETCAM_VERSION="$version" exec', installer)
+        self.assertIn('[[ "$PACKAGE_ROOT" != "$INSTALL_ROOT" ]]', installer)
+        self.assertIn('for item in src deploy VERSION; do', installer)
+        self.assertNotIn('/etc/petcam', installer)
+        self.assertNotIn('/var/lib/petcam', installer)
+        deployment = (ROOT / "deploy/install.sh").read_text(encoding="utf-8")
+        self.assertIn('if [[ ! -e "$ETC_ROOT/petcam.conf" ]] ', deployment)
+        self.assertIn('if [[ ! -e "$STATE_ROOT/$feature/config.json" ]] ', deployment)
 
     def test_package_builder_excludes_pi_gen_image_internals(self):
         builder = (ROOT / "deploy/package/build.sh").read_text(encoding="utf-8")
