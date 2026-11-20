@@ -34,7 +34,7 @@ class GStreamerOutputTests(unittest.TestCase):
             "resolution": "1280x720",
             "fps": "30",
         })
-        self.assertIn("v4l2src name=camera_source", pipeline)
+        self.assertIn("v4l2src", pipeline)
         self.assertIn("video/x-h264,width=1280,height=720,framerate=30/1", pipeline)
         self.assertIn("h264parse", pipeline)
         self.assertIn("rtph264pay name=pay0 pt=96", pipeline)
@@ -266,6 +266,7 @@ class GStreamerOutputTests(unittest.TestCase):
             "resolution": "1280x720",
             "fps": "30",
         })
+        self.assertIn("v4l2src name=camera_source", pipeline)
         self.assertIn("tee name=source_tee", pipeline)
         self.assertIn("appsink name=rtsp_sink", pipeline)
         self.assertIn(
