@@ -59,6 +59,15 @@ class GStreamerOutputTests(unittest.TestCase):
                 "resolution": "1280x720", "fps": 30,
             })
 
+    def test_native_h264_pipeline_preserves_fractional_advertised_frame_rates(self):
+        pipeline = MODULE.build_native_capture_launch({
+            "native_h264": True,
+            "device": "/dev/video0",
+            "resolution": "1280x720",
+            "fps": "29.97",
+        })
+        self.assertIn("framerate=2997/100", pipeline)
+
     def test_native_h264_pipeline_rejects_invalid_camera_metadata(self):
         with self.assertRaisesRegex(MODULE.GStreamerError, "device path is invalid"):
             MODULE.build_gstreamer_launch({

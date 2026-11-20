@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from fractions import Fraction
 import logging
 import os
 import re
@@ -50,6 +51,17 @@ def native_h264_available(status_url=None, timeout=0, marker_path=CAMERA_STATUS_
     return status.get("native_h264") is True and (bool(status.get("device")) or status.get("backend") == "csi")
 
 
+def _framerate_caps(fps):
+    """Convert an advertised decimal FPS into a valid GStreamer fraction."""
+    try:
+        value = Fraction(str(fps)).limit_denominator(1001)
+    except (TypeError, ValueError, ZeroDivisionError) as error:
+        raise GStreamerError("Native H.264 frame rate is invalid.") from error
+    if value <= 0:
+        raise GStreamerError("Native H.264 frame rate is invalid.")
+    return f"{value.numerator}/{value.denominator}"
+
+
 def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/stream"):
     """Build a GStreamer RTSP factory pipeline; compressed video is never decoded."""
     if camera_status.get("native_h264") is True:
@@ -57,8 +69,7 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
         fps = camera_status.get("fps", "")
         if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", str(resolution)):
             raise GStreamerError("Native H.264 resolution is invalid.")
-        if not re.fullmatch(r"[1-9][0-9]{0,2}", str(fps)):
-            raise GStreamerError("Native H.264 frame rate is invalid.")
+        framerate = _framerate_caps(fps)
         width, height = resolution.split("x", 1)
         if camera_status.get("backend") == "csi":
             port = camera_status.get("tcp_port", 8556)
@@ -74,7 +85,7 @@ def build_gstreamer_launch(camera_status, mjpeg_url="http://127.0.0.1:8081/strea
             raise GStreamerError("Native H.264 camera device path is invalid.")
         return (
             f"( v4l2src device={shlex.quote(device)} ! "
-            f"video/x-h264,width={width},height={height},framerate={fps}/1 ! "
+            f"video/x-h264,width={width},height={height},framerate={framerate} ! "
             "h264parse config-interval=-1 ! video/x-h264,alignment=au ! "
             "rtph264pay name=pay0 pt=96 config-interval=1 )"
         )
@@ -214,8 +225,7 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
     fps = camera_status.get("fps", "")
     if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", str(resolution)):
         raise GStreamerError("Native H.264 resolution is invalid.")
-    if not re.fullmatch(r"[1-9][0-9]{0,2}", str(fps)):
-        raise GStreamerError("Native H.264 frame rate is invalid.")
+    framerate = _framerate_caps(fps)
 
     if camera_status.get("backend") == "csi":
         port = camera_status.get("tcp_port", 8556)
@@ -229,7 +239,7 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
         width, height = resolution.split("x", 1)
         source = (
             f"v4l2src name=camera_source device={shlex.quote(device)} ! "
-            f"video/x-h264,width={width},height={height},framerate={fps}/1"
+            f"video/x-h264,width={width},height={height},framerate={framerate}"
         )
 
     return (
