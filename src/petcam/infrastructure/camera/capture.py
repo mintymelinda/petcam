@@ -242,6 +242,53 @@ def run_capture(config: dict) -> int:
         logging.info("Starting %s camera capture at %s %s FPS", source, resolution, fps)
         child = subprocess.Popen(command, stdin=subprocess.DEVNULL, start_new_session=True)
         while not stopping:
+            if native_h264:
+                try:
+                    request = json.loads(FALLBACK_REQUEST.read_text(encoding="utf-8"))
+                except (OSError, ValueError):
+                    request = {}
+                if request.get("pid") == os.getpid():
+                    FALLBACK_REQUEST.unlink(missing_ok=True)
+                    if automatic_format:
+                        try:
+                            fallback = select_fallback_backend(source, config)
+                            if child and child.poll() is None:
+                                child.terminate()
+                                try:
+                                    child.wait(timeout=5)
+                                except subprocess.TimeoutExpired:
+                                    child.kill()
+                                    child.wait(timeout=2)
+                            selected = fallback
+                            resolution = str(selected["resolution"])
+                            fps = str(selected["fps"])
+                            marker.update(
+                                camera=selected["camera"],
+                                resolution=resolution,
+                                fps=fps,
+                                format="MJPEG",
+                                native_h264=False,
+                            )
+                            _write_marker(marker)
+                            command = [
+                                sys.executable, "-m", CSI_MODULE, "--camera", str(selected["camera"]),
+                                "--resolution", resolution, "--fps", fps, "--port", "8081",
+                            ]
+                            logging.warning(
+                                "Native CSI H.264 produced no usable stream; falling back to MJPEG at %s %s FPS",
+                                resolution, fps,
+                            )
+                            child = subprocess.Popen(command, stdin=subprocess.DEVNULL, start_new_session=True)
+                            native_h264 = False
+                        except Exception as error:
+                            marker["fallback_attempted"] = True
+                            marker["fallback_error"] = str(error)
+                            _write_marker(marker)
+                            logging.exception("No working CSI MJPEG fallback is available")
+                    else:
+                        marker["fallback_attempted"] = True
+                        marker["fallback_error"] = "Automatic fallback is disabled by the explicit FORMAT setting"
+                        _write_marker(marker)
             code = child.poll()
             if code is not None:
                 return code
