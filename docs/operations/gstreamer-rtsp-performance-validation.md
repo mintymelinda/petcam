@@ -85,3 +85,22 @@ top -H -b -n 1 -p "$PID" | head -n 28
 There should be no GStreamer-owned UDP socket on port 5004 and no internal rtpjitterbuffer thread. UDP sockets used by RTSP client transports (including RTCP) are expected when clients negotiate UDP transport.
 
 Do not consider the optimization complete based only on the structural check: the CPU comparison and functional matrix above must also pass on the target device.
+
+
+## Target-device observations (2026-11-19)
+
+The following measurements were collected on the installed `kittycam` device while an RTSP client was actively viewing the camera stream:
+
+- Native RTSP queue configured capacity: 100 MiB.
+- Sampled queue high-water mark: 0.04 MiB, 2 buffers, 68.1 ms.
+- Queue occupancy was normally 0.00 MiB at the periodic log samples.
+- GStreamer process RSS: 35.5 MiB at the start of the memory observation.
+- RSS remained 35.5 MiB at all 16 samples taken one minute apart (15 minutes total).
+- Memory breakdown remained approximately 16.0 MiB anonymous and 19.6 MiB file-backed; swap remained 0 MiB.
+- A point-in-time CPU reading at the initial memory baseline was 32.1% of one logical CPU. This was not a controlled CPU benchmark and must not be compared directly with the earlier short pre-change samples (approximately 20–30% with no viewer and 64% with one viewer).
+
+The queue's observed peak was approximately 0.04% of its configured byte ceiling. These results do not indicate queue pressure or continuing process RSS growth during this test. Keep the 100 MiB ceiling unchanged unless a repeatable workload demonstrates queue saturation or unacceptable latency.
+
+**Instrumentation note:** queue occupancy and high-water logging were added temporarily to the installed worker for this test. The instrumentation was not committed to the repository and is not part of the PetCam release. The queue was sampled once per second, so brief sub-second peaks may have been missed.
+
+This is a limited target-device result, not full release sign-off. Complete the zero/one/two-client CPU and functional regression matrix above, including reconnects, camera-mode transitions, and motion/time-lapse frame-consumer checks, before claiming those scenarios are validated.
