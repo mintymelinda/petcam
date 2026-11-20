@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 PACKAGE_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"
+[[ "$PACKAGE_ROOT" != "$INSTALL_ROOT" ]] || fail "Extract the package outside $INSTALL_ROOT before running the installer."
 log() { printf '[petcam-package] %s\n' "$*"; }
 fail() { printf '[petcam-package] ERROR: %s\n' "$*" >&2; exit 1; }
 
