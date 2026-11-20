@@ -2,30 +2,42 @@
 
 PetCam turns a Raspberry Pi and a compatible USB or CSI camera into a locally managed camera system with an RTSP stream. It includes a lightweight setup portal, an optional full web dashboard, camera discovery and configuration, and optional motion, time-lapse, ambient-light, and Home Assistant integrations.
 
-The project publishes one Raspberry Pi OS Trixie **32-bit ARMHF** image intended to cover Raspberry Pi 1 through Raspberry Pi 5, including Zero-family boards, Pi 400, and Compute Modules. The image is built with Docker Compose and pi-gen; Docker is not required on the Raspberry Pi at runtime.
+PetCam is an application installed **on top of the official Raspberry Pi OS Lite (32-bit)**. The project publishes one ARMHF application package with an ARMv6 CPU baseline, supporting the original Raspberry Pi Zero W and newer Pi models running the 32-bit OS. PetCam does not require a custom operating-system image, an ARM64 package, a desktop environment, or Docker on the Pi.
 
 ## Get started
 
-### Prebuilt Raspberry Pi image
+### Install on stock Raspberry Pi OS Lite (32-bit)
 
-1. Download and flash the latest PetCam image using Raspberry Pi Imager. The [PetCam Imager repository manifest](https://github.com/mintymelinda/petcam/releases/latest/download/petcam-imager.json) exposes the current image and its integrity metadata.
-2. In Imager's customisation options, set a hostname, create the operating-system user credentials, and configure Wi-Fi if needed. SSH is disabled in the image defaults; enable it in Imager only if you need shell access.
-3. Boot the Pi and allow the first boot to finish.
-4. Open `https://<hostname>.local:8443/` (replace the hostname with the one configured in Imager). The device generates a self-signed HTTPS certificate, so the browser may ask you to acknowledge the local certificate.
-5. On first use, create the PetCam administrator password. It must be at least 12 characters.
-6. The setup page displays and can copy the RTSP stream URL. Add that URL as an RTSP/Media Source in OBS or open it in another RTSP client.
+1. Use Raspberry Pi Imager to flash the official **Raspberry Pi OS Lite (32-bit)** image for your board. This is the standard Raspberry Pi OS image, not a PetCam-customized image.
+2. In Imager, configure the hostname, operating-system username/password, and Wi-Fi if needed.
+3. Boot the Pi and complete the normal first-boot setup.
+4. Download the single ARMHF application package from the [latest PetCam release](https://github.com/mintymelinda/petcam/releases/latest):
+
+   ```sh
+   curl -fL -o petcam-armhf.tar.gz https://github.com/mintymelinda/petcam/releases/latest/download/petcam-armhf.tar.gz
+   mkdir petcam-package
+   tar -xzf petcam-armhf.tar.gz -C petcam-package
+   cd petcam-package
+   sudo ./install.sh
+   ```
+
+5. Open `https://<hostname>.local:8443/`. The device generates a self-signed HTTPS certificate, so the browser may ask you to acknowledge it.
+6. On first use, create the PetCam administrator password. It must be at least 12 characters.
+7. The setup page displays and can copy the RTSP stream URL. Add that URL as an RTSP/Media Source in OBS or open it in another RTSP client.
+
+**Use the 32-bit OS.** The original Pi Zero W cannot run a 64-bit operating system, and PetCam intentionally builds and publishes only the ARMHF/32-bit application package. The installer checks the target architecture before changing the system.
 
 The full management dashboard is disabled by default. Sign in to the setup page and enable **Full Web UI** when you want to configure cameras and optional features. The lightweight setup page remains available when the full dashboard is disabled.
 
-### Install from source on an existing Debian or Raspberry Pi OS system
+### Install from source (development)
 
-The source installer is intended for Debian-family systems with `apt`. Keep the checkout at a stable location such as `/opt/petcam`, then run:
+For development or a local checkout, keep the repository at a stable location such as `/opt/petcam`, then run:
 
 ```sh
 sudo ./deploy/install.sh
 ```
 
-The installer discovers and installs feature-owned OS dependencies, creates the configuration and state directories, and installs the boot launcher. See [Source deployment](deploy/README.md) for details and manual launch instructions.
+The source installer discovers and installs feature-owned OS dependencies, creates configuration and state directories, and installs the device boot launcher. See [Source deployment](deploy/README.md) for details.
 
 ## What it includes
 
@@ -43,8 +55,8 @@ Optional features are disabled by default. Camera availability and supported mod
 ## Documentation
 
 - [Documentation index](docs/README.md)
+- [ARMHF package installation and upgrades](deploy/package/README.md)
 - [Source deployment](deploy/README.md)
-- [Raspberry Pi image build and Imager setup](deploy/image/README.md)
 - [Time-lapse storage and network mounts](docs/operations/timelapse-storage.md)
 - [GStreamer RTSP performance validation](docs/operations/gstreamer-rtsp-performance-validation.md)
 - [Pre-release and production release checklist](docs/operations/pre-release-checklist.md)
@@ -55,4 +67,4 @@ PetCam is designed for use on a trusted local network. Do not port-forward the s
 
 ## Project status
 
-The latest published release and the current development branch may differ. Check the [GitHub Releases](https://github.com/mintymelinda/petcam/releases) page for the image that is actually published; a successful build on `main` is not itself a published release.
+The latest published release and the current development branch may differ. Check the [GitHub Releases](https://github.com/mintymelinda/petcam/releases) page for the application package that is actually published; a successful build on `main` is not itself a published release.
