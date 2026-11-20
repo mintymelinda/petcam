@@ -218,6 +218,8 @@ def run_capture(config: dict) -> int:
         ]
         if native_h264:
             command.append("--h264")
+            if automatic_format:
+                command.append("--automatic-format")
         # The supervisor gates RTSP startup on this PID marker for every CSI
         # mode, including native H.264 capture.
         _write_marker({
@@ -291,6 +293,36 @@ def run_capture(config: dict) -> int:
                         _write_marker(marker)
             code = child.poll()
             if code is not None:
+                if native_h264 and automatic_format:
+                    try:
+                        fallback = select_fallback_backend(source, config)
+                        selected = fallback
+                        resolution = str(selected["resolution"])
+                        fps = str(selected["fps"])
+                        marker.update(
+                            camera=selected["camera"],
+                            resolution=resolution,
+                            fps=fps,
+                            format="MJPEG",
+                            native_h264=False,
+                        )
+                        _write_marker(marker)
+                        command = [
+                            sys.executable, "-m", CSI_MODULE, "--camera", str(selected["camera"]),
+                            "--resolution", resolution, "--fps", fps, "--port", "8081",
+                        ]
+                        logging.warning(
+                            "Native CSI H.264 capture exited (%s); falling back to MJPEG at %s %s FPS",
+                            code, resolution, fps,
+                        )
+                        child = subprocess.Popen(command, stdin=subprocess.DEVNULL, start_new_session=True)
+                        native_h264 = False
+                        continue
+                    except Exception as error:
+                        marker["fallback_attempted"] = True
+                        marker["fallback_error"] = str(error)
+                        _write_marker(marker)
+                        logging.exception("No working CSI MJPEG fallback is available")
                 return code
             time.sleep(0.5)
         try:

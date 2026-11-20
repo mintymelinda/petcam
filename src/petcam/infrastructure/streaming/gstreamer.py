@@ -120,7 +120,7 @@ def request_camera_fallback(camera_status, reason, path=FALLBACK_REQUEST_PATH):
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     payload = {
-        "pid": camera_status.get("pid"),
+        "pid": camera_status.get("owner_pid") or camera_status.get("pid"),
         "reason": str(reason),
         "requested_at": time.time(),
     }
