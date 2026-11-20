@@ -1,86 +1,48 @@
 # PetCam deployment
 
-PetCam is deployed as an application on the official Raspberry Pi OS Lite
-(32-bit) installation. The release package is the primary installation path;
-the source installer remains available for development and local checkouts.
+PetCam is installed on the official Raspberry Pi OS Lite (32-bit) foundation.
+Version-tag releases provide both a ready-to-flash image with PetCam already
+installed and the standalone ARMHF application package for upgrades.
 
-## Install the release package
+## Ready-to-flash release image
 
-See [ARMHF package installation](package/README.md) for the full process:
+1. Download the `petcam-*-raspios-lite-armhf.img.xz` asset and its
+   `.sha256` checksum from the [latest PetCam release](https://github.com/mintymelinda/petcam/releases/latest).
+2. Verify it with `sha256sum -c <image>.sha256`.
+3. Flash the image to an SD card using Raspberry Pi Imager or another image writer.
+4. On first boot, complete Raspberry Pi OS's normal user setup. SSH is enabled.
+5. Open `https://<device-hostname>:8443/` to continue PetCam setup.
 
-1. Flash official Raspberry Pi OS Lite (32-bit) with Raspberry Pi Imager.
-2. Complete normal OS first-boot configuration.
-3. Download the single `petcam-armhf.tar.gz` package from the latest release.
-4. Extract the package and run `sudo ./install.sh`.
+The image is built with the official
+[Raspberry Pi OS image builder](https://github.com/RPi-Distro/pi-gen), using
+its stock Raspberry Pi OS Lite 32-bit stages plus one PetCam installation
+stage. It does not add a desktop environment, Docker runtime, or custom OS
+distribution layer. Device-specific HTTPS certificates are generated on the
+first boot, not baked into the shared release image.
 
-The package installer verifies 32-bit ARMHF userspace and an ARMv6-or-newer
-CPU, then installs feature-owned APT dependencies and the PetCam runtime.
-The original Pi Zero W is the baseline target; newer Raspberry Pi models use
-the same package when running the 32-bit OS. No ARM64 package or custom
-PetCam OS image is part of the deployment contract.
+The original Raspberry Pi Zero W is the baseline target. The image uses the
+single 32-bit ARMHF/ARMv6 baseline; newer Raspberry Pi models can use it when
+running the 32-bit OS.
 
-## Install from source
+## Standalone application package
 
-PetCam runs directly from a source checkout. There is no wheel build, package
-build, or virtual environment required for this development path.
+The standalone `petcam-armhf.tar.gz` asset is intended for installing PetCam
+on an existing Raspberry Pi OS Lite (32-bit) system and for application
+upgrades. Extract it and run `sudo ./install.sh`. Configuration under
+`/etc/petcam` and state under `/var/lib/petcam` are preserved across upgrades.
 
-On Raspberry Pi OS / Debian ARMHF, run the installer from the source checkout:
+## Build artifacts
 
-```sh
-sudo ./deploy/install.sh
-```
+The fast application package is built with `bash deploy/package/build.sh dist`.
+It is the PR CI and application-upgrade artifact; it excludes image-builder
+internals. Image construction is intentionally excluded from pull-request CI.
 
-The installer discovers `deploy/features/*/requirements.apt` manifests,
-validates package names, deduplicates packages across features, and installs
-the combined set. It does not contain a hand-maintained feature package list.
-
-### Adding a feature dependency
-
-Create a manifest alongside the feature:
-
-```text
-deploy/features/<feature-name>/requirements.apt
-```
-
-Declare one Debian package name per line. Blank lines and lines beginning
-with `#` are ignored. Repeated packages across manifests are installed only
-once. The installer discovers new feature manifests automatically; adding or
-changing a dependency does not require modifying `deploy/install.sh`.
-
-Feature-specific runtime configuration and enablement remain separate from
-dependency installation. The installer installs the dependencies declared by
-all features; the supervisor starts optional workers only when their persisted
-feature settings enable them.
-
-## Configure and launch
-
-The installer creates `/etc/petcam` and `/var/lib/petcam`, copies defaults
-only when a file does not already exist, and installs the device boot wrapper.
-To launch manually:
+On a Linux host with Docker, run:
 
 ```sh
-PETCAM_ROOT=/opt/petcam /usr/local/sbin/petcam-start
+bash deploy/image/build.sh dist/petcam-armhf.tar.gz dist
 ```
 
-The wrapper creates the HTTPS certificate for the device hostname when it is
-first needed, then starts the Python supervisor. The supervisor launches the
-always-on setup portal, RTSP server and sampler, and starts optional workers
-only when their persisted feature settings enable them. It restarts failed
-workers with bounded exponential backoff and writes its live process inventory
-to `/run/petcam/supervisor-status.json`.
-
-The setup portal remains at `https://<device-hostname>:8443/`. The full
-manager is disabled by default and can be enabled from the setup portal.
-
-## Package build
-
-From a source checkout, run:
-
-```sh
-bash deploy/package/build.sh dist
-```
-
-This creates the single `dist/petcam-armhf.tar.gz` release package. The
-archive contains PetCam's runtime and installer, not an operating-system
-image. Native dependencies are resolved on the target using the OS package
-repositories.
+The script fetches a pinned revision of official pi-gen, builds stock 32-bit
+Lite stages, applies the PetCam install stage, and writes one compressed
+flashable image. Release CI runs this longer build only for version tags.

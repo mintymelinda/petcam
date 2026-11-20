@@ -1,9 +1,8 @@
 # PetCam ARMHF application package
 
-PetCam is installed onto the **official Raspberry Pi OS Lite (32-bit)** image.
-The application release is a single 32-bit ARMHF package with an ARMv6 CPU
-baseline. There are no ARM64 package variants and no custom PetCam OS image
-that needs to be flashed.
+PetCam targets the official Raspberry Pi OS Lite (32-bit) foundation. Version
+releases publish both a ready-to-flash OS image with PetCam installed and this
+standalone application package for upgrades or existing installations.
 
 ## Supported target
 
@@ -11,32 +10,32 @@ that needs to be flashed.
 - Newer Raspberry Pi models running Raspberry Pi OS Lite 32-bit.
 - A 32-bit ARMHF userspace and an ARMv6-or-newer CPU are required.
 
-Do not select Raspberry Pi OS Lite (64-bit). The original Pi Zero W cannot run
-a 64-bit operating system, and PetCam intentionally publishes only the 32-bit
-ARMHF application package.
+Do not select Raspberry Pi OS Lite (64-bit). PetCam intentionally publishes
+only the 32-bit ARMHF application package.
 
-## Install
+## Install on an existing OS
 
-1. Use Raspberry Pi Imager to flash the official **Raspberry Pi OS Lite
-   (32-bit)** image for your board.
-2. Configure the OS username, hostname, and network in Imager, then boot the Pi
-   and complete first-boot setup.
-3. Download the single `petcam-armhf.tar.gz` asset from the
+1. Flash the official Raspberry Pi OS Lite (32-bit) image for your board.
+2. Complete normal OS first-boot configuration.
+3. Download `petcam-armhf.tar.gz` from the
    [latest PetCam release](https://github.com/mintymelinda/petcam/releases/latest).
-4. Extract it and run the included installer:
+4. Extract it and run:
 
-   ```sh
-   tar -xzf petcam-armhf.tar.gz
-   sudo ./install.sh
-   ```
+```sh
+tar -xzf petcam-armhf.tar.gz
+sudo ./install.sh
+```
 
 The installer verifies the 32-bit ARMHF userspace and ARMv6-or-newer CPU,
-installs OS dependencies from the feature-owned APT manifests, installs the
-boot launcher, and starts the PetCam supervisor through the existing boot
-trigger.
+installs OS dependencies from feature-owned APT manifests, and installs the
+PetCam runtime.
 
-Open `https://<hostname>.local:8443/` after installation. The HTTPS
-certificate is self-signed, so the browser may ask you to acknowledge it.
+## Ready-to-flash image
+
+For a new installation, prefer the `petcam-*-raspios-lite-armhf.img.xz`
+release asset. It is stock Raspberry Pi OS Lite 32-bit with the same standalone
+PetCam package installed during image construction. Verify its accompanying
+`.sha256` file before flashing. See [deployment instructions](../README.md).
 
 ## Upgrade and persistent data
 
@@ -45,16 +44,3 @@ application code under `/opt/petcam`, then reruns the idempotent installer.
 Existing configuration under `/etc/petcam` and application state under
 `/var/lib/petcam` are preserved; defaults are copied only when a file does
 not already exist.
-
-## Build
-
-From a source checkout:
-
-```sh
-bash deploy/package/build.sh dist
-```
-
-This produces exactly one release package: `dist/petcam-armhf.tar.gz`.
-The package contains the source runtime and installer, not an operating-system
-image. Native OS dependencies are installed on the target from Raspberry Pi
-OS's APT repositories.
