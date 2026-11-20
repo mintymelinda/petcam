@@ -18,6 +18,7 @@ from pathlib import Path
 STATUS_PATH = Path(os.environ.get("PETCAM_G_STREAMER_STATUS", "/run/petcam/g-streamer-status.json"))
 RTSP_URL = "rtsp://127.0.0.1:8554/petcam"
 CAMERA_STATUS_PATH = Path("/var/lib/petcam/camera-status.json")
+FALLBACK_REQUEST_PATH = Path("/run/petcam/camera-fallback.json")
 FRAME_STATUS_PATH = Path("/run/petcam/rtsp-sampler-status.json")
 STATE_PATH = Path(os.environ.get("PETCAM_STATE", "/var/lib/petcam"))
 RTSP_QUEUE_MAX_BYTES = 100 * 1024 * 1024
@@ -109,6 +110,26 @@ def refresh_camera_source(factory, camera_status, active_launch, active_source):
     factory.set_launch(launch)
     active_launch["value"] = launch
     active_source["value"] = source
+    return True
+
+
+def request_camera_fallback(camera_status, reason):
+    """Ask the capture owner to move to its next automatic capture candidate."""
+    if camera_status.get("auto_mode") is not True:
+        return False
+    pid = camera_status.get("pid")
+    if not isinstance(pid, int) or pid <= 1:
+        return False
+    target = FALLBACK_REQUEST_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    temporary = target.with_name(target.name + ".tmp")
+    temporary.write_text(json.dumps({
+        "capture_pid": pid,
+        "reason": str(reason)[:500],
+        "requested_at": time.time(),
+    }) + "\\n", encoding="utf-8")
+    os.replace(temporary, target)
+    logging.warning("Requested automatic camera fallback: %s", reason)
     return True
 
 
@@ -355,6 +376,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     rtsp_clients = []
     rtsp_media = {"appsrc": None, "prepared": False}
     frame_times = []
+    first_buffer = threading.Event()
 
     def rtsp_sample_ready(sink):
         sample = sink.emit("pull-sample")
@@ -393,6 +415,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
 
     def count_frame(_pad, _info):
         now = time.monotonic()
+        first_buffer.set()
         frame_times.append(now)
         current_state["last_frame_at"] = now
         cutoff = now - 2.0
@@ -469,6 +492,11 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             except GStreamerError:
                 pipeline.set_state(Gst.State.NULL)
                 raise
+        if not first_buffer.wait(timeout=10):
+            pipeline.set_state(Gst.State.NULL)
+            raise GStreamerError(
+                "Native H.264 camera negotiated caps but produced no video access units within 10 seconds."
+            )
 
         active.update(
             pipeline=pipeline,
@@ -581,7 +609,10 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
                 logging.error("Persistent H.264 capture pipeline reached EOS.")
             close_rtsp_clients(rtsp_clients, "capture pipeline stopped producing valid media")
             camera_unavailable["value"] = True
+            request_camera_fallback(camera_status, "native H.264 capture pipeline stopped producing valid media")
             stop_capture_pipeline()
+            if camera_status.get("auto_mode") is True:
+                loop.quit()
         return True
 
     def heartbeat():
@@ -603,7 +634,11 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     GLib.timeout_add_seconds(2, reconcile_frame_branch)
     GLib.timeout_add_seconds(2, heartbeat)
     try:
-        start_capture_pipeline(camera_status)
+        try:
+            start_capture_pipeline(camera_status)
+        except Exception as error:
+            request_camera_fallback(camera_status, error)
+            raise
         loop.run()
     finally:
         stop_capture_pipeline()
@@ -673,9 +708,14 @@ def main():
             elapsed = frame_times[-1] - frame_times[0]
             if elapsed > 0:
                 current_state["fps"] = (len(frame_times) - 1) / elapsed
+        if current_state["value"] != "publishing":
+            _set_status_state(current_state, "publishing", source)
         return Gst.PadProbeReturn.OK
 
+    media_started_at = {"value": None}
+
     def media_unprepared(_media):
+        media_started_at["value"] = None
         current_state["fps"] = None
         current_state["last_frame_at"] = None
         frame_times.clear()
@@ -688,7 +728,11 @@ def main():
         sink_pad = payloader.get_static_pad("sink") if payloader else None
         if sink_pad is not None:
             sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
-        media.connect("prepared", lambda _media: set_state("publishing"))
+        def media_prepared(_media):
+            media_started_at["value"] = time.monotonic()
+            set_state("ready")
+
+        media.connect("prepared", media_prepared)
         media.connect("unprepared", media_unprepared)
 
     factory.connect("media-configure", media_configured)
@@ -696,7 +740,25 @@ def main():
     if server.attach(None) == 0:
         raise GStreamerError("GStreamer RTSP server could not attach to the GLib main context.")
     set_state("ready")
-    GLib.timeout_add_seconds(2, lambda: _write_heartbeat(current_state, source))
+
+    def reconcile_camera_source():
+        latest = load_camera_status()
+        if latest.get("native_h264") is True:
+            logging.info("Native H.264 camera selected after RTSP listener startup; restarting RTSP worker in native mode")
+            loop.quit()
+            return False
+        return True
+
+    def heartbeat():
+        started = media_started_at["value"]
+        if started is not None and current_state.get("last_frame_at") is None and time.monotonic() - started > 10:
+            marker = load_camera_status()
+            if marker and request_camera_fallback(marker, "MJPEG capture produced no frames within 10 seconds"):
+                media_started_at["value"] = None
+        return _write_heartbeat(current_state, source)
+
+    GLib.timeout_add_seconds(1, reconcile_camera_source)
+    GLib.timeout_add_seconds(2, heartbeat)
     logging.info("Serving %s directly over RTSP at %s", source, RTSP_URL)
     loop = GLib.MainLoop()
 
