@@ -96,7 +96,8 @@ class SetupPortalTests(unittest.TestCase):
         return result
 
     def test_stub_is_available_while_full_web_ui_is_disabled(self):
-        status, _, payload = self.request("GET", "/")
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="PetCam"):
+            status, _, payload = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn(b"PetCam Setup", payload)
         self.assertIn(b"PetCam Device Setup", payload)
