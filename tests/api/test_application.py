@@ -98,7 +98,8 @@ class WebManagerTests(unittest.TestCase):
                 pass
 
         request = Request()
-        with mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam.example.net"):
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam"), \
+                mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam.example.net"):
             MODULE.Handler.do_GET(request)
         page = request.wfile.getvalue().decode()
         self.assertEqual(request.status, 200)
@@ -108,11 +109,14 @@ class WebManagerTests(unittest.TestCase):
         self.assertNotIn("__PETCAM_HOST__", page)
 
     def test_device_mdns_hostname_preserves_imager_configured_fqdn(self):
-        with mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam"):
-            with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam"):
-                self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.local")
-        with mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam.example.net"):
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam.example.net"):
             self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.example.net")
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam"), \
+                mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam.example.net"):
+            self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.example.net")
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="kittycam"), \
+                mock.patch.object(MODULE.socket, "getfqdn", return_value="kittycam"):
+            self.assertEqual(MODULE.device_mdns_hostname(), "kittycam.local")
     def test_management_page_uses_the_four_tab_layout(self):
         self.assertIn("Refresh", PAGE_AND_JS)
         self.assertNotIn("Browser Source", PAGE_AND_JS)
