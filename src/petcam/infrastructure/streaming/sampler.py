@@ -145,8 +145,6 @@ def rtp_pipeline_element_names(encoding_name, depay_name, parser_name, decoder_n
         names.append("capsfilter")
     names.append(decoder_name)
     if str(encoding_name).upper() == "H264":
-        names.append("capsfilter")
-    if str(encoding_name).upper() == "H264":
         names.extend(("videorate", "capsfilter", "jpegenc", "appsink"))
     else:
         names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
@@ -290,18 +288,13 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
         decoder = elements[index]
         index += 1
         if is_h264:
-            decoder_caps_filter = elements[index]
-            index += 1
-            decoder_caps_filter.set_property(
-                "caps", Gst.Caps.from_string("video/x-raw,format=I420")
-            )
             decoder.set_property("capture-io-mode", 2)
             decoder.set_property("output-io-mode", 2)
 
         if is_h264:
             rate, caps_filter, encoder, sink = elements[index:]
         else:
-            converter, rate, caps_filter, encoder, sink = elements[index:]
+            _converter, rate, caps_filter, encoder, sink = elements[index:]
         for element in elements:
             pipeline.add(element)
 
