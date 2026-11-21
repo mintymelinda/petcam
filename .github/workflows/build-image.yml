@@ -12,6 +12,7 @@ on:
       - "requirements.txt"
       - "petcam"
       - "src/**"
+      - "scripts/**"
   workflow_dispatch:
 
 permissions:
