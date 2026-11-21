@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import unittest
 
 from petcam.cli import (
@@ -154,7 +155,7 @@ class CsiBridgeTests(unittest.TestCase):
         try:
             self.assertFalse(bridge.wait_for_client(timeout=0.01))
             port = bridge.listener.getsockname()[1]
-            client = __import__("socket").create_connection(("127.0.0.1", port), timeout=1)
+            client = socket.create_connection(("127.0.0.1", port), timeout=1)
             self.assertTrue(bridge.wait_for_client(timeout=1))
             bridge.publish(b"\\x00\\x00\\x00\\x01\\x67H264")
             self.assertEqual(client.recv(9), b"\\x00\\x00\\x00\\x01\\x67H264")
