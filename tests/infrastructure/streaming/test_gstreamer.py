@@ -290,7 +290,7 @@ class GStreamerOutputTests(unittest.TestCase):
         self.assertLess(pipeline.index("tee name=source_tee"), pipeline.index("v4l2h264dec"))
         self.assertNotIn("videoconvert", pipeline)
         self.assertLess(pipeline.index("valve name=frame_valve"), pipeline.rindex("h264parse"))
-        for forbidden in ("rtph264pay", "udpsink", "rtspsrc", "x264enc", "avenc_h264", "ffmpeg"):
+        for forbidden in ("rtph264pay", "udpsink", "rtspsrc", "avdec_h264", "x264enc", "avenc_h264", "ffmpeg"):
             self.assertNotIn(forbidden, pipeline)
 
     def test_native_h264_rtsp_factory_uses_direct_appsrc_without_udp_round_trip(self):
