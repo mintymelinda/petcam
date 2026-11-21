@@ -29,7 +29,7 @@ jobs:
 
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install host tools and verify native ARMHF execution
         shell: bash
@@ -64,7 +64,7 @@ jobs:
           xz --test "$image_file"
 
       - name: Upload compressed Raspberry Pi OS image and checksum
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: petcam-trixie-armhf-image
           path: ${{ runner.temp }}/petcam-image/*.img.xz*
