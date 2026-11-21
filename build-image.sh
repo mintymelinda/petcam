@@ -1,17 +1,16 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
-PACKAGE="${1:?Usage: build.sh petcam-armhf.tar.gz [output-directory]}"
-OUTPUT_DIR="${2:-$REPO_ROOT/dist/image}"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+OUTPUT_DIR="${1:-$REPO_ROOT/dist/image}"
 RASPIOS_IMAGE_URL="${PETCAM_RASPIOS_IMAGE_URL:-https://downloads.raspberrypi.com/raspios_lite_armhf_latest}"
-VERSION="${PETCAM_VERSION:-}"
+VERSION="${PETCAM_VERSION:-development}"
 
 log() { printf '[petcam-image] %s\n' "$*"; }
 fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
-[[ -s "$PACKAGE" ]] || fail "ARMHF application package not found: $PACKAGE"
+[[ -f "$REPO_ROOT/install.sh" && -f "$REPO_ROOT/requirements.txt" && -f "$REPO_ROOT/src/petcam/cli.py" ]] || fail "Run this script from a complete PetCam source checkout."
 for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
@@ -19,9 +18,6 @@ done
 [[ -e /proc/sys/fs/binfmt_misc/qemu-arm ]] || fail "The qemu-arm binfmt handler is not registered; install qemu-user-static and enable qemu-arm."
 grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-arm || fail "The qemu-arm binfmt handler is disabled."
 
-if [[ -z "$VERSION" ]]; then
-  VERSION="$(tar -xOzf "$PACKAGE" ./VERSION 2>/dev/null | tr -d '\r\n' || true)"
-fi
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || fail "Invalid image version."
 
 mkdir -p "$OUTPUT_DIR"
@@ -130,15 +126,15 @@ mount --make-rslave "$ROOTFS/run"
 
 log "Installing PetCam into the existing Raspberry Pi OS root filesystem."
 export PETCAM_CPUINFO_FILE=/tmp/petcam-build-cpuinfo
-mkdir -p "$ROOTFS/tmp/petcam-armhf-installer"
-tar -xzf "$PACKAGE" -C "$ROOTFS/tmp/petcam-armhf-installer"
+mkdir -p "$ROOTFS/tmp/petcam-installer"
+cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.txt" "$REPO_ROOT/petcam" "$REPO_ROOT/src" "$ROOTFS/tmp/petcam-installer/"
 chroot "$ROOTFS" /bin/bash -e -c '
   test "$(dpkg --print-architecture)" = armhf
   test "$(getconf LONG_BIT)" = 32
-  /tmp/petcam-armhf-installer/install.sh
+  /tmp/petcam-installer/install.sh
 ' || fail "PetCam installation in the stock image failed."
 
-rm -rf "$ROOTFS/tmp/petcam-armhf-installer" "$ROOTFS/tmp/petcam-build-cpuinfo"
+rm -rf "$ROOTFS/tmp/petcam-installer" "$ROOTFS/tmp/petcam-build-cpuinfo"
 rm -f "$ROOTFS/usr/bin/qemu-arm-static"
 if (( RESOLV_REPLACED )); then
   rm -f "$ROOTFS/etc/resolv.conf"

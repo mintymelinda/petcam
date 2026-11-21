@@ -1,0 +1,4 @@
+# No PyPI dependencies are currently required.
+# Runtime Python dependencies come from Raspberry Pi OS:
+# - python3 (standard library)
+# - python3-gi (GObject introspection bindings for GStreamer)

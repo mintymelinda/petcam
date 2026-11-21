@@ -1,3 +1,0 @@
-# Python runtime and GObject bindings used by the H.264 GStreamer pipeline.
-python3
-python3-gi
