@@ -10,7 +10,7 @@ log() { printf '[petcam-image] %s\n' "$*"; }
 fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
-[[ -f "$REPO_ROOT/install.sh" && -f "$REPO_ROOT/requirements.apt" && -f "$REPO_ROOT/requirements.txt" && -f "$REPO_ROOT/src/petcam/cli.py" && -f "$REPO_ROOT/scripts/configure-live555-repository.sh" ]] || fail "Run this script from a complete PetCam source checkout."
+[[ -f "$REPO_ROOT/install.sh" && -f "$REPO_ROOT/requirements.apt" && -f "$REPO_ROOT/requirements.txt" && -f "$REPO_ROOT/src/petcam/cli.py" ]] || fail "Run this script from a complete PetCam source checkout."
 for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
@@ -141,7 +141,7 @@ if [[ -n "$CHROOT_EMULATOR" ]]; then
   install -D -m 0755 "$CHROOT_EMULATOR" "$ROOTFS/usr/bin/qemu-arm-static"
 fi
 mkdir -p "$ROOTFS/tmp/petcam-installer"
-cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.apt" "$REPO_ROOT/requirements.txt" "$REPO_ROOT/petcam" "$REPO_ROOT/src" "$REPO_ROOT/scripts" "$ROOTFS/tmp/petcam-installer/"
+cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.apt" "$REPO_ROOT/requirements.txt" "$REPO_ROOT/petcam" "$REPO_ROOT/src" "$ROOTFS/tmp/petcam-installer/"
 run_chroot /bin/bash -e -c '
   test "$(dpkg --print-architecture)" = armhf
   test "$(getconf LONG_BIT)" = 32
