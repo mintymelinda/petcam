@@ -11,12 +11,9 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run this image customizer as root (for example: sudo $0 ...)."
 [[ -f "$REPO_ROOT/install.sh" && -f "$REPO_ROOT/requirements.apt" && -f "$REPO_ROOT/requirements.txt" && -f "$REPO_ROOT/src/petcam/cli.py" ]] || fail "Run this script from a complete PetCam source checkout."
-for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum qemu-arm-static update-binfmts; do
+for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
-[[ -x /usr/bin/qemu-arm-static ]] || fail "qemu-arm-static is not installed at /usr/bin/qemu-arm-static."
-[[ -e /proc/sys/fs/binfmt_misc/qemu-arm ]] || fail "The qemu-arm binfmt handler is not registered; install qemu-user-static and enable qemu-arm."
-grep -q '^enabled' /proc/sys/fs/binfmt_misc/qemu-arm || fail "The qemu-arm binfmt handler is disabled."
 
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || fail "Invalid image version."
 
@@ -99,9 +96,7 @@ BOOT_MOUNT="$ROOTFS$BOOT_PATH"
 mkdir -p "$BOOT_MOUNT"
 mount "${LOOP_DEVICE}p1" "$BOOT_MOUNT"
 
-log "Preparing ARMHF chroot and network access."
-install -m 0755 /usr/bin/qemu-arm-static "$ROOTFS/usr/bin/qemu-arm-static"
-printf 'processor : 0\nCPU architecture : 6\n' > "$ROOTFS/tmp/petcam-build-cpuinfo"
+log "Preparing native ARMHF chroot and network access."
 if [[ -L "$ROOTFS/etc/resolv.conf" ]]; then
   RESOLV_LINK="$(readlink "$ROOTFS/etc/resolv.conf")"
   rm "$ROOTFS/etc/resolv.conf"
@@ -131,11 +126,12 @@ cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.apt" "$REPO_ROOT/requirem
 chroot "$ROOTFS" /bin/bash -e -c '
   test "$(dpkg --print-architecture)" = armhf
   test "$(getconf LONG_BIT)" = 32
+  . /etc/os-release
+  test "$VERSION_CODENAME" = trixie
   /tmp/petcam-installer/install.sh
-' || fail "PetCam installation in the stock image failed."
+' || fail "PetCam installation in the Raspberry Pi OS Trixie image failed."
 
-rm -rf "$ROOTFS/tmp/petcam-installer" "$ROOTFS/tmp/petcam-build-cpuinfo"
-rm -f "$ROOTFS/usr/bin/qemu-arm-static"
+rm -rf "$ROOTFS/tmp/petcam-installer"
 if (( RESOLV_REPLACED )); then
   rm -f "$ROOTFS/etc/resolv.conf"
   if [[ -n "$RESOLV_LINK" ]]; then ln -s "$RESOLV_LINK" "$ROOTFS/etc/resolv.conf"; elif (( RESOLV_WAS_REGULAR )); then cp -a "$RESOLV_BACKUP" "$ROOTFS/etc/resolv.conf"; fi
