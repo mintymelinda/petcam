@@ -32,10 +32,6 @@ else
   esac
 fi
 
-export DEBIAN_FRONTEND=noninteractive
-log "Installing camera, Python/GObject and GStreamer dependencies."
-apt-get update
-export DEBIAN_FRONTEND=noninteractive
 APT_PACKAGES=()
 while IFS= read -r package || [[ -n "$package" ]]; do
   package="${package%%#*}"
