@@ -39,12 +39,12 @@ and owns the camera and RTSP processes for the duration of the terminal session.
 
 ## Dependencies
 
-System dependencies are installed directly by `install.sh` with apt. The GStreamer Good
-plug-ins provide `v4l2src` and `rtph264pay`; their Debian package dependency brings in
-the Base plug-ins used for `appsrc` and `appsink`. USB camera mode discovery uses
-`v4l2-ctl` from `v4l-utils`.
+`requirements.apt` is the complete list of Debian packages installed by `install.sh`.
+The GStreamer Good plug-ins provide `v4l2src` and `rtph264pay`; their Debian package
+dependency brings in the Base plug-ins used for `appsrc` and `appsink`. USB camera
+mode discovery uses `v4l2-ctl` from `v4l-utils`.
 
-`requirements.txt` is the standard pip requirements file, but is intentionally empty:
+`requirements.txt` is reserved for pip dependencies and is currently empty because
 the application has no third-party PyPI dependencies. GStreamer Python bindings are
 provided by the OS package `python3-gi`, not installed with pip.
 
