@@ -355,6 +355,21 @@ def close_rtsp_clients(clients, reason):
     return len(pending)
 
 
+def push_h264_access_unit(appsrc, sample, Gst):
+    """Re-timestamp source-pipeline access units in the RTSP media clock domain."""
+    source_buffer = sample.get_buffer()
+    if source_buffer is None:
+        return Gst.FlowReturn.ERROR
+    buffer = source_buffer.copy()
+    # The capture and per-client RTSP pipelines have different base times.
+    # Carrying source PTS/DTS into appsrc can schedule packets far in the future.
+    # appsrc is-live/do-timestamp assigns timestamps from its own running clock.
+    buffer.pts = Gst.CLOCK_TIME_NONE
+    buffer.dts = Gst.CLOCK_TIME_NONE
+    buffer.duration = Gst.CLOCK_TIME_NONE
+    return appsrc.emit("push-buffer", buffer)
+
+
 def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_status, source):
     """Keep RTSP mounted while replacing capture and reconnecting stale RTSP clients."""
     from petcam.infrastructure.streaming import sampler
@@ -382,7 +397,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if appsrc is not None and rtsp_media["prepared"]:
             # Keep the RTSP appsrc bounded if a slow client cannot consume in real time.
             if appsrc.get_property("current-level-bytes") < 1048576:
-                result = appsrc.emit("push-sample", sample)
+                result = push_h264_access_unit(appsrc, sample, Gst)
                 if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
                     logging.debug("Dropping H.264 access unit after RTSP appsrc returned %s", result)
         return Gst.FlowReturn.OK
