@@ -331,18 +331,25 @@ def wait_for_native_h264(timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
     return False
 
 
-def wait_for_rtsp_service(source: str, timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
-    """Wait until the RTSP worker reports a fresh, ready endpoint for this source."""
+def wait_for_rtsp_service(
+    source: str,
+    timeout: int = CAPTURE_STARTUP_TIMEOUT,
+    started_after: float | None = None,
+) -> bool:
+    """Wait for a fresh RTSP readiness heartbeat from the current camera transition."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         try:
             status = json.loads(GSTREAMER_STATUS_PATH.read_text(encoding="utf-8"))
-            age = time.time() - float(status.get("updated_at", 0))
+            if not isinstance(status, dict):
+                raise ValueError("Invalid GStreamer status payload")
+            updated_at = float(status.get("updated_at", 0))
+            age = time.time() - updated_at
             if (
-                isinstance(status, dict)
-                and status.get("state") in {"ready", "publishing"}
+                status.get("state") in {"ready", "publishing"}
                 and status.get("source") == source
                 and 0 <= age <= 15
+                and (started_after is None or updated_at >= started_after)
             ):
                 return True
         except (OSError, ValueError, TypeError):
@@ -361,9 +368,10 @@ def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -
             native_h264 = False
     if native_h264:
         return wait_for_native_h264()
+    transition_started_at = time.time()
     if not ready(int(config["PORT"])):
         return False
-    return wait_for_rtsp_service("mjpeg_copy")
+    return wait_for_rtsp_service("mjpeg_copy", started_after=transition_started_at)
 
 
 def restart_capture() -> None:
