@@ -13,6 +13,10 @@ class HealthMonitorTests(unittest.TestCase):
         self.directory = tempfile.TemporaryDirectory()
         self.state_file = Path(self.directory.name) / "health.json"
         self.config_file = Path(self.directory.name) / "petcam.conf"
+        self.web_config = Path(self.directory.name) / "web-manager.json"
+        self.web_config.write_text('{"enabled": true}', encoding="utf-8")
+        self.web_config_patch = mock.patch.object(MODULE, "WEB_CONFIG_FILE", self.web_config)
+        self.web_config_patch.start()
         self.config_guard_patch = mock.patch.object(
             MODULE, "config_transaction_guard",
             side_effect=lambda: CONFIG_MODULE.config_transaction_guard(self.config_file),
@@ -32,6 +36,7 @@ class HealthMonitorTests(unittest.TestCase):
 
     def tearDown(self):
         self.rtsp_ready_patch.stop()
+        self.web_config_patch.stop()
         self.services.stop()
         self.state_patch.stop()
         self.config_guard_patch.stop()
@@ -60,6 +65,30 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertEqual(report["recovery_count"], 4)
         self.assertEqual(report["next_recovery_at"], 0)
 
+
+
+    def test_camera_and_rtsp_are_healthy_when_optional_web_ui_is_disabled(self):
+        self.web_config.write_text('{"enabled": false}', encoding="utf-8")
+
+        def snapshot(service):
+            if service == "web-ui":
+                raise AssertionError("Disabled Web UI must not be inspected or restarted")
+            return self.active
+
+        with (
+            mock.patch.object(MODULE, "service_snapshot", side_effect=snapshot),
+            mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "MJPEG"}),
+            mock.patch.object(MODULE, "probe_stream") as probe,
+            mock.patch.object(MODULE, "restart_service") as restart,
+        ):
+            report = MODULE.check_health(now=1000)
+        self.assertEqual(report["state"], "healthy")
+        self.assertEqual(report["web_service_state"], "disabled")
+        self.assertTrue(report["backend_stream_ready"])
+        self.assertTrue(report["rtsp_output_ready"])
+        self.assertIsNone(report["public_stream_ready"])
+        probe.assert_not_called()
+        restart.assert_not_called()
 
     def test_csi_native_h264_rtsp_status_is_accepted_as_ready(self):
         status_file = Path(self.directory.name) / "rtsp-status.json"
