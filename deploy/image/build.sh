@@ -129,10 +129,6 @@ mount --rbind /run "$ROOTFS/run"
 mount --make-rslave "$ROOTFS/run"
 
 log "Installing PetCam into the existing Raspberry Pi OS root filesystem."
-export PETCAM_VERSION="$VERSION"
-export PETCAM_INSTALL_ROOT=/opt/petcam
-export PETCAM_SKIP_SERVICE_START=1
-export PETCAM_DEFER_INITIALIZE=1
 export PETCAM_CPUINFO_FILE=/tmp/petcam-build-cpuinfo
 mkdir -p "$ROOTFS/tmp/petcam-armhf-installer"
 tar -xzf "$PACKAGE" -C "$ROOTFS/tmp/petcam-armhf-installer"
