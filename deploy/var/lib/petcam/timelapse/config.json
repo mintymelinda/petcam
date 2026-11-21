@@ -1,9 +1,0 @@
-{
-  "enabled": false,
-  "interval_seconds": 300,
-  "schedule_start": "00:00",
-  "schedule_end": "23:59",
-  "retention_days": 30,
-  "max_storage_mb": 2048,
-  "min_free_mb": 256
-}
