@@ -190,3 +190,23 @@ class H264AccessUnitFramer:
             self.current.clear()
             self.current_size = 0
         return output
+
+
+
+def inspect_h264_access_unit(access_unit: bytes) -> dict:
+    """Extract in-band parameter sets and IDR presence without decoding."""
+    framer = AnnexBNalFramer()
+    nals = framer.feed(access_unit)
+    nals.extend(framer.flush())
+    result = {"sps": b"", "pps": b"", "has_sps": False, "has_pps": False, "has_idr": False}
+    for nal in nals:
+        _offset, nal_type = _nal_header(nal)
+        if nal_type == 7:
+            result["sps"] = nal
+            result["has_sps"] = True
+        elif nal_type == 8:
+            result["pps"] = nal
+            result["has_pps"] = True
+        elif nal_type == 5:
+            result["has_idr"] = True
+    return result

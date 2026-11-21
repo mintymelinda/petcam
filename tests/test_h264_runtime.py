@@ -5,7 +5,11 @@ import unittest
 from petcam.cli import camera_modes, inventory_signature, parse_short_config
 from petcam.configuration import ConfigurationError, validate_config
 from petcam.domain.camera.capabilities import parse_csi_cameras, parse_v4l2_modes
-from petcam.infrastructure.camera.h264 import AnnexBNalFramer, H264AccessUnitFramer
+from petcam.infrastructure.camera.h264 import (
+    AnnexBNalFramer,
+    H264AccessUnitFramer,
+    inspect_h264_access_unit,
+)
 from petcam.infrastructure.streaming.gstreamer import (
     GStreamerError,
     build_rtsp_launch,
@@ -143,6 +147,19 @@ class H264AccessUnitFramingTests(unittest.TestCase):
         output.extend(framer.feed(stream[13:]))
         output.extend(framer.flush())
         self.assertEqual(output, [sps, pps])
+
+
+    def test_access_unit_metadata_retains_codec_config_for_late_rtsp_clients(self):
+        sps = self.nal(0x67, b"\\x42\\x00\\x1e")
+        pps = self.nal(0x68, b"\\xce\\x06")
+        aud = self.nal(0x09, b"\\xf0")
+        idr = self.nal(0x65)
+        metadata = inspect_h264_access_unit(sps + pps + aud + idr)
+        self.assertEqual(metadata["sps"], sps)
+        self.assertEqual(metadata["pps"], pps)
+        self.assertTrue(metadata["has_sps"])
+        self.assertTrue(metadata["has_pps"])
+        self.assertTrue(metadata["has_idr"])
 
     def test_access_units_split_at_first_slice_and_keep_parameter_sets(self):
         sps = self.nal(0x67, b"\x42\x00\x1e")

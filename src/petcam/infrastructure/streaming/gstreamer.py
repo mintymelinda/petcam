@@ -18,7 +18,7 @@ from fractions import Fraction
 from pathlib import Path
 
 from ..camera.discovery import detect_hardware_h264_encoder
-from ..camera.h264 import H264AccessUnitFramer
+from ..camera.h264 import H264AccessUnitFramer, inspect_h264_access_unit
 
 RUN_DIR = Path(os.environ.get("PETCAM_RUN", f"/tmp/petcam-{os.getuid()}"))
 CAMERA_STATUS = RUN_DIR / "camera-status.json"
@@ -175,7 +175,8 @@ def run_server(camera_status: dict) -> int:
     csi_stop = threading.Event()
     csi_error = {"message": ""}
     loop = GLib.MainLoop()
-    active_media = {"appsrc": None, "prepared": False}
+    active_media = {"appsrc": None, "prepared": False, "awaiting_idr": True}
+    codec_config = {"sps": b"", "pps": b""}
     output_times: deque[float] = deque()
     capture_state = {"last_frame": None}
     state = {"value": "starting", "fps": None}
@@ -184,37 +185,45 @@ def run_server(camera_status: dict) -> int:
         capture_state["last_frame"] = time.monotonic()
         if state["value"] == "starting":
             state["value"] = "ready"
+
+        metadata = inspect_h264_access_unit(data)
+        if metadata["sps"]:
+            codec_config["sps"] = metadata["sps"]
+        if metadata["pps"]:
+            codec_config["pps"] = metadata["pps"]
+
         appsrc = active_media["appsrc"]
         if appsrc is None or not active_media["prepared"]:
             return
+        awaiting_idr = active_media["awaiting_idr"]
+        if awaiting_idr:
+            if not metadata["has_idr"]:
+                return
+            prefix = b""
+            if not metadata["has_sps"]:
+                prefix += codec_config["sps"]
+            if not metadata["has_pps"]:
+                prefix += codec_config["pps"]
+            data = prefix + data
         if appsrc.get_property("current-level-bytes") >= 1048576:
             return
         buffer = Gst.Buffer.new_allocate(None, len(data), None)
         buffer.fill(0, data)
         result = appsrc.emit("push-buffer", buffer)
-        if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
+        if result == Gst.FlowReturn.OK:
+            if awaiting_idr:
+                active_media["awaiting_idr"] = False
+        else:
             logging.debug("Dropping an H.264 access unit after appsrc returned %s", result)
 
     def push_sample(sink):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.ERROR
-        buffer = sample.get_buffer()
-        if buffer is None:
+        encoded = sample.get_buffer()
+        if encoded is None:
             return Gst.FlowReturn.ERROR
-        capture_state["last_frame"] = time.monotonic()
-        if state["value"] == "starting":
-            state["value"] = "ready"
-        appsrc = active_media["appsrc"]
-        if appsrc is not None and active_media["prepared"]:
-            if appsrc.get_property("current-level-bytes") < 1048576:
-                encoded = buffer.copy()
-                encoded.pts = Gst.CLOCK_TIME_NONE
-                encoded.dts = Gst.CLOCK_TIME_NONE
-                encoded.duration = Gst.CLOCK_TIME_NONE
-                result = appsrc.emit("push-buffer", encoded)
-                if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
-                    logging.debug("Dropping an H.264 access unit after appsrc returned %s", result)
+        push_access_unit(encoded.extract_dup(0, encoded.get_size()))
         return Gst.FlowReturn.OK
 
     if backend == "usb":
@@ -256,7 +265,7 @@ def run_server(camera_status: dict) -> int:
         if appsrc is None or payloader is None:
             logging.error("RTSP media pipeline is missing its H.264 appsrc or payloader")
             return
-        active_media.update(appsrc=appsrc, prepared=False)
+        active_media.update(appsrc=appsrc, prepared=False, awaiting_idr=True)
         sink_pad = payloader.get_static_pad("sink")
         if sink_pad is not None:
             sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_streamed_frame)
@@ -267,7 +276,7 @@ def run_server(camera_status: dict) -> int:
 
         def unprepared(_media):
             if active_media["appsrc"] is appsrc:
-                active_media.update(appsrc=None, prepared=False)
+                active_media.update(appsrc=None, prepared=False, awaiting_idr=True)
                 output_times.clear()
                 state.update(value="ready", fps=None)
 
