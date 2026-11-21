@@ -1,8 +1,8 @@
 # PetCam
 
-PetCam serves a camera's native H.264 capture stream over RTSP. It does not decode,
-transcode, or provide a web interface, motion processing, timelapse, or Home Assistant
-integration.
+PetCam serves a camera's native H.264 capture stream over RTSP using Live555. It does
+not decode, transcode, or provide a web interface, motion processing, timelapse, or
+Home Assistant integration.
 
 ## Install
 
@@ -12,8 +12,10 @@ On supported Raspberry Pi OS 32-bit (ARMHF, ARMv6 or newer):
 sudo ./install.sh
 ```
 
-The installer installs the required Debian packages, copies the Python application to
-`/opt/petcam`, and installs the `petcam` command at `/usr/local/bin/petcam`.
+The installer configures the signed Debian Multimedia Trixie repository for ARMHF,
+installs Live555, compiles the native RTSP/RTP server against the system libraries,
+then removes the compiler and development headers. The installed application has no
+GStreamer dependency.
 
 Connect over SSH and run:
 
@@ -31,26 +33,21 @@ petcam -c "USB;1920x1080;30"
 petcam -c "USB;1280x720;30"
 ```
 
-Use `petcam -h` for command help. The live terminal view shows the RTSP URL, RTSP status,
-streamed frame rate, CPU usage, and memory usage. Press `q` to stop the stream.
+The RTSP endpoint is `rtsp://DEVICE-HOSTNAME:8554/petcam`. USB H.264 is captured
+directly with V4L2; CSI H.264 is captured with `rpicam-vid`. Both paths pass Annex-B
+NAL units to Live555 without decoding or transcoding. Each client starts at a cached
+SPS/PPS + IDR boundary.
 
-The RTSP endpoint is `rtsp://DEVICE-HOSTNAME:8554/petcam`. PetCam runs in the foreground
-and owns the camera and RTSP processes for the duration of the terminal session.
+Use `petcam -h` for command help. Press `q` in the live terminal view to stop streaming.
 
 ## Dependencies
 
-`requirements.apt` is the complete list of Debian packages installed by `install.sh`.
-The GStreamer Good plug-ins provide `v4l2src` and `rtph264pay`; their Debian package
-dependency brings in the Base plug-ins used for `appsrc` and `appsink`. USB camera
-mode discovery uses `v4l2-ctl` from `v4l-utils`.
-
-`requirements.txt` is reserved for pip dependencies and is currently empty because
-the application has no third-party PyPI dependencies. GStreamer Python bindings are
-provided by the OS package `python3-gi`, not installed with pip.
+`requirements.apt` lists the Debian runtime and build packages. USB camera mode
+discovery and capture use `v4l2-ctl` from `v4l-utils`. RTSP control and H.264 RTP
+packetization are provided by Live555. No Python packages or GStreamer packages are
+required.
 
 ## Build a Raspberry Pi OS image
-
-The source checkout can be installed into a customized Raspberry Pi OS Lite image:
 
 ```sh
 sudo ./build-image.sh
@@ -59,6 +56,3 @@ sudo ./build-image.sh
 The image builder downloads and verifies the official Raspberry Pi OS Lite 32-bit image,
 installs PetCam directly from this checkout in an ARMHF chroot, and writes the image to
 `dist/image/`. Set `PETCAM_VERSION` to override the output filename's version label.
-
-`create-imager-manifest.py` creates a Raspberry Pi Imager manifest for a published
-compressed image.
