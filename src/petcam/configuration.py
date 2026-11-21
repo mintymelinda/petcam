@@ -1,16 +1,10 @@
-"""Minimal per-user camera configuration for the H.264 RTSP stream."""
+"""Validate the camera parameters used by the H.264 RTSP session."""
 
 from __future__ import annotations
 
-import json
-import os
 import re
-from pathlib import Path
 from typing import Any
 
-CONFIG_PATH = Path(os.environ.get(
-    "PETCAM_CONFIG", Path.home() / ".config" / "petcam" / "config.json"
-))
 RESOLUTION_RE = re.compile(r"([1-9][0-9]{0,4})x([1-9][0-9]{0,4})")
 
 
@@ -55,25 +49,3 @@ def validate_config(value: dict[str, Any]) -> dict[str, Any]:
         normalized["sensor"] = str(value.get("sensor", ""))
         normalized["device_path"] = str(value.get("device_path", ""))
     return normalized
-
-
-def load_config(path: Path | str = CONFIG_PATH) -> dict[str, Any] | None:
-    target = Path(path)
-    try:
-        payload = json.loads(target.read_text(encoding="utf-8"))
-    except FileNotFoundError:
-        return None
-    except (OSError, ValueError) as error:
-        raise ConfigurationError(f"Unable to read {target}: {error}") from error
-    return validate_config(payload)
-
-
-def save_config(value: dict[str, Any], path: Path | str = CONFIG_PATH) -> dict[str, Any]:
-    config = validate_config(value)
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    temporary = target.with_name(target.name + ".tmp")
-    temporary.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
-    os.chmod(temporary, 0o600)
-    os.replace(temporary, target)
-    return config

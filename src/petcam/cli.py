@@ -16,7 +16,7 @@ import sys
 import time
 from pathlib import Path
 
-from .configuration import ConfigurationError, save_config, validate_config
+from .configuration import ConfigurationError, validate_config
 from .domain.camera.capabilities import mode_fps_values
 from .infrastructure.camera.discovery import (
     detect_hardware_h264_encoder,
@@ -450,7 +450,6 @@ def run_stream(config: dict, stdscr) -> int:
 def _terminal_main(stdscr, config: dict | None) -> int:
     curses.curs_set(0)
     selected = config if config is not None else guided_configuration(stdscr)
-    save_config(selected)
     return run_stream(selected, stdscr)
 
 
