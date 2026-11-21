@@ -33,6 +33,7 @@ class SupervisorTests(unittest.TestCase):
             with mock.patch.object(supervisor, "ETC", etc):
                 entries = {worker.name: worker for worker in supervisor.workers()}
                 self.assertTrue(entries["camera-capture"].should_run())
+                self.assertTrue(entries["health-monitor"].should_run())
                 self.assertFalse(entries["web-ui"].should_run())
 
     def test_worker_process_is_started_and_tracked(self):
