@@ -412,7 +412,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     def count_capture_frame(_pad, _info):
         # Source capture is independent of whether an RTSP client is connected.
         current_state["last_capture_frame_at"] = time.monotonic()
-        return Gst.FlowReturn.OK
+        return Gst.PadProbeReturn.OK
 
     def count_rtsp_frame(_pad, _info):
         # "Publishing" means encoded frames reached the RTSP media payloader,
