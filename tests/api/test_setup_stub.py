@@ -45,9 +45,13 @@ class SetupPortalTests(unittest.TestCase):
         self.auth_patch = mock.patch.object(web_auth, "AUTH_FILE", Path(self.directory.name) / "auth.json")
         self.session_file_patch = mock.patch.object(web_auth, "SESSION_FILE", Path(self.directory.name) / "web-sessions.json")
         self.config_patch = mock.patch.object(MODULE, "WEB_CONFIG", Path(self.directory.name) / "web-manager.json")
+        self.health_patch = mock.patch.object(MODULE, "HEALTH_STATUS", Path(self.directory.name) / "health.json")
+        self.supervisor_patch = mock.patch.object(MODULE, "SUPERVISOR_STATUS", Path(self.directory.name) / "supervisor-status.json")
         self.auth_patch.start()
         self.session_file_patch.start()
         self.config_patch.start()
+        self.health_patch.start()
+        self.supervisor_patch.start()
         with MODULE._sessions_lock:
             MODULE._sessions.clear()
         with MODULE._login_lock:
@@ -58,7 +62,16 @@ class SetupPortalTests(unittest.TestCase):
         self.auth_patch.stop()
         self.session_file_patch.stop()
         self.config_patch.stop()
+        self.health_patch.stop()
+        self.supervisor_patch.stop()
         self.directory.cleanup()
+
+    def write_healthy_core_services(self, *, health_state="healthy", running=True):
+        MODULE.HEALTH_STATUS.write_text(json.dumps({"state": health_state}), encoding="utf-8")
+        MODULE.SUPERVISOR_STATUS.write_text(json.dumps({"workers": {
+            name: {"running": running}
+            for name in ("camera-capture", "gstreamer-rtsp", "web-ui")
+        }}), encoding="utf-8")
 
     def request(self, method, path, body=None, cookie=None, csrf=None, origin=True):
         connection = http.client.HTTPSConnection(
@@ -86,11 +99,17 @@ class SetupPortalTests(unittest.TestCase):
         status, _, payload = self.request("GET", "/")
         self.assertEqual(status, 200)
         self.assertIn(b"PetCam Setup", payload)
+        self.assertIn(b"PetCam Device Setup", payload)
+        self.assertIn(b"Sign Out", payload)
+        self.assertIn(b"Enable Full UI", payload)
+        self.assertNotIn(b"Save Web UI setting", payload)
+        self.assertNotIn(b"Use this URL in OBS", payload)
         self.assertFalse(MODULE.web_ui_enabled())
 
     def test_full_ui_redirects_to_lightweight_ui_when_manager_is_not_ready(self):
         web_auth.initialize_password("correct horse battery staple")
         MODULE.set_web_ui_enabled(True)
+        self.write_healthy_core_services()
 
         with mock.patch.object(MODULE, "manager_ready", return_value=False):
             status, headers, payload = self.request("GET", "/")
@@ -102,6 +121,33 @@ class SetupPortalTests(unittest.TestCase):
             [(key, value) for key, value in headers],
         )
         self.assertTrue(any(key.lower() == "cache-control" and value == "no-store" for key, value in headers))
+
+
+    def test_core_services_must_be_healthy_before_dashboard_is_ready(self):
+        MODULE.set_web_ui_enabled(True)
+        self.write_healthy_core_services(health_state="starting")
+        with mock.patch.object(MODULE, "_manager_get") as fetch:
+            self.assertFalse(MODULE.manager_ready())
+        fetch.assert_not_called()
+
+    def test_every_core_worker_must_be_running_before_dashboard_is_ready(self):
+        MODULE.set_web_ui_enabled(True)
+        MODULE.HEALTH_STATUS.write_text(json.dumps({"state": "healthy"}), encoding="utf-8")
+        MODULE.SUPERVISOR_STATUS.write_text(json.dumps({"workers": {
+            "camera-capture": {"running": True},
+            "gstreamer-rtsp": {"running": True},
+            "web-ui": {"running": False},
+        }}), encoding="utf-8")
+        with mock.patch.object(MODULE, "_manager_get") as fetch:
+            self.assertFalse(MODULE.manager_ready())
+        fetch.assert_not_called()
+
+    def test_setup_page_uses_configured_hostname_for_title_and_header(self):
+        with mock.patch.object(MODULE.socket, "gethostname", return_value="KittyCam.local"):
+            status, _, payload = self.request("GET", "/setup/")
+        self.assertEqual(status, 200)
+        self.assertIn(b"<title>KittyCam Setup</title>", payload)
+        self.assertIn(b"<h1>KittyCam Device Setup</h1>", payload)
 
     def test_proxy_uses_extended_timeout_for_slow_device_authentication(self):
         handler = mock.Mock()
@@ -123,6 +169,7 @@ class SetupPortalTests(unittest.TestCase):
 
     def test_manager_readiness_requires_dashboard_and_all_local_assets(self):
         MODULE.set_web_ui_enabled(True)
+        self.write_healthy_core_services()
         document = b" ".join(asset.encode("ascii") for asset in MODULE.MANAGER_STATIC_ASSETS)
         responses = [(200, "text/html; charset=utf-8", document)] + [
             (200, "application/javascript; charset=utf-8", b"window.petcam = true;")
@@ -137,6 +184,7 @@ class SetupPortalTests(unittest.TestCase):
 
     def test_manager_readiness_rejects_dashboard_when_required_asset_is_missing(self):
         MODULE.set_web_ui_enabled(True)
+        self.write_healthy_core_services()
         with mock.patch.object(
             MODULE, "_manager_get",
             return_value=(200, "text/html; charset=utf-8", b"<html>dashboard without script tags</html>"),
@@ -146,6 +194,7 @@ class SetupPortalTests(unittest.TestCase):
 
     def test_manager_readiness_rejects_missing_static_asset(self):
         MODULE.set_web_ui_enabled(True)
+        self.write_healthy_core_services()
         document = b" ".join(asset.encode("ascii") for asset in MODULE.MANAGER_STATIC_ASSETS)
         responses = [(200, "text/html; charset=utf-8", document)] + [
             (200, "application/javascript; charset=utf-8", b"ok")
