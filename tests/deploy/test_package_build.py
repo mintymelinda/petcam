@@ -78,19 +78,19 @@ class PetCamPackageBuildTests(unittest.TestCase):
             etc_root = root / "etc"
             hostname = fake_bin / "hostname"
             hostname.write_text(
-                "#!/bin/sh\\n"
-                'case "$1" in\\n'
-                '  -s) printf "%s\\n" "$FAKE_HOSTNAME" ;;\\n'
-                '  -f) printf "%s\\n" "$FAKE_FQDN" ;;\\n'
-                '  -d) printf "%s\\n" "$FAKE_DOMAIN" ;;\\n'
-                '  *) printf "%s\\n" "$FAKE_HOSTNAME" ;;\\n'
-                "esac\\n",
+                "#!/bin/sh\n"
+                'case "$1" in\n'
+                '  -s) printf "%s\n" "$FAKE_HOSTNAME" ;;\n'
+                '  -f) printf "%s\n" "$FAKE_FQDN" ;;\n'
+                '  -d) printf "%s\n" "$FAKE_DOMAIN" ;;\n'
+                '  *) printf "%s\n" "$FAKE_HOSTNAME" ;;\n'
+                "esac\n",
                 encoding="utf-8",
             )
             hostname.chmod(0o755)
             ip = fake_bin / "ip"
             ip.write_text(
-                '#!/bin/sh\\nprintf "2: eth0 inet %s/24 scope global eth0\\n" "$FAKE_IP"\\n',
+                '#!/bin/sh\nprintf "2: eth0 inet %s/24 scope global eth0\n" "$FAKE_IP"\n',
                 encoding="utf-8",
             )
             ip.chmod(0o755)
