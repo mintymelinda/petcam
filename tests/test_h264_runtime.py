@@ -10,10 +10,10 @@ from petcam.infrastructure.camera.h264 import (
     H264AccessUnitFramer,
     inspect_h264_access_unit,
 )
-from petcam.infrastructure.streaming.gstreamer import (
-    GStreamerError,
-    build_rtsp_launch,
-    build_source_launch,
+from petcam.infrastructure.streaming.live555 import (
+    H264Publisher,
+    Live555Error,
+    build_capture_command,
 )
 
 
@@ -80,55 +80,56 @@ class CameraModeTests(unittest.TestCase):
         self.assertNotEqual(inventory_signature("USB", first), inventory_signature("USB", second))
 
 
-class H264PipelineTests(unittest.TestCase):
-    def test_usb_source_passes_native_h264_access_units_without_parser(self):
-        launch = build_source_launch({
-            "native_h264": True,
-            "backend": "usb",
-            "device": "/dev/video0",
-            "resolution": "1920x1080",
-            "fps": 30,
-        })
-        self.assertIn("v4l2src", launch)
-        self.assertIn("video/x-h264", launch)
-        self.assertIn("stream-format=byte-stream", launch)
-        self.assertIn("alignment=au", launch)
-        self.assertNotIn("h264parse", launch)
-        self.assertNotIn("jpeg", launch.lower())
-        self.assertNotIn("decode", launch.lower())
-        self.assertNotIn("videoconvert", launch.lower())
+class NativeCaptureTests(unittest.TestCase):
+    def setUp(self):
+        self.usb = {
+            "native_h264": True, "backend": "usb", "device": "/dev/video0",
+            "resolution": "1920x1080", "fps": 29.97,
+        }
 
-    def test_usb_source_preserves_fractional_advertised_frame_rate(self):
-        launch = build_source_launch({
-            "native_h264": True,
-            "backend": "usb",
-            "device": "/dev/video0",
-            "resolution": "1920x1080",
-            "fps": 29.97,
-        })
-        self.assertIn("framerate=2997/100", launch)
+    def test_usb_capture_uses_v4l2_direct_h264_streaming(self):
+        command = build_capture_command(self.usb)
+        self.assertEqual(command[0], "v4l2-ctl")
+        self.assertIn("--stream-mmap=3", command)
+        self.assertIn("--stream-to=-", command)
+        self.assertIn("--set-fmt-video=width=1920,height=1080,pixelformat=H264", command)
+        self.assertFalse(any("gst" in part.lower() for part in command))
 
-    def test_csi_is_not_routed_through_a_generic_tcp_pipeline(self):
-        with self.assertRaisesRegex(GStreamerError, "complete H.264 access units"):
-            build_source_launch({
-                "native_h264": True,
-                "backend": "csi",
-                "resolution": "1280x720",
-                "fps": 30,
-            })
+    def test_non_native_source_is_rejected(self):
+        with self.assertRaises(Live555Error):
+            build_capture_command({**self.usb, "native_h264": False})
 
-    def test_rtsp_factory_packetizes_access_units_without_parser(self):
-        launch = build_rtsp_launch()
-        self.assertIn("appsrc", launch)
-        self.assertIn("video/x-h264,stream-format=byte-stream,alignment=au", launch)
-        self.assertIn("rtph264pay", launch)
-        self.assertNotIn("h264parse", launch)
-        self.assertNotIn("rtpjpegpay", launch)
-        self.assertNotIn("decode", launch.lower())
+    def test_invalid_backend_is_rejected(self):
+        with self.assertRaisesRegex(Live555Error, "backend"):
+            build_capture_command({**self.usb, "backend": "network"})
 
-    def test_non_native_camera_source_is_rejected(self):
-        with self.assertRaises(GStreamerError):
-            build_source_launch({"native_h264": False, "backend": "usb"})
+    def test_publisher_caches_parameter_sets_and_marks_idr_boundary(self):
+        class FakeServer:
+            def __init__(self):
+                self.nals = []
+            def push_nal(self, nal, keyframe=False):
+                self.nals.append((nal, keyframe))
+
+        server = FakeServer()
+        publisher = H264Publisher(server)
+        prefix = b"\\x00\\x00\\x00\\x01"
+        publisher.publish(prefix + b"\\x67\\x42\\x00\\x1e")
+        publisher.publish(prefix + b"\\x68\\xce\\x06")
+        publisher.publish(prefix + b"\\x65\\x88")
+        publisher.publish(prefix + b"\\x41\\x9a")
+        self.assertEqual(server.nals, [
+            (b"\\x67\\x42\\x00\\x1e", True),
+            (b"\\x68\\xce\\x06", False),
+            (b"\\x65\\x88", False),
+            (b"\\x41\\x9a", False),
+        ])
+
+    def test_publisher_rejects_idr_without_parameter_sets(self):
+        class FakeServer:
+            def push_nal(self, nal, keyframe=False):
+                raise AssertionError("Must not publish without SPS/PPS")
+        with self.assertRaisesRegex(Live555Error, "SPS and PPS"):
+            H264Publisher(FakeServer()).publish(b"\\x00\\x00\\x00\\x01\\x65\\x88")
 
 
 class H264AccessUnitFramingTests(unittest.TestCase):
