@@ -325,6 +325,7 @@ class GStreamerOutputTests(unittest.TestCase):
         self.assertIn("tcpclientsrc host=127.0.0.1 port=8556", pipeline)
         self.assertIn("valve name=frame_valve", pipeline)
         self.assertIn("v4l2h264dec", pipeline)
+        self.assertIn("video/x-raw,format=I420", pipeline)
         self.assertNotIn("avdec_h264", pipeline)
         self.assertNotIn("videoconvert", pipeline)
 
