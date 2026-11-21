@@ -14,9 +14,23 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
-[[ -x /lib/ld-linux-armhf.so.3 ]] || fail "Native ARMHF loader is missing; install libc6:armhf on the ARM64 build host."
-/lib/ld-linux-armhf.so.3 --help >/dev/null 2>&1 || fail "The host cannot execute ARMHF binaries; native AArch32 compatibility is required."
-log "Native ARMHF execution is available."
+CHROOT_EMULATOR=""
+if [[ -x /lib/ld-linux-armhf.so.3 ]] && /lib/ld-linux-armhf.so.3 --help >/dev/null 2>&1; then
+  log "Native ARMHF execution is available."
+elif command -v qemu-arm-static >/dev/null 2>&1; then
+  CHROOT_EMULATOR="$(command -v qemu-arm-static)"
+  log "ARMHF chroot will run through QEMU user-mode emulation."
+else
+  fail "ARMHF execution is unavailable; use a native ARMHF-capable host or install qemu-user-static."
+fi
+
+run_chroot() {
+  if [[ -n "$CHROOT_EMULATOR" ]]; then
+    chroot "$ROOTFS" /usr/bin/qemu-arm-static -L / "$@"
+  else
+    chroot "$ROOTFS" "$@"
+  fi
+}
 
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || fail "Invalid image version."
 
@@ -123,9 +137,12 @@ mount --rbind /run "$ROOTFS/run"
 mount --make-rslave "$ROOTFS/run"
 
 log "Installing PetCam into the existing Raspberry Pi OS root filesystem."
+if [[ -n "$CHROOT_EMULATOR" ]]; then
+  install -D -m 0755 "$CHROOT_EMULATOR" "$ROOTFS/usr/bin/qemu-arm-static"
+fi
 mkdir -p "$ROOTFS/tmp/petcam-installer"
 cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.apt" "$REPO_ROOT/requirements.txt" "$REPO_ROOT/petcam" "$REPO_ROOT/src" "$ROOTFS/tmp/petcam-installer/"
-chroot "$ROOTFS" /bin/bash -e -c '
+run_chroot /bin/bash -e -c '
   test "$(dpkg --print-architecture)" = armhf
   test "$(getconf LONG_BIT)" = 32
   . /etc/os-release
@@ -139,10 +156,11 @@ if (( RESOLV_REPLACED )); then
   if [[ -n "$RESOLV_LINK" ]]; then ln -s "$RESOLV_LINK" "$ROOTFS/etc/resolv.conf"; elif (( RESOLV_WAS_REGULAR )); then cp -a "$RESOLV_BACKUP" "$ROOTFS/etc/resolv.conf"; fi
   RESOLV_REPLACED=0
 fi
-touch "$BOOT_MOUNT/ssh"
-
 log "Cleaning package caches and temporary installer files."
-chroot "$ROOTFS" /bin/bash -e -c 'apt-get clean; rm -rf /var/lib/apt/lists/*'
+run_chroot /bin/bash -e -c 'apt-get clean; rm -rf /var/lib/apt/lists/*'
+if [[ -n "$CHROOT_EMULATOR" ]]; then
+  rm -f "$ROOTFS/usr/bin/qemu-arm-static"
+fi
 
 log "Unmounting the customized stock image."
 for mount_path in "$ROOTFS/run" "$ROOTFS/sys" "$ROOTFS/proc" "$ROOTFS/dev" "$BOOT_MOUNT" "$ROOTFS"; do
