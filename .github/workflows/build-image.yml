@@ -34,19 +34,18 @@ jobs:
       - name: Install host tools and verify native ARMHF execution
         shell: bash
         run: |
-          sudo dpkg --add-architecture armhf
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libc6:armhf \
+            qemu-user-static \
             curl \
             xz-utils \
             parted \
             e2fsprogs \
             util-linux
 
-          test -x /lib/ld-linux-armhf.so.3
-          /lib/ld-linux-armhf.so.3 --help >/dev/null
-          echo "Native ARMHF execution is available on this runner."
+          test -x /usr/bin/qemu-arm-static
+          /usr/bin/qemu-arm-static --version
+          echo "QEMU ARM user-mode emulation is available on this runner."
 
       - name: Build image
         env:
