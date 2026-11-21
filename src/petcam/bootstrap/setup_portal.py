@@ -23,6 +23,8 @@ TLS_KEY = Path("/etc/petcam/web-manager.key")
 WEB_CONFIG = Path("/etc/petcam/web-manager.json")
 MANAGER_HOST = "127.0.0.1"
 MANAGER_PORT = 8444
+HEALTH_STATUS = Path("/var/lib/petcam/health.json")
+SUPERVISOR_STATUS = Path("/run/petcam/supervisor-status.json")
 SESSION_TTL = 8 * 60 * 60
 MAX_BODY = 16 * 1024 * 1024
 PROXY_TIMEOUT_SECONDS = 60
@@ -330,8 +332,8 @@ def _manager_get(path: str, *, timeout: float = 2) -> tuple[int, str, bytes]:
 def core_services_healthy() -> bool:
     """Require a healthy system report and every mandatory manager dependency."""
     try:
-        health = json.loads(Path("/var/lib/petcam/health.json").read_text(encoding="utf-8"))
-        supervisor = json.loads(Path("/run/petcam/supervisor-status.json").read_text(encoding="utf-8"))
+        health = json.loads(HEALTH_STATUS.read_text(encoding="utf-8"))
+        supervisor = json.loads(SUPERVISOR_STATUS.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
     if not isinstance(health, dict) or health.get("state") != "healthy":
