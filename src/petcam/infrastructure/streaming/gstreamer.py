@@ -355,6 +355,21 @@ def close_rtsp_clients(clients, reason):
     return len(pending)
 
 
+def push_h264_access_unit(appsrc, sample, Gst):
+    """Re-timestamp source-pipeline access units in the RTSP media clock domain."""
+    source_buffer = sample.get_buffer()
+    if source_buffer is None:
+        return Gst.FlowReturn.ERROR
+    buffer = source_buffer.copy()
+    # The capture and per-client RTSP pipelines have different base times.
+    # Carrying source PTS/DTS into appsrc can schedule packets far in the future.
+    # appsrc is-live/do-timestamp assigns timestamps from its own running clock.
+    buffer.pts = Gst.CLOCK_TIME_NONE
+    buffer.dts = Gst.CLOCK_TIME_NONE
+    buffer.duration = Gst.CLOCK_TIME_NONE
+    return appsrc.emit("push-buffer", buffer)
+
+
 def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_status, source):
     """Keep RTSP mounted while replacing capture and reconnecting stale RTSP clients."""
     from petcam.infrastructure.streaming import sampler
@@ -367,7 +382,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     frame_thread.start()
 
     frame_state = {"enabled": frame_consumers_enabled(), "published": False}
-    current_state = {"value": "starting", "fps": None, "source": source}
+    current_state = {"value": "starting", "fps": None, "source": source, "last_capture_frame_at": None}
     active = {"pipeline": None, "bus": None, "signature": None, "started_at": None, "fallback_requested": False}
     camera_unavailable = {"value": False}
     rtsp_clients = []
@@ -382,7 +397,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if appsrc is not None and rtsp_media["prepared"]:
             # Keep the RTSP appsrc bounded if a slow client cannot consume in real time.
             if appsrc.get_property("current-level-bytes") < 1048576:
-                result = appsrc.emit("push-sample", sample)
+                result = push_h264_access_unit(appsrc, sample, Gst)
                 if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
                     logging.debug("Dropping H.264 access unit after RTSP appsrc returned %s", result)
         return Gst.FlowReturn.OK
@@ -409,7 +424,14 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
                 buffer.unmap(mapped)
         return Gst.FlowReturn.OK
 
-    def count_frame(_pad, _info):
+    def count_capture_frame(_pad, _info):
+        # Source capture is independent of whether an RTSP client is connected.
+        current_state["last_capture_frame_at"] = time.monotonic()
+        return Gst.PadProbeReturn.OK
+
+    def count_rtsp_frame(_pad, _info):
+        # "Publishing" means encoded frames reached the RTSP media payloader,
+        # not merely that the camera is feeding the local tee/appsink branch.
         now = time.monotonic()
         frame_times.append(now)
         current_state["last_frame_at"] = now
@@ -434,6 +456,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         frame_times.clear()
         current_state["fps"] = None
         current_state["last_frame_at"] = None
+        current_state["last_capture_frame_at"] = None
         _set_status_state(current_state, "ready", current_state["source"])
 
     def start_capture_pipeline(status):
@@ -463,7 +486,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         frame_valve.set_property("drop", not frame_state["enabled"])
         sink_pad = rtsp_sink.get_static_pad("sink")
         if sink_pad is not None:
-            sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
+            sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_capture_frame)
 
         result = pipeline.set_state(Gst.State.PLAYING)
         if result == Gst.StateChangeReturn.FAILURE:
@@ -573,16 +596,24 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             logging.error("Native RTSP media pipeline is missing its appsrc bridge")
             return
         rtsp_media.update(appsrc=appsrc, prepared=False)
+        payloader = element.get_by_name("pay0")
+        payloader_pad = payloader.get_static_pad("sink") if payloader is not None else None
+        if payloader_pad is not None:
+            payloader_pad.add_probe(Gst.PadProbeType.BUFFER, count_rtsp_frame)
 
         def media_prepared(_media):
             if rtsp_media["appsrc"] is appsrc:
                 rtsp_media["prepared"] = True
                 # A prepared RTSP media pipeline does not prove that the camera
-                # is delivering buffers. count_frame() marks publishing on data.
+                # is delivering frames. The payloader probe marks RTSP output on data.
 
         def media_unprepared(_media):
             if rtsp_media["appsrc"] is appsrc:
                 rtsp_media.update(appsrc=None, prepared=False)
+                current_state["fps"] = None
+                current_state["last_frame_at"] = None
+                frame_times.clear()
+                _set_status_state(current_state, "ready", current_state["source"])
 
         media.connect("prepared", media_prepared)
         media.connect("unprepared", media_unprepared)
@@ -622,7 +653,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             active["pipeline"] is not None
             and not active["fallback_requested"]
             and active["started_at"] is not None
-            and now - (last_frame_at or active["started_at"]) > 8.0
+            and now - (current_state.get("last_capture_frame_at") or active["started_at"]) > 8.0
         ):
             active["fallback_requested"] = request_camera_fallback(
                 load_camera_status(), "no H.264 video buffers received within eight seconds"

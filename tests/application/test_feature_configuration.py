@@ -1,4 +1,5 @@
-"""Tests for always-on GStreamer restarts in camera feature transactions."""
+"""Tests for non-disruptive camera frame-consumer configuration."""
+
 
 import unittest
 from unittest import mock
@@ -7,35 +8,38 @@ from petcam.application import feature_configuration as feature_services
 
 
 class FeatureConfigurationServiceTests(unittest.TestCase):
-    def test_timelapse_update_always_restarts_stream_and_gstreamer(self):
+    def test_timelapse_update_persists_without_restarting_capture_or_rtsp(self):
         current = {"enabled": False, "interval": 30}
-        transaction = mock.Mock(side_effect=lambda save, previous, candidate, commands, rollback: candidate)
-        feature_services.update_timelapse(
+        save = mock.Mock(side_effect=lambda value: value)
+        result = feature_services.update_timelapse(
             {"enabled": True, "interval": 60},
-            parse_config=lambda path: {"FORMAT": "MJPEG"},
-            config_path="/etc/petcam/petcam.conf",
             load_config=lambda: current,
-            save_config=lambda value: value,
-            supervisor_command=lambda *args: ["@supervisor", *args],
-            apply_transaction=transaction,
+            save_config=save,
         )
-        commands = transaction.call_args.args[3]
-        self.assertEqual([item[0] for item in commands], [
-            ["@supervisor", "restart", "camera-capture"],
-            ["@supervisor", "restart", "gstreamer-rtsp"],
-        ])
+        self.assertEqual(result, {"enabled": True, "interval": 60})
+        save.assert_called_once_with({"enabled": True, "interval": 60})
 
-    def test_motion_update_rejects_mjpeg_only_feature_on_h264(self):
-        transaction = mock.Mock()
-        with self.assertRaisesRegex(RuntimeError, "motion detection requires MJPEG frames"):
-            feature_services.update_motion(
-                {"enabled": True}, parse_config=lambda path: {"FORMAT": "H264"},
-                config_path="/etc/petcam/petcam.conf", load_config=mock.Mock(),
-                save_config=mock.Mock(),
-                supervisor_command=lambda *args: ["@supervisor", *args],
-                apply_transaction=transaction,
-            )
-        transaction.assert_not_called()
+    def test_motion_can_use_the_native_h264_frame_branch(self):
+        current = {"enabled": False, "sensitivity": 50}
+        save = mock.Mock(side_effect=lambda value: value)
+        result = feature_services.update_motion(
+            {"enabled": True},
+            load_config=lambda: current,
+            save_config=save,
+        )
+        self.assertEqual(result, {"enabled": True, "sensitivity": 50})
+        save.assert_called_once_with({"enabled": True, "sensitivity": 50})
+
+    def test_disabling_timelapse_only_persists_the_flag(self):
+        current = {"enabled": True, "interval": 60}
+        save = mock.Mock(side_effect=lambda value: value)
+        result = feature_services.update_timelapse(
+            {"enabled": False},
+            load_config=lambda: current,
+            save_config=save,
+        )
+        self.assertEqual(result, {"enabled": False, "interval": 60})
+        save.assert_called_once_with({"enabled": False, "interval": 60})
 
     def test_light_sensor_update_delegates_persistence(self):
         save = mock.Mock(return_value={"enabled": True, "threshold": 25})

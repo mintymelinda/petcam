@@ -23,6 +23,19 @@ class SupervisorTests(unittest.TestCase):
             path.write_text("ENABLED=false\n", encoding="utf-8")
             self.assertFalse(supervisor.read_enabled(path))
 
+
+    def test_camera_capture_starts_independently_of_optional_web_ui(self):
+        with tempfile.TemporaryDirectory() as directory:
+            etc = Path(directory)
+            (etc / "web-manager.json").write_text(
+                json.dumps({"enabled": False}), encoding="utf-8",
+            )
+            with mock.patch.object(supervisor, "ETC", etc):
+                entries = {worker.name: worker for worker in supervisor.workers()}
+                self.assertTrue(entries["camera-capture"].should_run())
+                self.assertTrue(entries["health-monitor"].should_run())
+                self.assertFalse(entries["web-ui"].should_run())
+
     def test_worker_process_is_started_and_tracked(self):
         worker = supervisor.Worker("test", ("python", "-c", "pass"))
         manager = supervisor.Supervisor([worker])
