@@ -156,6 +156,6 @@ log "Compressing the customized image."
 xz --threads=0 --compress --force --keep --stdout "$BASE_IMAGE" > "$FINAL_IMAGE"
 [[ -s "$FINAL_IMAGE" ]] || fail "The customized image archive is empty."
 xz --test "$FINAL_IMAGE" || fail "The customized image archive failed its integrity check."
-sha256sum "$FINAL_IMAGE" > "$FINAL_IMAGE.sha256"
+(cd "$OUTPUT_DIR" && sha256sum "$(basename "$FINAL_IMAGE")" > "$(basename "$FINAL_IMAGE").sha256")
 log "Created $FINAL_IMAGE"
 log "Created $FINAL_IMAGE.sha256"
