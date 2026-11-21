@@ -54,13 +54,15 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertIn("unsupported", error.lower())
         run.assert_not_called()
 
-    def test_healthy_backend_and_public_proxy_clear_failure_streak(self):
+    def test_healthy_mjpeg_backend_and_rtsp_clear_failure_streak_without_public_proxy(self):
         MODULE.save_state({"consecutive_failures": 3, "recovery_count": 4, "next_recovery_at": 900})
-        with mock.patch.object(MODULE, "probe_stream", side_effect=[True, True]):
+        with mock.patch.object(MODULE, "probe_stream", return_value=True) as probe:
             report = MODULE.check_health(now=1000)
         self.assertEqual(report["state"], "healthy")
         self.assertTrue(report["backend_stream_ready"])
-        self.assertTrue(report["public_stream_ready"])
+        self.assertTrue(report["rtsp_output_ready"])
+        self.assertIsNone(report["public_stream_ready"])
+        probe.assert_called_once_with(MODULE.backend_stream_url(), MODULE.BACKEND_FRAME_TIMEOUT_SECONDS)
         self.assertEqual(report["consecutive_failures"], 0)
         self.assertEqual(report["recovery_count"], 4)
         self.assertEqual(report["next_recovery_at"], 0)
@@ -233,8 +235,8 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertEqual(report["recovery_count"], 1)
         restart.assert_called_once_with("camera-capture")
 
-    def test_recovered_backend_and_public_stream_return_to_healthy(self):
-        with mock.patch.object(MODULE, "probe_stream", side_effect=[False, True, True]), \
+    def test_recovered_backend_and_rtsp_return_to_healthy(self):
+        with mock.patch.object(MODULE, "probe_stream", side_effect=[False, True]), \
                 mock.patch.object(MODULE, "camera_present", return_value=True), \
                 mock.patch.object(MODULE, "restart_service", return_value=(True, "")):
             recovering = MODULE.check_health(now=1000)
@@ -244,13 +246,18 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertEqual(healthy["recovery_count"], 1)
         self.assertEqual(healthy["consecutive_failures"], 0)
 
-    def test_healthy_backend_with_broken_public_proxy_restarts_only_web_service(self):
-        with mock.patch.object(MODULE, "probe_stream", side_effect=[True, False]), \
-                mock.patch.object(MODULE, "restart_service", return_value=(True, "")) as restart:
+    def test_healthy_mjpeg_backend_does_not_probe_nonexistent_public_proxy(self):
+        with mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "MJPEG"}), \
+                mock.patch.object(MODULE, "native_h264_capture_active", return_value=False), \
+                mock.patch.object(MODULE, "probe_stream", return_value=True) as probe, \
+                mock.patch.object(MODULE, "restart_service") as restart:
             report = MODULE.check_health(now=1000)
-        self.assertEqual(report["state"], "recovering")
-        self.assertEqual(report["recovery_target"], "web-ui")
-        restart.assert_called_once_with("web-ui")
+        self.assertEqual(report["state"], "healthy")
+        self.assertTrue(report["backend_stream_ready"])
+        self.assertTrue(report["rtsp_output_ready"])
+        self.assertIsNone(report["public_stream_ready"])
+        probe.assert_called_once_with(MODULE.backend_stream_url(), MODULE.BACKEND_FRAME_TIMEOUT_SECONDS)
+        restart.assert_not_called()
 
     def test_camera_discovery_failure_does_not_trigger_restart(self):
         with mock.patch.object(MODULE, "probe_stream", return_value=False), \
