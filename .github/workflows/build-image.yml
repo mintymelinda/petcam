@@ -12,6 +12,7 @@ on:
       - "requirements.txt"
       - "petcam"
       - "src/**"
+      - "tests/**"
       - "scripts/**"
   workflow_dispatch:
 
