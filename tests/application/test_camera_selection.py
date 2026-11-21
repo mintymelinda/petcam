@@ -13,7 +13,7 @@ class CameraSelectionTests(unittest.TestCase):
             "modes": [{
                 "width": 1280,
                 "height": 720,
-                "format": "MJPEG",
+                "format": "H264",
                 "fps": [30],
             }],
         }]
@@ -24,7 +24,7 @@ class CameraSelectionTests(unittest.TestCase):
                 "mode": {
                     "width": 1280,
                     "height": 720,
-                    "format": "MJPEG",
+                    "format": "H264",
                     "fps": 30,
                 },
             },
@@ -72,7 +72,7 @@ class CameraSelectionTests(unittest.TestCase):
             "modes": [{
                 "width": 1920,
                 "height": 1080,
-                "format": "MJPG",
+                "format": "H264",
                 "fps": [29.97],
             }],
         }]
@@ -83,7 +83,7 @@ class CameraSelectionTests(unittest.TestCase):
                 "mode": {
                     "width": 1920,
                     "height": 1080,
-                    "format": "MJPG",
+                    "format": "H264",
                     "fps": 29.97,
                 },
             },
@@ -101,7 +101,7 @@ class CameraSelectionTests(unittest.TestCase):
                     "mode": {
                         "width": 640,
                         "height": 480,
-                        "format": "MJPEG",
+                        "format": "H264",
                         "fps": 30,
                     },
                 },
@@ -125,7 +125,7 @@ class CameraSelectionTests(unittest.TestCase):
                     "mode": {
                         "width": 640,
                         "height": 480,
-                        "format": "MJPEG",
+                        "format": "H264",
                         "fps": 30,
                     },
                 },

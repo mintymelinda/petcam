@@ -34,7 +34,16 @@ function fillModes(preferred = null) {
   const camera = inventory[+$("camera").value];
   $("mode").replaceChildren();
   if (!camera) return;
-  for (const mode of modesFor(camera)) {
+  const h264Modes = modesFor(camera).filter((mode) => mode.format === "H264");
+  if (h264Modes.length === 0) {
+    const option = document.createElement("option");
+    option.disabled = true;
+    option.textContent = "No native H.264 modes available";
+    $("mode").append(option);
+    showSelectedModeWarning();
+    return;
+  }
+  for (const mode of h264Modes) {
     const option = document.createElement("option");
     option.value = JSON.stringify(mode);
     option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}`;

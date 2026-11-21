@@ -8,14 +8,16 @@ def save_selection(
     *,
     discover_cameras,
     mode_supports_fps,
-    apply_config,
+    persist_selection,
 ):
-    """Validate and apply a camera selection through the transactional config service."""
+    """Validate a native H.264 mode and hand it to the GStreamer pipeline."""
+    cameras = discover_cameras()
     values = resolve_camera_selection(
         data,
-        discover_cameras=discover_cameras,
+        discover_cameras=lambda: cameras,
         mode_supports_fps=mode_supports_fps,
     )
-    # apply_config owns the full restart/readiness/rollback transaction. Restarting
-    # camera-capture again here tears down the stream immediately after it recovers.
-    return apply_config(values)
+    # The capture worker republishes selected camera metadata. GStreamer then
+    # negotiates the requested caps and reports errors asynchronously; there is
+    # no RTSP packet wait or camera-profile rollback in this request path.
+    return persist_selection(values)

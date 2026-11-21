@@ -90,6 +90,14 @@ class HealthMonitorTests(unittest.TestCase):
         probe.assert_called_once_with(MODULE.backend_stream_url(), MODULE.BACKEND_FRAME_TIMEOUT_SECONDS)
         restart.assert_not_called()
 
+    def test_native_h264_idle_rtsp_service_is_ready_without_publishing(self):
+        status_file = Path(self.directory.name) / "rtsp-status.json"
+        status_file.write_text(__import__("json").dumps({
+            "source": "native_h264", "state": "ready", "active": False, "updated_at": 1000,
+        }))
+        with mock.patch.object(MODULE, "RTSP_STATUS_FILE", status_file):
+            self.assertTrue(MODULE.rtsp_service_ready(now=1000))
+
     def test_csi_native_h264_rtsp_status_is_accepted_as_ready(self):
         status_file = Path(self.directory.name) / "rtsp-status.json"
         status_file.write_text(__import__("json").dumps({

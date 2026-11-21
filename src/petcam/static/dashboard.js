@@ -77,7 +77,7 @@ function initializeDashboard() {
     if (!c || !m) return;
     const mode = JSON.parse(m);
     $("apply").disabled = true;
-    $("message").textContent = "Applying camera settings…";
+    $("message").textContent = "Sending H.264 mode to GStreamer…";
     try {
       await request("/api/select", {
         method: "POST",
@@ -95,9 +95,7 @@ function initializeDashboard() {
       await refresh();
       await refreshGStreamer();
       $("message").textContent =
-        mode.format === "H264"
-          ? "H.264 capture enabled. The RTSP service is serving H.264."
-          : "Camera settings saved. The RTSP stream has been restarted.";
+        "H.264 mode sent to GStreamer. Pipeline negotiation is in progress; failures will be reported in stream status.";
     } catch (e) {
       $("message").textContent = e.message;
     } finally {

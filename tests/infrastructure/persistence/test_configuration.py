@@ -370,6 +370,59 @@ class TransactionalApplyTests(unittest.TestCase):
         restart.assert_not_called()
         ready.assert_not_called()
 
+    def test_camera_selection_persists_and_restarts_without_waiting_for_h264_packets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "petcam.conf"
+            last_good = Path(directory) / "petcam.conf.last-good"
+            config.write_text(MODULE.serialize_config(MODULE.DEFAULTS), encoding="utf-8")
+            restart = mock.Mock()
+
+            with mock.patch.object(
+                MODULE,
+                "wait_for_configured_capture",
+                side_effect=AssertionError("camera selection must not wait for RTSP packets"),
+            ):
+                result = MODULE.persist_camera_selection(
+                    {
+                        "SOURCE": "usb",
+                        "FORMAT": "H264",
+                        "RESOLUTION": "1280x720",
+                        "FPS": "30",
+                    },
+                    path=config,
+                    last_good_path=last_good,
+                    restart=restart,
+                )
+
+            self.assertEqual(result["FORMAT"], "H264")
+            self.assertEqual(MODULE.parse_config(config)["RESOLUTION"], "1280x720")
+            self.assertEqual(MODULE.parse_config(last_good)["FPS"], "30")
+            restart.assert_called_once_with()
+
+    def test_camera_selection_does_not_roll_back_when_restart_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config = Path(directory) / "petcam.conf"
+            last_good = Path(directory) / "petcam.conf.last-good"
+            config.write_text(MODULE.serialize_config(MODULE.DEFAULTS), encoding="utf-8")
+            restart = mock.Mock(side_effect=RuntimeError("restart failed"))
+
+            with self.assertRaisesRegex(RuntimeError, "restart failed"):
+                MODULE.persist_camera_selection(
+                    {
+                        "SOURCE": "usb",
+                        "FORMAT": "H264",
+                        "RESOLUTION": "1920x1080",
+                        "FPS": "30",
+                    },
+                    path=config,
+                    last_good_path=last_good,
+                    restart=restart,
+                )
+
+            self.assertEqual(MODULE.parse_config(config)["RESOLUTION"], "1920x1080")
+            self.assertEqual(MODULE.parse_config(last_good)["RESOLUTION"], "1920x1080")
+            restart.assert_called_once_with()
+
 
 if __name__ == "__main__":
     unittest.main()
