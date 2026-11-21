@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import http.client
+import html
 import json
 import logging
 import os
 import secrets
 import ssl
+import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -21,6 +23,8 @@ TLS_KEY = Path("/etc/petcam/web-manager.key")
 WEB_CONFIG = Path("/etc/petcam/web-manager.json")
 MANAGER_HOST = "127.0.0.1"
 MANAGER_PORT = 8444
+HEALTH_STATUS = Path("/var/lib/petcam/health.json")
+SUPERVISOR_STATUS = Path("/run/petcam/supervisor-status.json")
 SESSION_TTL = 8 * 60 * 60
 MAX_BODY = 16 * 1024 * 1024
 PROXY_TIMEOUT_SECONDS = 60
@@ -40,29 +44,61 @@ _login_lock = threading.Lock()
 
 PAGE = """<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PetCam Setup</title>
+<title>__PETCAM_HOST__ Setup</title>
 <style>
-:root{color-scheme:dark;font:16px system-ui,sans-serif;background:#17191d;color:#eee}
-body{max-width:34rem;margin:8vh auto;padding:0 1rem}main{background:#22262c;border:1px solid #383e47;border-radius:12px;padding:1.4rem}
-h1{font-size:1.5rem}label{display:block;margin:.9rem 0 .3rem}input{box-sizing:border-box;width:100%;font:inherit;padding:.7rem;border:1px solid #59616d;border-radius:6px;background:#303741;color:inherit}
-button,a.button{display:inline-block;font:inherit;padding:.7rem 1rem;border:1px solid #68788c;border-radius:6px;background:#3b4654;color:#fff;text-decoration:none;cursor:pointer;margin-top:.7rem}
-small,.muted{color:#aeb7c2}#message{min-height:1.5rem;color:#b9d8ff}#manager-control[hidden],#setup-form[hidden],#login-form[hidden],#open-manager[hidden]{display:none}
-.switch{display:flex;align-items:center;gap:.7rem;margin:1rem 0}.switch input{width:auto}
-</style></head><body><main><h1>PetCam <small>Device setup</small></h1>
-<p class="muted">This lightweight page remains available even when the full management dashboard is switched off.</p>
-<form id="setup-form" hidden><h2>First-time administrator setup</h2>
-<label for="new-password">Create administrator password (12–1024 characters)</label><input id="new-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required>
+:root{color-scheme:dark;font:16px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#11151b;color:#edf2f7;accent-color:#82b5ff}
+*{box-sizing:border-box}
+body{max-width:46rem;margin:clamp(1.5rem,7vh,4.5rem) auto;padding:0 1.1rem}
+main{background:#1b222c;border:1px solid #303b49;border-radius:18px;padding:clamp(1.15rem,4vw,2rem);box-shadow:0 24px 70px #0005}
+header{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.6rem}
+h1{font-size:clamp(1.45rem,4vw,1.9rem);letter-spacing:-.035em;line-height:1.2;margin:0}
+h2{font-size:1.12rem;margin:0 0 1rem;letter-spacing:-.015em}
+p{margin:.55rem 0}
+.muted{color:#aab6c5}
+section.panel{padding:1.15rem 1.2rem;border:1px solid #354253;border-radius:12px;background:#202934;margin-top:1rem}
+.status-line{font-size:.94rem;color:#c3d0df;margin:.1rem 0 1rem}
+.url-row{display:flex;gap:.65rem;align-items:stretch}
+input{min-width:0;width:100%;font:inherit;padding:.72rem .8rem;border:1px solid #48576a;border-radius:8px;background:#131a23;color:#edf2f7}
+input[readonly]{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:.9rem}
+button,a.button{display:inline-flex;align-items:center;justify-content:center;gap:.45rem;font:600 .94rem system-ui,sans-serif;padding:.72rem 1rem;border:1px solid #53677f;border-radius:8px;background:#2d3c4e;color:#f7fbff;text-decoration:none;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,transform .15s}
+button:hover,a.button:hover{background:#3a4d63;border-color:#7894b5}
+button:active,a.button:active{transform:translateY(1px)}
+button:focus-visible,a.button:focus-visible,input:focus-visible{outline:3px solid #82b5ff;outline-offset:2px}
+button.primary{background:#3569a8;border-color:#5488c7}
+button.primary:hover{background:#407bbd}
+button.quiet{padding:.55rem .8rem;font-size:.88rem;background:transparent;border-color:#48576a}
+button:disabled{opacity:.55;cursor:wait}
+#sign-out[hidden],#setup-form[hidden],#login-form[hidden],#manager-control[hidden],#open-manager[hidden]{display:none}
+#message{min-height:1.5rem;color:#b9d8ff;margin:.9rem .1rem 0;font-size:.92rem}
+#message:empty{display:none}
+#readiness{font-size:.9rem;color:#aab6c5;margin:.8rem 0 0}
+#open-manager{margin-top:.85rem}
+#setup-form,#login-form{margin:1rem 0}
+#setup-form label,#login-form label{display:block;margin:.8rem 0 .35rem;color:#cbd5e1}
+#setup-form input,#login-form input{margin-bottom:.2rem}
+#setup-form button,#login-form button{margin-top:.7rem}
+@media(max-width:520px){body{margin:1rem auto;padding:0 .7rem}main{border-radius:13px;padding:1rem}.url-row{align-items:stretch}.url-row button{padding:.65rem .75rem}header{align-items:flex-start}}
+</style></head><body><main>
+<header><h1>__PETCAM_HOST__ Device Setup</h1><button id="sign-out" class="quiet" type="button" hidden>Sign Out</button></header>
+<form id="setup-form" hidden><h2>Administrator setup</h2>
+<p class="muted">Create a password to protect this device's management interface.</p>
+<label for="new-password">Administrator password (12–1024 characters)</label><input id="new-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required>
 <label for="confirm-password">Confirm password</label><input id="confirm-password" type="password" minlength="12" maxlength="1024" autocomplete="new-password" required>
-<button type="submit">Create administrator password</button></form>
-<form id="login-form" hidden><h2>Administrator login</h2>
+<button class="primary" type="submit">Create password</button></form>
+<form id="login-form" hidden><h2>Administrator sign in</h2>
 <label for="password">Password</label><input id="password" type="password" autocomplete="current-password" required>
-<button type="submit">Sign in</button></form>
-<section id="manager-control" hidden><h2>Full Web UI</h2><p id="web-state" class="muted">Checking status…</p>
-<label class="switch"><input id="web-enabled" type="checkbox"> Enable full Web UI</label>
-<p class="muted">The full dashboard is a separate service. Turning it off does not disable this setup page, camera streaming, or other enabled features.</p>
-<button id="save" type="button">Save Web UI setting</button><button id="logout" type="button">Sign out</button>
-<p><a id="open-manager" class="button" href="/" hidden>Open full dashboard</a></p><p id="manager-readiness" class="muted" role="status">Full Web UI is not ready.</p>
-<section id="stream-info"><h3>RTSP camera stream</h3><label for="rtsp-url">Stream URL</label><input id="rtsp-url" type="text" readonly><button id="copy-rtsp-url" type="button">Copy stream URL</button><p class="muted">Use this URL in OBS or another RTSP client.</p><h4>Camera configuration</h4><p id="camera-mode-status" class="muted" role="status">Loading configured camera mode…</p><p id="camera-active-status" class="muted">Waiting for active camera capture…</p><h4>RTSP service</h4><p id="rtsp-service-status" class="muted" role="status">Checking RTSP status…</p><small id="stream-status-updated" class="muted"></small></section></section>
+<button class="primary" type="submit">Sign In</button></form>
+<section id="manager-control" hidden>
+<section class="panel" aria-labelledby="stream-heading"><h2 id="stream-heading">RTSP camera stream</h2>
+<p id="rtsp-service-status" class="status-line" role="status" aria-live="polite">Checking RTSP service…</p>
+<div class="url-row"><input id="rtsp-url" type="text" readonly aria-label="RTSP stream URL"><button id="copy-rtsp-url" type="button">Copy</button></div>
+<p id="camera-mode-status" class="muted" role="status">Waiting for active camera…</p>
+</section>
+<section class="panel" aria-labelledby="full-ui-heading"><h2 id="full-ui-heading">Full Web UI</h2>
+<button id="toggle-web-ui" class="primary" type="button" disabled>Checking…</button>
+<p id="readiness" role="status" aria-live="polite">Checking service health…</p>
+<a id="open-manager" class="button" href="/">Open Full UI</a>
+</section></section>
 <p id="message" role="status" aria-live="polite"></p></main>
 <script>
 const $=id=>document.getElementById(id);let csrf="";
@@ -71,28 +107,39 @@ async function api(path,body){const headers={"Content-Type":"application/json"};
  const data=await response.json().catch(()=>({error:"Unexpected server response"}));if(!response.ok)throw Error(data.error||"Request failed");return data;}
 function message(value){$("message").textContent=value;}
 function rtspStreamUrl(){let host=window.location.hostname;if(host.startsWith("[")&&host.endsWith("]"))host=host.slice(1,-1);if(host.includes(":"))host="["+host+"]";return "rtsp://"+host+":8554/petcam";}
-let readinessTimer=null,streamStatusTimer=null;
-async function refreshStreamStatus(){try{const status=await api("stream-status");const configured=status.configured||{};const active=status.active_camera||{};
- $("camera-mode-status").textContent="Configured: "+(configured.format||"Auto")+" · "+(configured.resolution||"Auto")+" · "+(configured.fps||"Auto")+" FPS";
- $("camera-active-status").textContent=active.resolution?"Active: "+(active.format||"Unknown")+" · "+active.resolution+" · "+(active.fps||"—")+" FPS ("+(active.backend||"camera")+")":"Active capture: "+(status.capture_state||"discovering");
- const rtsp=status.rtsp||{};let label=rtsp.state||"starting";if(rtsp.state==="publishing")label="Publishing video";else if(rtsp.state==="ready")label="RTSP server ready; waiting for video/client";else if(rtsp.state==="stalled")label="RTSP service status is stale";else if(rtsp.state==="stopped")label="RTSP service stopped";else if(rtsp.state==="starting")label="Starting RTSP service";
- $("rtsp-service-status").textContent=label+(rtsp.fps?" · "+rtsp.fps+" FPS":"")+(rtsp.error?" · "+rtsp.error:"");
- $("stream-status-updated").textContent=status.updated_at?"Updated "+new Date(status.updated_at*1000).toLocaleTimeString():"";
- }catch(error){$("rtsp-service-status").textContent="Unable to read stream status: "+error.message;}}
-function startStreamStatusChecks(){if(streamStatusTimer!==null)clearInterval(streamStatusTimer);refreshStreamStatus();streamStatusTimer=setInterval(refreshStreamStatus,5000);}
-async function refreshManagerReadiness(){const link=$("open-manager"),status=$("manager-readiness");try{const result=await api("manager-status");link.hidden=!result.ready;status.textContent=result.ready?"Full Web UI is ready.":"Full Web UI is starting or unavailable.";}catch(_){link.hidden=true;status.textContent="Full Web UI readiness could not be confirmed.";}}
-function startReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
+let readinessTimer=null,streamStatusTimer=null,webEnabled=false,webUiReady=false,requestPending=false;
+function stopReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;}
+function stopStreamStatusChecks(){if(streamStatusTimer!==null)clearInterval(streamStatusTimer);streamStatusTimer=null;}
+function renderWebUi(){const button=$("toggle-web-ui");button.textContent=webEnabled?"Disable Full UI":"Enable Full UI";button.disabled=requestPending;
+ $("open-manager").hidden=!(webEnabled&&webUiReady);$("readiness").hidden=!webEnabled;
+ if(!webEnabled)return;
+ $("readiness").textContent=webUiReady?"All core services are healthy.":"Starting services and checking health…";}
+async function refreshManagerReadiness(){if(!webEnabled)return;try{const result=await api("manager-status");webUiReady=result.ready===true;}catch(_){webUiReady=false;}renderWebUi();}
+function startReadinessChecks(){stopReadinessChecks();refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
+async function refreshStreamStatus(){try{const status=await api("stream-status");const active=status.active_camera||{};
+ if(active.resolution&&active.format&&active.fps!==null&&active.fps!==undefined){const source=(active.backend||"camera").toUpperCase();$("camera-mode-status").textContent=active.format+" - "+active.resolution+" - "+active.fps+" FPS ("+source+")";}
+ else{$("camera-mode-status").textContent=status.capture_state==="running"?"Active camera mode details unavailable":"Camera is not currently active";}
+ const rtsp=status.rtsp||{};let label=rtsp.state||"starting";
+ if(rtsp.state==="publishing")label="RTSP server publishing video";else if(rtsp.state==="ready")label="RTSP server ready; waiting for video/client";else if(rtsp.state==="stalled")label="RTSP service status is stale";else if(rtsp.state==="stopped")label="RTSP service stopped";else if(rtsp.state==="starting")label="RTSP server starting";
+ $("rtsp-service-status").textContent=label;
+ }catch(error){$("rtsp-service-status").textContent="Unable to read RTSP status: "+error.message;}}
+function startStreamStatusChecks(){stopStreamStatusChecks();refreshStreamStatus();streamStatusTimer=setInterval(refreshStreamStatus,5000);}
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
- if(status.configured){try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;
- $("web-enabled").checked=status.enabled;$("rtsp-url").value=rtspStreamUrl();$("web-state").textContent=status.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";startStreamStatusChecks();if(status.enabled)startReadinessChecks();else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}
- }catch(_){$("manager-control").hidden=true;$("login-form").hidden=false;}}
+ if(!status.configured){$("manager-control").hidden=true;$("sign-out").hidden=true;return;}
+ try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;$("sign-out").hidden=false;
+ $("rtsp-url").value=rtspStreamUrl();webEnabled=status.enabled===true;webUiReady=false;renderWebUi();startStreamStatusChecks();
+ if(webEnabled)startReadinessChecks();else stopReadinessChecks();
+ }catch(_){$("manager-control").hidden=true;$("sign-out").hidden=true;$("login-form").hidden=false;}
  }catch(error){message(error.message);}}
 $("setup-form").addEventListener("submit",async event=>{event.preventDefault();try{if($("new-password").value!==$("confirm-password").value)throw Error("Passwords do not match.");
  const result=await api("setup",{password:$("new-password").value,password_confirmation:$("confirm-password").value});csrf=result.csrf_token;message("Administrator password created.");await refresh();}catch(error){message(error.message);}});
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
-$("save").addEventListener("click",async()=>{try{const result=await api("web-ui",{enabled:$("web-enabled").checked});$("web-state").textContent=result.enabled?"Full Web UI is enabled.":"Full Web UI is disabled.";if(result.enabled){$("open-manager").hidden=true;startReadinessChecks();}else{if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;$("open-manager").hidden=true;$("manager-readiness").textContent="Full Web UI is disabled.";}message("Setting saved. Waiting for the full console to become ready.");}catch(error){message(error.message);}});
-$("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP stream URL copied.");}catch(_){message("Unable to copy automatically. Select and copy the URL above.");}});
-$("logout").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;if(streamStatusTimer!==null)clearInterval(streamStatusTimer);streamStatusTimer=null;$("open-manager").hidden=true;$("manager-control").hidden=true;await refresh();});
+$("toggle-web-ui").addEventListener("click",async()=>{if(requestPending)return;requestPending=true;$("toggle-web-ui").disabled=true;const nextEnabled=!webEnabled;
+ try{const result=await api("web-ui",{enabled:nextEnabled});webEnabled=result.enabled===true;webUiReady=false;message(webEnabled?"Full UI enabled. Waiting for all services to become healthy.":"Full UI disabled.");if(webEnabled)startReadinessChecks();else stopReadinessChecks();renderWebUi();}
+ catch(error){message(error.message);renderWebUi();}
+ finally{requestPending=false;renderWebUi();}});
+$("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP URL copied.");}catch(_){$("rtsp-url").focus();$("rtsp-url").select();message("Select and copy the RTSP URL.");}});
+$("sign-out").addEventListener("click",async()=>{try{await api("logout",{});}catch(_){}csrf="";stopReadinessChecks();stopStreamStatusChecks();webUiReady=false;$("open-manager").hidden=true;$("manager-control").hidden=true;$("sign-out").hidden=true;await refresh();});
 refresh();
 </script></body></html>"""
 
@@ -280,9 +327,37 @@ def _manager_get(path: str, *, timeout: float = 2) -> tuple[int, str, bytes]:
         connection.close()
 
 
+def core_services_healthy() -> bool:
+    """Require a healthy system report and every mandatory manager dependency."""
+    try:
+        health = json.loads(HEALTH_STATUS.read_text(encoding="utf-8"))
+        health_updated_at = HEALTH_STATUS.stat().st_mtime
+        supervisor = json.loads(SUPERVISOR_STATUS.read_text(encoding="utf-8"))
+        supervisor_updated_at = SUPERVISOR_STATUS.stat().st_mtime
+    except (OSError, ValueError):
+        return False
+    now = time.time()
+    health_age = now - health_updated_at
+    supervisor_age = now - supervisor_updated_at
+    if (
+        not isinstance(health, dict)
+        or health.get("state") != "healthy"
+        or not 0 <= health_age <= 60
+        or not 0 <= supervisor_age <= 10
+    ):
+        return False
+    workers = supervisor.get("workers", {}) if isinstance(supervisor, dict) else {}
+    if not isinstance(workers, dict):
+        return False
+    return all(
+        isinstance(workers.get(name), dict) and workers[name].get("running") is True
+        for name in ("camera-capture", "gstreamer-rtsp", "web-ui")
+    )
+
+
 def manager_ready() -> bool:
-    """Require the dashboard document and every referenced local script to be servable."""
-    if not web_ui_enabled():
+    """Require healthy core services plus a complete, servable dashboard."""
+    if not web_ui_enabled() or not core_services_healthy():
         return False
     try:
         status, content_type, document = _manager_get("/")
@@ -359,7 +434,8 @@ def _proxy(handler):
 
 class Handler(BaseHTTPRequestHandler):
     def _serve_page(self):
-        body = PAGE.encode("utf-8")
+        hostname = socket.gethostname().strip().rstrip(".").split(".", 1)[0] or "PetCam"
+        body = PAGE.replace("__PETCAM_HOST__", html.escape(hostname)).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
