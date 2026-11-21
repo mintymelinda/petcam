@@ -13,7 +13,6 @@ on:
       - "petcam"
       - "src/**"
       - "tests/**"
-      - "scripts/**"
   workflow_dispatch:
 
 permissions:
