@@ -14,6 +14,9 @@ fail() { printf '[petcam-image] ERROR: %s\n' "$*" >&2; exit 1; }
 for tool in curl xz truncate parted e2fsck resize2fs losetup mount umount blkid chroot sha256sum; do
   command -v "$tool" >/dev/null 2>&1 || fail "Required host tool is missing: $tool"
 done
+[[ -x /lib/ld-linux-armhf.so.3 ]] || fail "Native ARMHF loader is missing; install libc6:armhf on the ARM64 build host."
+/lib/ld-linux-armhf.so.3 --help >/dev/null 2>&1 || fail "The host cannot execute ARMHF binaries; native AArch32 compatibility is required."
+log "Native ARMHF execution is available."
 
 [[ "$VERSION" =~ ^[A-Za-z0-9][A-Za-z0-9._+-]*$ ]] || fail "Invalid image version."
 
@@ -120,7 +123,6 @@ mount --rbind /run "$ROOTFS/run"
 mount --make-rslave "$ROOTFS/run"
 
 log "Installing PetCam into the existing Raspberry Pi OS root filesystem."
-export PETCAM_CPUINFO_FILE=/tmp/petcam-build-cpuinfo
 mkdir -p "$ROOTFS/tmp/petcam-installer"
 cp -a "$REPO_ROOT/install.sh" "$REPO_ROOT/requirements.apt" "$REPO_ROOT/requirements.txt" "$REPO_ROOT/petcam" "$REPO_ROOT/src" "$ROOTFS/tmp/petcam-installer/"
 chroot "$ROOTFS" /bin/bash -e -c '
