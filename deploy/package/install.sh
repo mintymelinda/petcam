@@ -6,15 +6,13 @@ INSTALL_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"
 log() { printf '[petcam-package] %s\n' "$*"; }
 fail() { printf '[petcam-package] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$PACKAGE_ROOT" != "$INSTALL_ROOT" ]] || fail "Extract the package outside $INSTALL_ROOT before running the installer."
-
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
 [[ -f "$PACKAGE_ROOT/VERSION" ]] || fail "Package VERSION file is missing."
 [[ -f "$PACKAGE_ROOT/deploy/lib/platform.sh" ]] || fail "Package platform validator is missing."
 
 source "$PACKAGE_ROOT/deploy/lib/platform.sh"
 validate_petcam_platform
-
-for required in src/petcam deploy/install.sh deploy/start.sh; do
+for required in src/petcam/cli.py deploy/install.sh deploy/petcam; do
   [[ -e "$PACKAGE_ROOT/$required" ]] || fail "Package is incomplete; missing $required."
 done
 
@@ -27,6 +25,5 @@ for item in src deploy VERSION; do
   cp -a "$PACKAGE_ROOT/$item" "$INSTALL_ROOT/$item"
 done
 
-log "Installed PetCam application version $version at $INSTALL_ROOT."
-log "Existing /etc/petcam configuration and /var/lib/petcam state are left in place."
+log "Installed PetCam H.264 application version $version at $INSTALL_ROOT."
 PETCAM_VERSION="$version" exec /bin/bash "$INSTALL_ROOT/deploy/install.sh"

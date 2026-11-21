@@ -1,0 +1,16 @@
+#!/usr/bin/env sh
+set -eu
+
+APP_ROOT="${PETCAM_ROOT:-/opt/petcam}"
+if [ ! -d "$APP_ROOT/src/petcam" ]; then
+  SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+  APP_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+fi
+if [ ! -d "$APP_ROOT/src/petcam" ]; then
+  echo "petcam: application source not found at $APP_ROOT/src/petcam" >&2
+  exit 1
+fi
+
+PYTHONPATH="$APP_ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+export PYTHONPATH
+exec /usr/bin/python3 -m petcam.cli "$@"

@@ -1,4 +1,5 @@
-# GStreamer RTSP server and media plugin stack.
+# Native H.264 parsing, appsrc/appsink, and RTSP packetization/server.
 gir1.2-gst-rtsp-server-1.0
 gstreamer1.0-plugins-base
 gstreamer1.0-plugins-good
+gstreamer1.0-plugins-bad
