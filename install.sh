@@ -35,17 +35,24 @@ fi
 export DEBIAN_FRONTEND=noninteractive
 log "Installing camera, Python/GObject and GStreamer dependencies."
 apt-get update
-apt-get install -y --no-install-recommends \
-  python3 \
-  python3-gi \
-  gir1.2-gst-rtsp-server-1.0 \
-  gstreamer1.0-plugins-good \
-  v4l-utils \
-  rpicam-apps-lite
+export DEBIAN_FRONTEND=noninteractive
+APT_PACKAGES=()
+while IFS= read -r package || [[ -n "$package" ]]; do
+  package="${package%%#*}"
+  package="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' <<< "$package")"
+  [[ -z "$package" ]] && continue
+  [[ "$package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]] || fail "Invalid apt package name in requirements.apt: $package"
+  APT_PACKAGES+=("$package")
+done < "$REPO_ROOT/requirements.apt"
 
-# The Good plug-in package depends on Base, which supplies appsrc/appsink.
-# The Python runtime uses only the standard library and OS-provided python3-gi;
-# requirements.txt is intentionally empty until a genuine PyPI dependency exists.
+(("${#APT_PACKAGES[@]}" > 0)) || fail "No apt packages were declared in $REPO_ROOT/requirements.apt."
+
+log "Installing system dependencies from requirements.apt."
+apt-get update
+apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
+
+# requirements.txt is reserved for third-party PyPI dependencies. The Python
+# runtime currently uses the standard library and OS-provided python3-gi.
 install -d -m 0755 "$APP_ROOT" /usr/local/bin
 rm -rf "$APP_ROOT/src"
 cp -a "$REPO_ROOT/src" "$APP_ROOT/src"
