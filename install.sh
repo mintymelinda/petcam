@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
-REPO_ROOT="$(cd -- "$(dirname -- "\${BASH_SOURCE[0]}")" && pwd)"
-APP_ROOT="\${PETCAM_INSTALL_ROOT:-/opt/petcam}"
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+APP_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"
 log() { printf '[petcam-install] %s\n' "$*"; }
 fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
@@ -13,7 +13,7 @@ package_arch="$(dpkg --print-architecture)"
 [[ "$package_arch" == "armhf" ]] || fail "PetCam requires ARMHF; detected '$package_arch'."
 long_bits="$(getconf LONG_BIT)"
 [[ "$long_bits" == "32" ]] || fail "PetCam requires a 32-bit userspace; detected '$long_bits'-bit."
-cpuinfo="\${PETCAM_CPUINFO_FILE:-/proc/cpuinfo}"
+cpuinfo="${PETCAM_CPUINFO_FILE:-/proc/cpuinfo}"
 cpu_arch=""
 if [[ -r "$cpuinfo" ]]; then
   cpu_arch="$(awk -F: '/^[[:space:]]*CPU architecture[[:space:]]*:/ { gsub(/[[:space:]]/, "", $2); print $2; exit }' "$cpuinfo")"
@@ -30,15 +30,15 @@ log "Configuring the signed Live555 Trixie ARMHF package repository."
 bash "$REPO_ROOT/scripts/configure-live555-repository.sh"
 APT_PACKAGES=()
 while IFS= read -r package || [[ -n "$package" ]]; do
-  package="\${package%%#*}"
+  package="${package%%#*}"
   package="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' <<< "$package")"
   [[ -z "$package" ]] && continue
   [[ "$package" =~ ^[a-z0-9][a-z0-9+.-]*$ ]] || fail "Invalid apt package name in requirements.apt: $package"
   APT_PACKAGES+=("$package")
 done < "$REPO_ROOT/requirements.apt"
-(("\${#APT_PACKAGES[@]}" > 0)) || fail "No apt packages were declared in requirements.apt."
+(("${#APT_PACKAGES[@]}" > 0)) || fail "No apt packages were declared in requirements.apt."
 log "Installing native H.264 capture and Live555 build dependencies."
-apt-get install -y --no-install-recommends "\${APT_PACKAGES[@]}"
+apt-get install -y --no-install-recommends "${APT_PACKAGES[@]}"
 log "Installing the Python application source."
 install -d -m 0755 "$APP_ROOT" /usr/local/bin "$APP_ROOT/lib"
 rm -rf "$APP_ROOT/src"
