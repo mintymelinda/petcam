@@ -113,7 +113,7 @@ BOOT_MOUNT="$ROOTFS$BOOT_PATH"
 mkdir -p "$BOOT_MOUNT"
 mount "${LOOP_DEVICE}p1" "$BOOT_MOUNT"
 
-log "Preparing native ARMHF chroot and network access."
+log "Preparing ARMHF chroot and network access."
 if [[ -L "$ROOTFS/etc/resolv.conf" ]]; then
   RESOLV_LINK="$(readlink "$ROOTFS/etc/resolv.conf")"
   rm "$ROOTFS/etc/resolv.conf"
