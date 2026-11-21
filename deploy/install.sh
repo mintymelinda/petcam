@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+APP_ROOT=/opt/petcam
 log() { printf '[petcam-install] %s\n' "$*"; }
 fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 
@@ -10,6 +11,14 @@ source "$REPO_ROOT/deploy/lib/platform.sh"
 validate_petcam_platform
 command -v apt-get >/dev/null 2>&1 || fail "Raspberry Pi OS / Debian with apt is required."
 [[ -f "$REPO_ROOT/src/petcam/cli.py" ]] || fail "PetCam H.264 command was not found in the source checkout."
+
+# A packaged install already has its source in /opt/petcam. A direct source
+# checkout install copies only the application source there for the launcher.
+if [[ "$REPO_ROOT" != "$APP_ROOT" ]]; then
+  install -d -m 0755 "$APP_ROOT"
+  rm -rf "$APP_ROOT/src"
+  cp -a "$REPO_ROOT/src" "$APP_ROOT/src"
+fi
 
 export DEBIAN_FRONTEND=noninteractive
 source "$REPO_ROOT/deploy/lib/dependencies.sh"
