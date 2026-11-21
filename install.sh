@@ -10,7 +10,7 @@ fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
 command -v apt-get >/dev/null 2>&1 || fail "Raspberry Pi OS / Debian with apt is required."
 command -v dpkg >/dev/null 2>&1 || fail "dpkg is required."
-[[ -f "$REPO_ROOT/src/petcam/cli.py" && -x "$REPO_ROOT/petcam" ]] || fail "Run this installer from a complete PetCam source checkout."
+[[ -f "$REPO_ROOT/src/petcam/cli.py" && -f "$REPO_ROOT/requirements.apt" && -x "$REPO_ROOT/petcam" ]] || fail "Run this installer from a complete PetCam source checkout (including requirements.apt)."
 
 # PetCam's ARMHF build targets Raspberry Pi OS 32-bit on ARMv6 or newer.
 package_arch="$(dpkg --print-architecture)"
