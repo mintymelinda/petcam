@@ -299,27 +299,10 @@ def diagnostics_snapshot():
 def g_streamer_status_snapshot():
     return g_streamer_status.snapshot(G_STREAMER_STATUS_FILE, supervisor_file=SUPERVISOR_STATUS_FILE, clock=time.time)
 
-def health_monitor_loop():
-    from ..infrastructure.system.health import check_health
-    last_summary = None
-    while True:
-        started = time.monotonic()
-        try:
-            report = check_health()
-            summary = (report["state"], report.get("reason", ""), report.get("recovery_count", 0))
-            if summary != last_summary:
-                print(f"PetCam health: {summary[0]} - {summary[1]}", flush=True)
-                last_summary = summary
-        except Exception as error:
-            print(f"PetCam health monitor failed: {error}", file=sys.stderr, flush=True)
-        time.sleep(max(1, 30 - (time.monotonic() - started)))
-
-
 def main():
     if not TLS_CERT.is_file() or not TLS_KEY.is_file():
         raise SystemExit("PetCam HTTPS certificate is missing.")
     ensure_config_lock()
-    threading.Thread(target=health_monitor_loop, name="petcam-health-monitor", daemon=True).start()
     context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     context.minimum_version = ssl.TLSVersion.TLSv1_2
     context.load_cert_chain(TLS_CERT, TLS_KEY)
