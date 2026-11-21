@@ -331,10 +331,16 @@ def core_services_healthy() -> bool:
     """Require a healthy system report and every mandatory manager dependency."""
     try:
         health = json.loads(HEALTH_STATUS.read_text(encoding="utf-8"))
+        health_updated_at = HEALTH_STATUS.stat().st_mtime
         supervisor = json.loads(SUPERVISOR_STATUS.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return False
-    if not isinstance(health, dict) or health.get("state") != "healthy":
+    health_age = time.time() - health_updated_at
+    if (
+        not isinstance(health, dict)
+        or health.get("state") != "healthy"
+        or not 0 <= health_age <= 60
+    ):
         return False
     workers = supervisor.get("workers", {}) if isinstance(supervisor, dict) else {}
     if not isinstance(workers, dict):
