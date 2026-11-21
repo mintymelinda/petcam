@@ -21,7 +21,9 @@ metadata (including the correct `init_format` for that OS release).
    target Raspberry Pi, and use Imager's customization step to configure
    hostname, username/password, Wi-Fi, and other supported options.
 4. Write the SD card and boot the Pi. SSH is enabled. Open
-   `https://<device-hostname>.local:8443/` to continue PetCam setup.
+   `https://<device-hostname>.local:8443/` to continue PetCam setup. If you
+   configure a fully qualified hostname in Imager, PetCam also includes that
+   FQDN in its device certificate and reports it as the preferred setup address.
 
 The manifest references the versioned image asset hosted by the same GitHub
 release; it is not tied to a local filesystem path. Its image size and SHA-256
