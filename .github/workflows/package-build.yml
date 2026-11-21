@@ -68,10 +68,12 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
+          IMAGE_BUILD_DATE="$(date -u +%F)"
           sudo bash deploy/image/build.sh release/package/petcam-armhf.tar.gz dist
           IMAGE="$(find dist -maxdepth 1 -type f -name '*.img.xz' -print -quit)"
           test -n "$IMAGE" && test -s "$IMAGE"
           IMAGE_NAME="$(basename "$IMAGE")"
+          printf '%s\n' "$IMAGE_BUILD_DATE" > "$IMAGE.build-date"
           (cd dist && sha256sum "$IMAGE_NAME" > "$IMAGE_NAME.sha256")
           test -s "$IMAGE.sha256"
       - uses: actions/upload-artifact@v4
@@ -80,6 +82,7 @@ jobs:
           path: |
             dist/*.img.xz
             dist/*.img.xz.sha256
+            dist/*.img.xz.build-date
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
@@ -122,9 +125,15 @@ jobs:
           cp "$IMAGE_SOURCE.sha256" .
           IMAGE_NAME="$(basename "$IMAGE_SOURCE")"
           IMAGE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/${IMAGE_NAME}"
+          IMAGE_BUILD_DATE_FILE="$IMAGE_SOURCE.build-date"
+          if [[ ! -s "$IMAGE_BUILD_DATE_FILE" ]]; then
+            echo "The customized image build date is missing." >&2
+            exit 1
+          fi
           python3 deploy/image/create_imager_manifest.py \
             "$IMAGE_SOURCE" petcam.rpi-imager-manifest.json \
-            --image-url "$IMAGE_URL"
+            --image-url "$IMAGE_URL" \
+            --release-date "$(cat "$IMAGE_BUILD_DATE_FILE")"
           sha256sum petcam-armhf.tar.gz > petcam-armhf.tar.gz.sha256
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "Reusing existing release $TAG."

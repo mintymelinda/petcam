@@ -49,6 +49,8 @@ class ImagerManifestTests(unittest.TestCase):
         self.assertIn("petcam.rpi-imager-manifest.json", workflow)
         self.assertIn('--image-url "$IMAGE_URL"', workflow)
         self.assertIn("petcam.rpi-imager-manifest.json --clobber", workflow)
+        self.assertIn('IMAGE_BUILD_DATE_FILE="$IMAGE_SOURCE.build-date"', workflow)
+        self.assertIn('--release-date "$(cat "$IMAGE_BUILD_DATE_FILE")"', workflow)
         self.assertNotIn("create_imager_manifest.py --clobber", workflow)
 
     def test_manifest_points_to_release_image_and_preserves_upstream_customization_metadata(self):
@@ -63,6 +65,7 @@ class ImagerManifestTests(unittest.TestCase):
                 "name": "Raspberry Pi OS Lite (32-bit)",
                 "url": "https://downloads.raspberrypi.com/raspios_lite_armhf/images/test/raspios-lite-armhf.img.xz",
                 "init_format": "cloudinit-rpi",
+                "release_date": "2023-11-10",
                 "devices": ["pi0"],
                 "icon": "https://example.invalid/raspios.png",
             }],
@@ -81,11 +84,13 @@ class ImagerManifestTests(unittest.TestCase):
                     "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam.img.xz",
                     "https://downloads.raspberrypi.com/raspios_lite_armhf_latest",
                     "https://example.invalid/os.json",
+                    "2026-11-21",
                 )
 
             manifest = json.loads(output.read_text(encoding="utf-8"))
             entry = manifest["os_list"][0]
             self.assertEqual(entry["init_format"], "cloudinit-rpi")
+            self.assertEqual(entry["release_date"], "2026-11-21")
             self.assertEqual(
                 entry["url"],
                 "https://github.com/mintymelinda/petcam/releases/download/v1.2.3/petcam.img.xz",

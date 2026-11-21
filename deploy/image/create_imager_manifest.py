@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import lzma
@@ -109,7 +110,12 @@ def extracted_hash_and_size(path: Path) -> tuple[str, int]:
 
 
 def create_manifest(
-    image: Path, output: Path, image_url: str, source_url: str, repository_url: str
+    image: Path,
+    output: Path,
+    image_url: str,
+    source_url: str,
+    repository_url: str,
+    release_date: str,
 ) -> None:
     image = image.expanduser().resolve(strict=True)
     if not image.is_file() or image.suffix != ".xz":
@@ -119,6 +125,13 @@ def create_manifest(
     if parsed_image_url.scheme != "https" or not parsed_image_url.netloc:
         fail("The published image URL must be an absolute HTTPS URL.")
 
+    try:
+        parsed_release_date = datetime.strptime(release_date, "%Y-%m-%d").date()
+    except ValueError:
+        fail(f"Invalid image build date {release_date!r}; expected YYYY-MM-DD.")
+    if parsed_release_date.isoformat() != release_date:
+        fail(f"Invalid image build date {release_date!r}; expected YYYY-MM-DD.")
+
     repository, upstream_entry = load_source_entry(source_url, repository_url)
     compressed_sha, compressed_size = file_hash_and_size(image)
     extracted_sha, extracted_size = extracted_hash_and_size(image)
@@ -127,6 +140,7 @@ def create_manifest(
     entry.update(
         {
             "name": "PetCam — Raspberry Pi OS Lite (32-bit)",
+            "release_date": release_date,
             "description": "Raspberry Pi OS Lite 32-bit with PetCam preinstalled. Configure hostname, user, password and Wi-Fi in Raspberry Pi Imager before writing.",
             "url": image_url,
             "image_download_size": compressed_size,
@@ -168,6 +182,10 @@ def main() -> None:
         help="public HTTPS URL where the release image will be downloaded",
     )
     parser.add_argument(
+        "--release-date", required=True,
+        help="UTC build date of the customized PetCam image (YYYY-MM-DD)",
+    )
+    parser.add_argument(
         "--source-url",
         default=DEFAULT_SOURCE_URL,
         help="official upstream image URL used as the build base",
@@ -179,7 +197,9 @@ def main() -> None:
     )
     args = parser.parse_args()
     output = args.output or args.image.parent / "petcam.rpi-imager-manifest.json"
-    create_manifest(args.image, output, args.image_url, args.source_url, args.repository_url)
+    create_manifest(
+        args.image, output, args.image_url, args.source_url, args.repository_url, args.release_date
+    )
 
 
 if __name__ == "__main__":
