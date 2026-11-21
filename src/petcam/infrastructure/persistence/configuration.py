@@ -41,7 +41,8 @@ USB_PHYSICAL_PATH_PATTERN = re.compile(r"^/sys/devices/[A-Za-z0-9._:@/+\-]+$")
 CSI_DEVICE_PATH_PATTERN = re.compile(r"^/base/[A-Za-z0-9._:@/+\-]+$")
 RESOLUTION_PATTERN = re.compile(r"^([0-9]+)x([0-9]+)$")
 NUMBER_PATTERN = re.compile(r"^[0-9]+(?:\.[0-9]+)?$")
-CAPTURE_STARTUP_TIMEOUT = 60
+CAPTURE_STARTUP_TIMEOUT = 180
+GSTREAMER_STATUS_PATH = Path(os.environ.get("PETCAM_G_STREAMER_STATUS", "/run/petcam/g-streamer-status.json"))
 
 
 class ConfigError(ValueError):
@@ -330,6 +331,26 @@ def wait_for_native_h264(timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
     return False
 
 
+def wait_for_rtsp_service(source: str, timeout: int = CAPTURE_STARTUP_TIMEOUT) -> bool:
+    """Wait until the RTSP worker reports a fresh, ready endpoint for this source."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            status = json.loads(GSTREAMER_STATUS_PATH.read_text(encoding="utf-8"))
+            age = time.time() - float(status.get("updated_at", 0))
+            if (
+                isinstance(status, dict)
+                and status.get("state") in {"ready", "publishing"}
+                and status.get("source") == source
+                and 0 <= age <= 15
+            ):
+                return True
+        except (OSError, ValueError, TypeError):
+            pass
+        time.sleep(min(0.5, max(0, deadline - time.monotonic())))
+    return False
+
+
 def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -> bool:
     native_h264 = config.get("FORMAT") == "H264"
     if not native_h264 and config.get("FORMAT") == "auto":
@@ -340,7 +361,9 @@ def wait_for_configured_capture(config: dict[str, str], ready=wait_for_stream) -
             native_h264 = False
     if native_h264:
         return wait_for_native_h264()
-    return ready(int(config["PORT"]))
+    if not ready(int(config["PORT"])):
+        return False
+    return wait_for_rtsp_service("mjpeg_copy")
 
 
 def restart_capture() -> None:
@@ -377,7 +400,7 @@ def _apply_config_transaction(
     try:
         restart()
         if not wait_for_configured_capture(candidate, ready):
-            expected = "native H.264 packets" if candidate["FORMAT"] == "H264" else "an MJPEG frame"
+            expected = "a verified RTSP camera stream"
             raise ConfigApplyError(f"The new camera settings did not produce {expected} before the startup timeout.")
     except Exception as apply_error:
         _atomic_write(path, previous_content)

@@ -34,16 +34,28 @@ function fillModes(preferred = null) {
   const camera = inventory[+$("camera").value];
   $("mode").replaceChildren();
   if (!camera) return;
-  for (const mode of modesFor(camera)) {
+  const modes = modesFor(camera);
+  const defaultMode = preferred || [...modes].sort((a, b) => {
+    const rank = (mode) => {
+      const format = String(mode.format).toUpperCase();
+      return format === "H264" ? 0 : ["MJPG", "MJPEG", "JPEG"].includes(format) ? 1 : 2;
+    };
+    return rank(a) - rank(b) ||
+      Math.abs(a.width - 1280) + Math.abs(a.height - 720) -
+        (Math.abs(b.width - 1280) + Math.abs(b.height - 720)) ||
+      Math.abs(a.fps - 30) - Math.abs(b.fps - 30) ||
+      a.width - b.width || a.height - b.height || a.fps - b.fps;
+  })[0] || null;
+  for (const mode of modes) {
     const option = document.createElement("option");
     option.value = JSON.stringify(mode);
     option.textContent = `${mode.width}×${mode.height} · ${mode.fps} fps · ${mode.format}`;
     if (
-      preferred &&
-      mode.width === preferred.width &&
-      mode.height === preferred.height &&
-      mode.format === (preferred.format || "CSI") &&
-      Math.abs(mode.fps - preferred.fps) < 0.1
+      defaultMode &&
+      mode.width === defaultMode.width &&
+      mode.height === defaultMode.height &&
+      mode.format === defaultMode.format &&
+      Math.abs(mode.fps - defaultMode.fps) < 0.1
     ) {
       option.selected = true;
     }

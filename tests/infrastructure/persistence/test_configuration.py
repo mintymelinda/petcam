@@ -12,10 +12,10 @@ from petcam.infrastructure.persistence import configuration as MODULE
 
 
 class ConfigValidationTests(unittest.TestCase):
-    def test_camera_capture_startup_timeout_defaults_to_sixty_seconds(self):
-        self.assertEqual(MODULE.CAPTURE_STARTUP_TIMEOUT, 60)
-        self.assertEqual(inspect.signature(MODULE.wait_for_stream).parameters["timeout"].default, 60)
-        self.assertEqual(inspect.signature(MODULE.wait_for_native_h264).parameters["timeout"].default, 60)
+    def test_camera_capture_startup_timeout_allows_camera_and_encoder_to_settle(self):
+        self.assertEqual(MODULE.CAPTURE_STARTUP_TIMEOUT, 180)
+        self.assertEqual(inspect.signature(MODULE.wait_for_stream).parameters["timeout"].default, 180)
+        self.assertEqual(inspect.signature(MODULE.wait_for_native_h264).parameters["timeout"].default, 180)
 
     def test_existing_default_config_is_compatible(self):
         values = {
@@ -290,6 +290,34 @@ class TransactionalApplyTests(unittest.TestCase):
             ))
         h264_ready.assert_called_once_with()
         ready.assert_not_called()
+
+    def test_mjpeg_readiness_waits_for_rtsp_service_after_camera_stream(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status = Path(directory) / "g-streamer-status.json"
+            status.write_text(json.dumps({
+                "state": "ready", "source": "mjpeg_copy", "updated_at": MODULE.time.time()
+            }), encoding="utf-8")
+            with mock.patch.object(MODULE, "GSTREAMER_STATUS_PATH", status):
+                with mock.patch.object(MODULE, "wait_for_stream", return_value=True) as camera_ready:
+                    self.assertTrue(MODULE.wait_for_configured_capture(
+                        {"FORMAT": "MJPEG", "PORT": "8081"}
+                    ))
+            camera_ready.assert_called_once_with(8081)
+
+    def test_mjpeg_readiness_fails_when_rtsp_source_does_not_match(self):
+        with tempfile.TemporaryDirectory() as directory:
+            status = Path(directory) / "g-streamer-status.json"
+            status.write_text(json.dumps({
+                "state": "ready", "source": "native_h264", "updated_at": MODULE.time.time()
+            }), encoding="utf-8")
+            with (
+                mock.patch.object(MODULE, "GSTREAMER_STATUS_PATH", status),
+                mock.patch.object(MODULE, "CAPTURE_STARTUP_TIMEOUT", 0),
+                mock.patch.object(MODULE, "wait_for_stream", return_value=True),
+            ):
+                self.assertFalse(MODULE.wait_for_configured_capture(
+                    {"FORMAT": "MJPEG", "PORT": "8081"}
+                ))
 
     def test_auto_mode_uses_rtsp_readiness_when_native_h264_was_selected(self):
         with tempfile.TemporaryDirectory() as directory:
