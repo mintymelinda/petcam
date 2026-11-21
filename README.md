@@ -12,9 +12,9 @@ On supported Raspberry Pi OS 32-bit (ARMHF, ARMv6 or newer):
 sudo ./install.sh
 ```
 
-The installer configures the signed Debian Multimedia Trixie repository for ARMHF,
-installs Live555, compiles the native RTSP/RTP server against the system libraries,
-then removes the compiler and development headers. The installed application has no
+The installer uses the Live555 packages provided by Raspberry Pi OS Trixie,
+compiles the native RTSP/RTP server against the system libraries, then removes the
+compiler and development headers. The installed application has no
 GStreamer dependency.
 
 Connect over SSH and run:
