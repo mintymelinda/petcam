@@ -1,1 +1,0 @@
-"""PetCam test package."""
