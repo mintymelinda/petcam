@@ -123,7 +123,7 @@ async function refreshStreamStatus(){try{const status=await api("stream-status")
  else{$("camera-mode-status").textContent=status.capture_state==="running"?"Active camera mode details unavailable":"Camera is not currently active";}
  const rtsp=status.rtsp||{};let label=rtsp.state||"starting";
  if(rtsp.state==="publishing")label="RTSP server publishing video";else if(rtsp.state==="ready")label="RTSP server ready; waiting for video/client";else if(rtsp.state==="stalled")label="RTSP service status is stale";else if(rtsp.state==="stopped")label="RTSP service stopped";else if(rtsp.state==="starting")label="RTSP server starting";
- $("rtsp-service-status").textContent=label+(rtsp.error?" · "+rtsp.error:"");
+ $("rtsp-service-status").textContent=label;
  }catch(error){$("rtsp-service-status").textContent="Unable to read RTSP status: "+error.message;}}
 function startStreamStatusChecks(){stopStreamStatusChecks();refreshStreamStatus();streamStatusTimer=setInterval(refreshStreamStatus,5000);}
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
