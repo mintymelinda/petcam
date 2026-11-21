@@ -19,6 +19,7 @@ cp -a "$REPO_ROOT/src" "$STAGING/src"
 cp -a "$REPO_ROOT/deploy" "$STAGING/deploy"
 # Image-builder internals are deliberately not part of the application package.
 rm -rf "$STAGING/deploy/image"
+find "$STAGING/src" -type d -name __pycache__ -prune -exec rm -rf {} +
 printf '%s\n' "$VERSION" > "$STAGING/VERSION"
 install -m 0755 "$REPO_ROOT/deploy/package/install.sh" "$STAGING/install.sh"
 
