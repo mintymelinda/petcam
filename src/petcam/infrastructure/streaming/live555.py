@@ -188,6 +188,9 @@ def run_server(camera_status: dict) -> int:
     first_idr = threading.Event()
     reader_error = {"message": ""}
     publisher = H264Publisher(server)
+    stop_requested = threading.Event()
+    previous_sigterm = signal.signal(signal.SIGTERM, lambda _signum, _frame: stop_requested.set())
+    previous_sigint = signal.signal(signal.SIGINT, lambda _signum, _frame: stop_requested.set())
 
     def read_capture() -> None:
         assert capture is not None and capture.stdout is not None
@@ -221,7 +224,7 @@ def run_server(camera_status: dict) -> int:
         reader = threading.Thread(target=read_capture, name="petcam-h264-capture", daemon=True)
         reader.start()
         logging.info("H.264 RTSP endpoint: rtsp://%s:%s%s", socket.getfqdn(), RTSP_PORT, RTSP_PATH)
-        while True:
+        while not stop_requested.is_set():
             if capture.poll() is not None:
                 raise Live555Error(f"Camera capture exited with status {capture.returncode}.")
             if reader_error["message"]:
@@ -232,8 +235,10 @@ def run_server(camera_status: dict) -> int:
                 raise Live555Error("No H.264 IDR frame with SPS/PPS arrived within 12 seconds.")
             else:
                 write_status("starting", camera_status)
-            time.sleep(1)
+            stop_requested.wait(1)
     finally:
+        signal.signal(signal.SIGTERM, previous_sigterm)
+        signal.signal(signal.SIGINT, previous_sigint)
         stop_reader.set()
         if capture is not None:
             if capture.poll() is None:
