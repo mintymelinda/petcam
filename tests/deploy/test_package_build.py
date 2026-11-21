@@ -68,6 +68,76 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('if [[ ! -e "$ETC_ROOT/petcam.conf" ]]; then', deployment)
         self.assertIn('if [[ ! -e "$STATE_ROOT/$feature/config.json" ]]; then', deployment)
 
+    def test_startup_certificate_tracks_imager_fqdn_and_dhcp_address(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            fake_bin = root / "bin"
+            fake_bin.mkdir()
+            app_root = root / "app"
+            (app_root / "src/petcam").mkdir(parents=True)
+            etc_root = root / "etc"
+            hostname = fake_bin / "hostname"
+            hostname.write_text(
+                "#!/bin/sh\\n"
+                'case "$1" in\\n'
+                '  -s) printf "%s\\n" "$FAKE_HOSTNAME" ;;\\n'
+                '  -f) printf "%s\\n" "$FAKE_FQDN" ;;\\n'
+                '  -d) printf "%s\\n" "$FAKE_DOMAIN" ;;\\n'
+                '  *) printf "%s\\n" "$FAKE_HOSTNAME" ;;\\n'
+                "esac\\n",
+                encoding="utf-8",
+            )
+            hostname.chmod(0o755)
+            ip = fake_bin / "ip"
+            ip.write_text(
+                '#!/bin/sh\\nprintf "2: eth0 inet %s/24 scope global eth0\\n" "$FAKE_IP"\\n',
+                encoding="utf-8",
+            )
+            ip.chmod(0o755)
+
+            environment = os.environ.copy()
+            environment.update({
+                "PATH": f"{fake_bin}:{environment['PATH']}",
+                "PETCAM_ROOT": str(app_root),
+                "PETCAM_ETC": str(etc_root),
+                "PETCAM_INITIALIZE_ONLY": "1",
+                "FAKE_HOSTNAME": "kittycam",
+                "FAKE_FQDN": "kittycam.example.net",
+                "FAKE_DOMAIN": "example.net",
+                "FAKE_IP": "192.0.2.17",
+            })
+            startup = ROOT / "deploy/start.sh"
+            first = subprocess.run(
+                ["bash", str(startup)], env=environment, check=True,
+                capture_output=True, text=True,
+            )
+            certificate = etc_root / "web-manager.crt"
+            first_sans = subprocess.run(
+                ["openssl", "x509", "-in", str(certificate), "-noout", "-ext", "subjectAltName"],
+                check=True, capture_output=True, text=True,
+            ).stdout
+            self.assertIn("DNS:kittycam.example.net", first_sans)
+            self.assertIn("DNS:kittycam.local", first_sans)
+            self.assertIn("IP Address:192.0.2.17", first_sans)
+            self.assertIn("https://kittycam.example.net:8443/setup", first.stdout)
+
+            environment["FAKE_HOSTNAME"] = "kittycam2"
+            environment["FAKE_FQDN"] = "kittycam2.other.example"
+            environment["FAKE_DOMAIN"] = "other.example"
+            environment["FAKE_IP"] = "192.0.2.18"
+            subprocess.run(
+                ["bash", str(startup)], env=environment, check=True,
+                capture_output=True, text=True,
+            )
+            second_sans = subprocess.run(
+                ["openssl", "x509", "-in", str(certificate), "-noout", "-ext", "subjectAltName"],
+                check=True, capture_output=True, text=True,
+            ).stdout
+            self.assertIn("DNS:kittycam2.other.example", second_sans)
+            self.assertIn("IP Address:192.0.2.18", second_sans)
+            self.assertNotIn("DNS:kittycam.example.net", second_sans)
+            self.assertNotIn("IP Address:192.0.2.17", second_sans)
+
     def test_unlabelled_builds_use_development_instead_of_a_git_commit_hash(self):
         with tempfile.TemporaryDirectory() as directory:
             output = Path(directory)
