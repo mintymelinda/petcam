@@ -73,9 +73,14 @@ private:
       nextTask() = envir().taskScheduler().scheduleDelayedTask(5000, retry, this);
       return;
     }
-    fFrameSize = static_cast<unsigned>(std::min<std::size_t>(data.size(), fMaxSize));
-    fNumTruncatedBytes = static_cast<unsigned>(data.size() - fFrameSize);
-    std::memcpy(fTo, data.data(), fFrameSize);
+    static constexpr unsigned char startCode[] = {0, 0, 0, 1};
+    const std::size_t framedSize = data.size() + sizeof(startCode);
+    fFrameSize = static_cast<unsigned>(std::min<std::size_t>(framedSize, fMaxSize));
+    fNumTruncatedBytes = static_cast<unsigned>(framedSize - fFrameSize);
+    const std::size_t prefixSize = std::min<std::size_t>(sizeof(startCode), fFrameSize);
+    std::memcpy(fTo, startCode, prefixSize);
+    if (fFrameSize > prefixSize)
+      std::memcpy(fTo + prefixSize, data.data(), fFrameSize - prefixSize);
     gettimeofday(&fPresentationTime, nullptr);
     fDurationInMicroseconds = 0;
     FramedSource::afterGetting(this);
@@ -91,7 +96,7 @@ protected:
   explicit H264Subsession(UsageEnvironment& env) : OnDemandServerMediaSubsession(env, False) {}
   FramedSource* createNewStreamSource(unsigned, unsigned& bitrate) override {
     bitrate = 8000;
-    return NalSource::createNew(envir());
+    return H264VideoStreamFramer::createNew(envir(), NalSource::createNew(envir()));
   }
   RTPSink* createNewRTPSink(Groupsock* groupsock, unsigned char payload, FramedSource*) override {
     return H264VideoRTPSink::createNew(envir(), groupsock, payload);
