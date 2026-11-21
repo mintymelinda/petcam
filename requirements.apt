@@ -5,3 +5,4 @@ rpicam-apps-lite
 liblivemedia116
 liblivemedia-dev
 g++
+libssl-dev
