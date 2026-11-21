@@ -49,6 +49,8 @@ jobs:
           echo "Native ARMHF execution is available on this runner."
 
       - name: Build image
+        env:
+          PETCAM_VERSION: trixie-${{ github.sha }}
         run: sudo ./build-image.sh "$RUNNER_TEMP/petcam-image"
 
       - name: Upload compressed Raspberry Pi OS image
