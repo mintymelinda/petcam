@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import http.client
 import json
 import os
@@ -38,6 +39,8 @@ BACKEND_FRAME_TIMEOUT_SECONDS = 15
 PUBLIC_FRAME_TIMEOUT_SECONDS = 5
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 300
+HEALTH_POLL_SECONDS = 30
+_running = True
 
 
 def timestamp(now: float | None = None) -> str:
@@ -328,7 +331,51 @@ def check_health(now: float | None = None) -> dict[str, Any]:
         return _check_health_locked(now)
 
 
+def run_loop() -> int:
+    """Continuously recover the camera core, independently of the optional Web UI."""
+    global _running
+    _running = True
+    signal.signal(signal.SIGTERM, _stop)
+    signal.signal(signal.SIGINT, _stop)
+    last_summary = None
+    while _running:
+        started = time.monotonic()
+        try:
+            report = check_health()
+            summary = (
+                report["state"],
+                report.get("reason", ""),
+                report.get("recovery_count", 0),
+            )
+            if summary != last_summary:
+                print(
+                    f"PetCam health: {summary[0]} - {summary[1]}",
+                    flush=True,
+                )
+                last_summary = summary
+        except Exception:
+            import logging
+
+            logging.exception("PetCam health monitor failed")
+        time.sleep(max(1, HEALTH_POLL_SECONDS - (time.monotonic() - started)))
+    return 0
+
+
+def _stop(_signum, _frame) -> None:
+    global _running
+    _running = False
+
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--watch",
+        action="store_true",
+        help="continuously monitor and recover camera and RTSP services",
+    )
+    args = parser.parse_args()
+    if args.watch:
+        return run_loop()
     report = check_health()
     print(json.dumps(report, indent=2))
     return 0 if report["state"] in ("healthy", "starting", "camera_disconnected") else 1
