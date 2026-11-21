@@ -46,6 +46,8 @@ cp -a "$REPO_ROOT/src" "$APP_ROOT/src"
 chown -R root:root "$APP_ROOT"
 log "Compiling the Live555 RTSP/RTP server for ARMHF."
 g++ -std=c++17 -O2 -fPIC -shared \
+  -I/usr/include/liveMedia -I/usr/include/groupsock \
+  -I/usr/include/BasicUsageEnvironment -I/usr/include/UsageEnvironment \
   "$APP_ROOT/src/petcam/infrastructure/streaming/live555_server.cpp" \
   -o "$APP_ROOT/lib/libpetcam_live555.so" \
   -lliveMedia -lgroupsock -lBasicUsageEnvironment -lUsageEnvironment -pthread
