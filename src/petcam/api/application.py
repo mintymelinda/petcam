@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from . import management_routes
-from ..infrastructure.persistence.configuration import apply_config, ensure_config_lock, parse_config
+from ..infrastructure.persistence.configuration import ensure_config_lock, parse_config, persist_camera_selection
 from ..infrastructure.camera.cli import (
     camera_identity, discover_csi_cameras, discover_devices, mode_supports_fps,
 )
@@ -205,7 +205,7 @@ def save_selection(data):
         data,
         discover_cameras=camera_inventory,
         mode_supports_fps=mode_supports_fps,
-        apply_config=apply_config,
+        persist_selection=persist_camera_selection,
     )
 
 

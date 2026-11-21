@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http.client
+from concurrent.futures import ThreadPoolExecutor
 import html
 import json
 import logging
@@ -107,14 +108,14 @@ async function api(path,body){const headers={"Content-Type":"application/json"};
  const data=await response.json().catch(()=>({error:"Unexpected server response"}));if(!response.ok)throw Error(data.error||"Request failed");return data;}
 function message(value){$("message").textContent=value;}
 function rtspStreamUrl(){let host=window.location.hostname;if(host.startsWith("[")&&host.endsWith("]"))host=host.slice(1,-1);if(host.includes(":"))host="["+host+"]";return "rtsp://"+host+":8554/petcam";}
-let readinessTimer=null,streamStatusTimer=null,webEnabled=false,webUiReady=false,requestPending=false;
+let readinessTimer=null,streamStatusTimer=null,webEnabled=false,webUiReady=false,requestPending=false,readinessRequestPending=false,readinessReason="";
 function stopReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;}
 function stopStreamStatusChecks(){if(streamStatusTimer!==null)clearInterval(streamStatusTimer);streamStatusTimer=null;}
 function renderWebUi(){const button=$("toggle-web-ui");button.textContent=webEnabled?"Disable Full UI":"Enable Full UI";button.disabled=requestPending;
  $("open-manager").hidden=!(webEnabled&&webUiReady);$("readiness").hidden=!webEnabled;
  if(!webEnabled)return;
- $("readiness").textContent=webUiReady?"All core services are healthy.":"Starting services and checking health…";}
-async function refreshManagerReadiness(){if(!webEnabled)return;try{const result=await api("manager-status");webUiReady=result.ready===true;}catch(_){webUiReady=false;}renderWebUi();}
+ $("readiness").textContent=webUiReady?"Full UI is ready.":(readinessReason||"Waiting for service health checks…");}
+async function refreshManagerReadiness(){if(!webEnabled||readinessRequestPending)return;readinessRequestPending=true;try{const result=await api("manager-status");webUiReady=result.ready===true;readinessReason=result.reason||"Waiting for service health checks…";}catch(error){webUiReady=false;readinessReason="Unable to check readiness: "+error.message;}finally{readinessRequestPending=false;renderWebUi();}}
 function startReadinessChecks(){stopReadinessChecks();refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
 async function refreshStreamStatus(){try{const status=await api("stream-status");const active=status.active_camera||{};
  if(active.resolution&&active.format&&active.fps!==null&&active.fps!==undefined){const source=(active.backend||"camera").toUpperCase();$("camera-mode-status").textContent=active.format+" - "+active.resolution+" - "+active.fps+" FPS ("+source+")";}
@@ -127,7 +128,7 @@ function startStreamStatusChecks(){stopStreamStatusChecks();refreshStreamStatus(
 async function refresh(){try{const status=await api("status");$("setup-form").hidden=status.configured;$("login-form").hidden=!status.configured;
  if(!status.configured){$("manager-control").hidden=true;$("sign-out").hidden=true;return;}
  try{const session=await api("session");csrf=session.csrf_token;$("manager-control").hidden=false;$("login-form").hidden=true;$("sign-out").hidden=false;
- $("rtsp-url").value=rtspStreamUrl();webEnabled=status.enabled===true;webUiReady=false;renderWebUi();startStreamStatusChecks();
+ $("rtsp-url").value=rtspStreamUrl();webEnabled=status.enabled===true;webUiReady=false;readinessReason="Waiting for service health checks…";renderWebUi();startStreamStatusChecks();
  if(webEnabled)startReadinessChecks();else stopReadinessChecks();
  }catch(_){$("manager-control").hidden=true;$("sign-out").hidden=true;$("login-form").hidden=false;}
  }catch(error){message(error.message);}}
@@ -135,7 +136,7 @@ $("setup-form").addEventListener("submit",async event=>{event.preventDefault();t
  const result=await api("setup",{password:$("new-password").value,password_confirmation:$("confirm-password").value});csrf=result.csrf_token;message("Administrator password created.");await refresh();}catch(error){message(error.message);}});
 $("login-form").addEventListener("submit",async event=>{event.preventDefault();try{const result=await api("login",{password:$("password").value});csrf=result.csrf_token;$("password").value="";message("Signed in.");await refresh();}catch(error){message(error.message);}});
 $("toggle-web-ui").addEventListener("click",async()=>{if(requestPending)return;requestPending=true;$("toggle-web-ui").disabled=true;const nextEnabled=!webEnabled;
- try{const result=await api("web-ui",{enabled:nextEnabled});webEnabled=result.enabled===true;webUiReady=false;message(webEnabled?"Full UI enabled. Waiting for all services to become healthy.":"Full UI disabled.");if(webEnabled)startReadinessChecks();else stopReadinessChecks();renderWebUi();}
+ try{const result=await api("web-ui",{enabled:nextEnabled});webEnabled=result.enabled===true;webUiReady=false;readinessReason="Waiting for service health checks…";message(webEnabled?"Full UI enabled. Waiting for all services to become healthy.":"Full UI disabled.");if(webEnabled)startReadinessChecks();else stopReadinessChecks();renderWebUi();}
  catch(error){message(error.message);renderWebUi();}
  finally{requestPending=false;renderWebUi();}});
 $("copy-rtsp-url").addEventListener("click",async()=>{try{await navigator.clipboard.writeText($("rtsp-url").value);message("RTSP URL copied.");}catch(_){$("rtsp-url").focus();$("rtsp-url").select();message("Select and copy the RTSP URL.");}});
@@ -355,28 +356,43 @@ def core_services_healthy() -> bool:
     )
 
 
-def manager_ready() -> bool:
-    """Require healthy core services plus a complete, servable dashboard."""
-    if not web_ui_enabled() or not core_services_healthy():
-        return False
+def manager_readiness() -> tuple[bool, str]:
+    """Return readiness and a useful reason without serializing static asset probes."""
+    if not web_ui_enabled():
+        return False, "Full UI is disabled."
+    if not core_services_healthy():
+        return False, "Waiting for core services to report healthy status."
+
     try:
         status, content_type, document = _manager_get("/")
         if status != 200 or "text/html" not in content_type.lower() or not document:
-            return False
-        if any(asset.encode("ascii") not in document for asset in MANAGER_STATIC_ASSETS):
-            return False
-        for asset in MANAGER_STATIC_ASSETS:
-            asset_status, asset_type, asset_body = _manager_get(asset)
+            return False, "The dashboard page is not being served successfully."
+        missing_assets = [
+            asset for asset in MANAGER_STATIC_ASSETS
+            if asset.encode("ascii") not in document
+        ]
+        if missing_assets:
+            return False, "The dashboard page is missing required application assets."
+
+        with ThreadPoolExecutor(max_workers=len(MANAGER_STATIC_ASSETS)) as executor:
+            results = list(executor.map(_manager_get, MANAGER_STATIC_ASSETS))
+        for asset, (asset_status, asset_type, asset_body) in zip(MANAGER_STATIC_ASSETS, results):
             if (
                 asset_status != 200
                 or "javascript" not in asset_type.lower()
                 or not asset_body
             ):
-                return False
-        return True
+                logging.debug("Full Web UI readiness asset probe failed: %s", asset)
+                return False, "One or more dashboard application assets are unavailable."
+        return True, "Full UI is ready."
     except (OSError, http.client.HTTPException, ValueError):
         logging.debug("Full Web UI readiness probe failed", exc_info=True)
-        return False
+        return False, "The dashboard readiness probe could not reach the manager."
+
+
+def manager_ready() -> bool:
+    """Require healthy core services plus a complete, servable dashboard."""
+    return manager_readiness()[0]
 
 
 def _proxy(handler):
@@ -453,7 +469,8 @@ class Handler(BaseHTTPRequestHandler):
             _json(self, 200, {"configured": web_auth.is_configured(), "enabled": web_ui_enabled()})
             return
         if path == "/setup/api/manager-status":
-            _json(self, 200, {"enabled": web_ui_enabled(), "ready": manager_ready()})
+            ready, reason = manager_readiness()
+            _json(self, 200, {"enabled": web_ui_enabled(), "ready": ready, "reason": reason})
             return
         if path == "/setup/api/stream-status":
             if not _get_session(_cookie(self)):

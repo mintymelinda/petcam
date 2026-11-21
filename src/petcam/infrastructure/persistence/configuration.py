@@ -466,6 +466,35 @@ def apply_config(
             fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
+def persist_camera_selection(
+    updates: dict[str, Any],
+    path: Path | str = CONFIG_PATH,
+    last_good_path: Path | str = LAST_GOOD_PATH,
+    restart=restart_capture,
+) -> dict[str, str]:
+    """Persist a selected mode and refresh its marker without readiness rollback.
+
+    GStreamer owns native H.264 mode negotiation. The capture worker is restarted
+    only to publish the selected camera metadata and stop any previous backend;
+    this path never waits for RTSP packets or restores an older camera profile.
+    """
+    path = Path(path)
+    last_good_path = Path(last_good_path)
+    lock_path = ensure_config_lock(path)
+    with _apply_lock, lock_path.open("r+") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            previous = parse_config(path) if path.exists() else validate_config(DEFAULTS)
+            candidate = validate_config({**previous, **updates})
+            serialized = serialize_config(candidate)
+            _atomic_write(path, serialized)
+            _atomic_write(last_good_path, serialized)
+            restart()
+            return candidate
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def main() -> int:
     arguments = sys.argv[1:]
     if arguments in (["validate"], ["validate", "--check-hardware"]):
