@@ -143,6 +143,7 @@ def workers() -> list[Worker]:
         Worker("setup-portal", (py, "-m", "petcam.bootstrap.setup_portal")),
         Worker("camera-capture", (py, "-m", "petcam.infrastructure.camera.capture")),
         Worker("gstreamer-rtsp", (py, "-m", "petcam.infrastructure.streaming.gstreamer")),
+        Worker("health-monitor", (py, "-m", "petcam.infrastructure.system.health", "--watch")),
         Worker(
             "rtsp-sampler",
             (py, "-m", "petcam.infrastructure.streaming.sampler"),
