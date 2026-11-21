@@ -436,15 +436,15 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         _set_status_state(current_state, "ready", current_state["source"])
 
     def start_capture_pipeline(status):
-        sampler.require_h264_hardware_decoder(Gst)
-        required = ("valve", "videorate", "jpegenc", "appsink", "v4l2h264dec")
+        decoder_name = sampler.require_h264_hardware_decoder(Gst)
+        required = ("valve", "videorate", "jpegenc", "appsink", decoder_name)
         missing = [name for name in required if Gst.ElementFactory.find(name) is None]
         if missing:
             raise GStreamerError(
                 "Required H.264 frame-branch element(s) are missing: " + ", ".join(missing)
             )
 
-        pipeline = Gst.parse_launch(build_native_capture_launch(status, decoder_name))
+        pipeline = Gst.parse_launch(build_native_capture_launch(status))
         if pipeline is None:
             raise GStreamerError("GStreamer could not create the persistent H.264 capture pipeline.")
         frame_valve = pipeline.get_by_name("frame_valve")
