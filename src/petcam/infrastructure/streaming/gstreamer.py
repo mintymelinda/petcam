@@ -389,10 +389,17 @@ def run_server(camera_status: dict) -> int:
                 loop.quit()
                 return False
 
+        if csi_error["message"]:
+            text = csi_error["message"]
+            logging.error(text)
+            write_status("error", camera_status, message=text)
+            loop.quit()
+            return False
+
         if csi_process is not None:
             code = csi_process.poll()
             if code is not None:
-                text = csi_error["message"] or f"rpicam-vid exited with status {code}."
+                text = f"rpicam-vid exited with status {code}."
                 logging.error(text)
                 write_status("error", camera_status, message=text)
                 loop.quit()
