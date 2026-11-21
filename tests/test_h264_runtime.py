@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from petcam.cli import camera_modes, inventory_signature, parse_short_config
 from petcam.configuration import ConfigurationError, validate_config
@@ -88,7 +89,8 @@ class NativeCaptureTests(unittest.TestCase):
         }
 
     def test_usb_capture_uses_v4l2_direct_h264_streaming(self):
-        command = build_capture_command(self.usb)
+        with patch("petcam.infrastructure.streaming.live555.shutil.which", return_value="/usr/bin/v4l2-ctl"):
+            command = build_capture_command(self.usb)
         self.assertEqual(command[0], "v4l2-ctl")
         self.assertIn("--stream-mmap=3", command)
         self.assertIn("--stream-to=-", command)
@@ -112,16 +114,16 @@ class NativeCaptureTests(unittest.TestCase):
 
         server = FakeServer()
         publisher = H264Publisher(server)
-        prefix = b"\\x00\\x00\\x00\\x01"
-        publisher.publish(prefix + b"\\x67\\x42\\x00\\x1e")
-        publisher.publish(prefix + b"\\x68\\xce\\x06")
-        publisher.publish(prefix + b"\\x65\\x88")
-        publisher.publish(prefix + b"\\x41\\x9a")
+        prefix = b"\x00\x00\x00\x01"
+        publisher.publish(prefix + b"\x67\x42\x00\x1e")
+        publisher.publish(prefix + b"\x68\xce\x06")
+        publisher.publish(prefix + b"\x65\x88")
+        publisher.publish(prefix + b"\x41\x9a")
         self.assertEqual(server.nals, [
-            (b"\\x67\\x42\\x00\\x1e", True),
-            (b"\\x68\\xce\\x06", False),
-            (b"\\x65\\x88", False),
-            (b"\\x41\\x9a", False),
+            (b"\x67\x42\x00\x1e", True),
+            (b"\x68\xce\x06", False),
+            (b"\x65\x88", False),
+            (b"\x41\x9a", False),
         ])
 
     def test_publisher_rejects_idr_without_parameter_sets(self):
@@ -129,7 +131,7 @@ class NativeCaptureTests(unittest.TestCase):
             def push_nal(self, nal, keyframe=False):
                 raise AssertionError("Must not publish without SPS/PPS")
         with self.assertRaisesRegex(Live555Error, "SPS and PPS"):
-            H264Publisher(FakeServer()).publish(b"\\x00\\x00\\x00\\x01\\x65\\x88")
+            H264Publisher(FakeServer()).publish(b"\x00\x00\x00\x01\x65\x88")
 
 
 class H264AccessUnitFramingTests(unittest.TestCase):
@@ -151,9 +153,9 @@ class H264AccessUnitFramingTests(unittest.TestCase):
 
 
     def test_access_unit_metadata_retains_codec_config_for_late_rtsp_clients(self):
-        sps = self.nal(0x67, b"\\x42\\x00\\x1e")
-        pps = self.nal(0x68, b"\\xce\\x06")
-        aud = self.nal(0x09, b"\\xf0")
+        sps = self.nal(0x67, b"\x42\x00\x1e")
+        pps = self.nal(0x68, b"\xce\x06")
+        aud = self.nal(0x09, b"\xf0")
         idr = self.nal(0x65)
         metadata = inspect_h264_access_unit(sps + pps + aud + idr)
         self.assertEqual(metadata["sps"], sps)
