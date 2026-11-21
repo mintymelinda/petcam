@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <condition_variable>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -23,6 +24,7 @@ TaskScheduler* scheduler = nullptr;
 EventTriggerId shutdownId = 0;
 char watch = 0;
 bool startupDone = false;
+std::condition_variable startupCondition;
 int startupCode = -1;
 std::string startupMessage;
 
@@ -121,6 +123,7 @@ void serve(unsigned short port, std::string path) {
     startupMessage = startupCode == 0 ? "" : (env ? env->getResultMsg() : "Live555 environment creation failed");
     startupDone = true;
   }
+  startupCondition.notify_all();
   if (startupCode == 0) {
     watch = 0;
     localScheduler->doEventLoop(&watch);
@@ -147,18 +150,12 @@ int petcam_start(unsigned short port, const char* path) {
   startupCode = -1;
   startupMessage.clear();
   worker = std::thread(serve, port, path ? path : "/petcam");
-  return (startupDone = false), lock.unlock(), [&]() {
-    std::unique_lock<std::mutex> waitLock(lifecycleMutex);
-    // The server thread signals startup through the condition-free short wait.
-    for (unsigned i = 0; i < 5000; ++i) {
-      if (startupDone) return startupCode;
-      waitLock.unlock();
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-      waitLock.lock();
-    }
+  startupCondition.wait_for(lock, std::chrono::seconds(5), [] { return startupDone; });
+  if (!startupDone) {
     startupMessage = "Timed out waiting for Live555 startup";
     return -1;
-  }();
+  }
+  return startupCode;
 }
 int petcam_push_nal(const unsigned char* data, std::size_t size, int keyframe) {
   if (!data || size == 0 || size > kMaxNal) return -1;
