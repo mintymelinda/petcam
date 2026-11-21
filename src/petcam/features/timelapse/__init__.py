@@ -1,1 +1,0 @@
-"""Timelapse capture feature."""
