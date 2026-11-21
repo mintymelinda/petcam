@@ -35,17 +35,29 @@ function fillModes(preferred = null) {
   $("mode").replaceChildren();
   if (!camera) return;
   const modes = modesFor(camera);
-  const defaultMode = preferred || [...modes].sort((a, b) => {
-    const rank = (mode) => {
-      const format = String(mode.format).toUpperCase();
-      return format === "H264" ? 0 : ["MJPG", "MJPEG", "JPEG"].includes(format) ? 1 : 2;
-    };
-    return rank(a) - rank(b) ||
-      Math.abs(a.width - 1280) + Math.abs(a.height - 720) -
-        (Math.abs(b.width - 1280) + Math.abs(b.height - 720)) ||
-      Math.abs(a.fps - 30) - Math.abs(b.fps - 30) ||
-      a.width - b.width || a.height - b.height || a.fps - b.fps;
-  })[0] || null;
+  const defaultMode =
+    preferred ||
+    [...modes].sort((a, b) => {
+      const rank = (mode) => {
+        const format = String(mode.format).toUpperCase();
+        return format === "H264"
+          ? 0
+          : ["MJPG", "MJPEG", "JPEG"].includes(format)
+            ? 1
+            : 2;
+      };
+      return (
+        rank(a) - rank(b) ||
+        Math.abs(a.width - 1280) +
+          Math.abs(a.height - 720) -
+          (Math.abs(b.width - 1280) + Math.abs(b.height - 720)) ||
+        Math.abs(a.fps - 30) - Math.abs(b.fps - 30) ||
+        a.width - b.width ||
+        a.height - b.height ||
+        a.fps - b.fps
+      );
+    })[0] ||
+    null;
   for (const mode of modes) {
     const option = document.createElement("option");
     option.value = JSON.stringify(mode);
