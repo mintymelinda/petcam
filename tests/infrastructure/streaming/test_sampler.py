@@ -112,7 +112,6 @@ def test_frame_server_rejects_unknown_commands(tmp_path):
                 "h264parse",
                 "capsfilter",
                 "v4l2h264dec",
-                "capsfilter",
                 "videorate",
                 "capsfilter",
                 "jpegenc",
