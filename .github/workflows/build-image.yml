@@ -1,0 +1,60 @@
+name: Build Raspberry Pi OS image
+
+on:
+  push:
+    branches:
+      - h264-only
+    paths:
+      - ".github/workflows/build-image.yml"
+      - "build-image.sh"
+      - "install.sh"
+      - "requirements.apt"
+      - "requirements.txt"
+      - "petcam"
+      - "src/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: petcam-image-h264-only
+  cancel-in-progress: true
+
+jobs:
+  build-image:
+    name: Build Raspberry Pi OS Trixie (ARMHF)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install host tools and verify native ARMHF execution
+        shell: bash
+        run: |
+          sudo dpkg --add-architecture armhf
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libc6:armhf \
+            curl \
+            xz-utils \
+            parted \
+            e2fsprogs \
+            util-linux
+
+          test -x /lib/ld-linux-armhf.so.3
+          /lib/ld-linux-armhf.so.3 --help >/dev/null
+          echo "Native ARMHF execution is available on this runner."
+
+      - name: Build image
+        run: sudo ./build-image.sh "$RUNNER_TEMP/petcam-image"
+
+      - name: Upload compressed Raspberry Pi OS image
+        uses: actions/upload-artifact@v4
+        with:
+          name: petcam-trixie-armhf-image
+          path: ${{ runner.temp }}/petcam-image/*.img.xz
+          if-no-files-found: error
+          retention-days: 14
