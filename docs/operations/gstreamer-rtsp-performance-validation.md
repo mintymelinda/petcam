@@ -9,8 +9,28 @@ This procedure validates the direct H.264 handoff introduced by the native captu
 - The shared RTSP media pipeline receives them through appsrc and packetizes them for RTSP clients.
 - There is no local RTP-over-UDP bridge, rtpjitterbuffer, or depayload/re-payload cycle between capture and RTSP.
 - The frame-consumer valve is before the frame-branch H.264 parser and decoder. When motion and timelapse are disabled, the valve drops buffers before that branch parses or decodes them.
+- The native H.264 frame branch requires the Raspberry Pi V4L2 hardware decoder (`v4l2h264dec`). It does not select or fall back to `avdec_h264`. The decoder and JPEG encoder negotiate a directly compatible raw format (for example, NV12 or I420), so the native H.264 branch needs no `videoconvert` stage.
 - The RTSP media factory remains shared, so multiple clients consume the same encoded media pipeline.
 - The native RTSP handoff queue is configured with a 100 MiB byte ceiling (`max-size-buffers=0`, `max-size-time=0`). This is a capacity limit, not a preallocation: memory is committed only as buffers accumulate. The queue remains downstream-leaky, so it discards the oldest queued access units if it reaches the ceiling rather than allowing latency to grow without bound. The separate frame-consumer queue remains small and leaky to keep motion/timelapse samples fresh.
+
+## Hardware sampler decoder validation
+
+The native H.264 sampler is hardware-decoding-only. Before treating a target as supported, verify the V4L2 decoder is exposed by the running kernel and GStreamer:
+
+```bash
+ls -l /dev/video*
+gst-inspect-1.0 v4l2h264dec
+```
+
+The minimal PetCam image does not install GStreamer command-line tools; install `gstreamer1.0-tools` temporarily when using `gst-inspect-1.0`.
+
+Enable motion or timelapse so the frame valve opens, restart the GStreamer worker, and inspect its log for:
+
+```text
+Persistent H.264 capture pipeline started ... with v4l2h264dec decoder
+```
+
+Confirm that fresh JPEG frames are available through the sampler socket and that motion/timelapse receives them. A successful RTSP stream alone is insufficient: it validates the encoded pass-through branch, not the hardware decoder branch. Do not add a software decoder fallback until this hardware path has been validated on the Pi Zero W.
 
 ## CPU measurement
 

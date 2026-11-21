@@ -287,9 +287,10 @@ class GStreamerOutputTests(unittest.TestCase):
         self.assertIn("valve name=frame_valve drop=true", pipeline)
         self.assertIn("videorate drop-only=true max-rate=1", pipeline)
         self.assertIn("appsink name=frame_sink", pipeline)
-        self.assertLess(pipeline.index("tee name=source_tee"), pipeline.index("avdec_h264"))
+        self.assertLess(pipeline.index("tee name=source_tee"), pipeline.index("v4l2h264dec"))
+        self.assertNotIn("videoconvert", pipeline)
         self.assertLess(pipeline.index("valve name=frame_valve"), pipeline.rindex("h264parse"))
-        for forbidden in ("rtph264pay", "udpsink", "rtspsrc", "x264enc", "avenc_h264", "ffmpeg"):
+        for forbidden in ("rtph264pay", "udpsink", "rtspsrc", "avdec_h264", "x264enc", "avenc_h264", "ffmpeg"):
             self.assertNotIn(forbidden, pipeline)
 
     def test_native_h264_rtsp_factory_uses_direct_appsrc_without_udp_round_trip(self):
@@ -320,18 +321,12 @@ class GStreamerOutputTests(unittest.TestCase):
             "tcp_port": 8556,
             "resolution": "1920x1080",
             "fps": 30,
-        }, "v4l2h264dec")
+        })
         self.assertIn("tcpclientsrc host=127.0.0.1 port=8556", pipeline)
         self.assertIn("valve name=frame_valve", pipeline)
         self.assertIn("v4l2h264dec", pipeline)
-
-    def test_native_h264_frame_branch_rejects_invalid_decoder(self):
-        with self.assertRaisesRegex(MODULE.GStreamerError, "Unsupported H.264 decoder"):
-            MODULE.build_native_capture_launch({
-                "device": "/dev/video0",
-                "resolution": "1280x720",
-                "fps": "30",
-            }, "bad-decoder")
+        self.assertNotIn("avdec_h264", pipeline)
+        self.assertNotIn("videoconvert", pipeline)
 
     def test_frame_consumers_are_detected_from_feature_configuration(self):
         with tempfile.TemporaryDirectory() as directory:

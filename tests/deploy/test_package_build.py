@@ -92,6 +92,17 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn('PACKAGE="$OUTPUT_DIR/petcam-armhf.tar.gz"', builder)
         self.assertNotIn("arm64", builder.lower())
 
+    def test_streaming_dependencies_omit_unused_software_codec_stacks(self):
+        requirements = (
+            ROOT / "deploy/features/streaming/requirements.apt"
+        ).read_text(encoding="utf-8")
+        self.assertIn("gstreamer1.0-plugins-base", requirements)
+        self.assertIn("gstreamer1.0-plugins-good", requirements)
+        self.assertIn("gstreamer1.0-plugins-bad", requirements)
+        self.assertNotIn("gstreamer1.0-tools", requirements)
+        self.assertNotIn("gstreamer1.0-plugins-ugly", requirements)
+        self.assertNotIn("gstreamer1.0-libav", requirements)
+
 
 if __name__ == "__main__":
     unittest.main()

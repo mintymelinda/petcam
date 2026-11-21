@@ -167,7 +167,7 @@ def check_gstreamer_runtime():
     required = (
         "v4l2src", "tcpclientsrc", "h264parse", "rtph264pay", "souphttpsrc",
         "multipartdemux", "jpegparse", "rtpjpegpay", "tee", "queue", "valve",
-        "videoconvert", "videorate", "jpegenc", "appsink", "appsrc",
+        "videorate", "jpegenc", "appsink", "appsrc", "v4l2h264dec",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:
@@ -236,10 +236,8 @@ def verify_native_h264_v4l2_caps(pipeline, camera_status):
         raise GStreamerError(f"V4L2 negotiated {media_type} {width}x{height} at {actual_fps:g} FPS, but PetCam requested H.264 {expected_width}x{expected_height} at {expected_fps:g} FPS.")
     logging.info("V4L2 negotiated native H.264 capture caps: %sx%s at %s FPS", width, height, actual_fps)
 
-def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
-    """Build one persistent H.264 source with direct RTSP and sampled-frame branches."""
-    if decoder_name not in {"v4l2h264dec", "avdec_h264"}:
-        raise GStreamerError(f"Unsupported H.264 decoder: {decoder_name!r}")
+def build_native_capture_launch(camera_status):
+    """Build one persistent H.264 source with hardware-decoded sampled frames."""
     resolution = camera_status.get("resolution", "")
     fps = camera_status.get("fps", "")
     if not re.fullmatch(r"[1-9][0-9]{0,4}x[1-9][0-9]{0,4}", str(resolution)):
@@ -271,7 +269,8 @@ def build_native_capture_launch(camera_status, decoder_name="avdec_h264"):
         "source_tee. ! queue max-size-buffers=4 leaky=downstream ! "
         "valve name=frame_valve drop=true ! h264parse ! "
         "video/x-h264,stream-format=byte-stream,alignment=au ! "
-        f"{decoder_name} name=frame_decoder ! videoconvert ! videorate drop-only=true max-rate=1 ! "
+        "v4l2h264dec name=frame_decoder ! "
+        "videorate drop-only=true max-rate=1 ! "
         "video/x-raw,framerate=1/1 ! jpegenc quality=85 ! "
         "appsink name=frame_sink emit-signals=true max-buffers=1 drop=true "
         "sync=false wait-on-eos=false"
@@ -438,15 +437,15 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         _set_status_state(current_state, "ready", current_state["source"])
 
     def start_capture_pipeline(status):
-        decoder_name = sampler.select_h264_decoder(Gst)
-        required = ("valve", "videoconvert", "videorate", "jpegenc", "appsink", decoder_name)
+        decoder_name = sampler.require_h264_hardware_decoder(Gst)
+        required = ("valve", "videorate", "jpegenc", "appsink", decoder_name)
         missing = [name for name in required if Gst.ElementFactory.find(name) is None]
         if missing:
             raise GStreamerError(
                 "Required H.264 frame-branch element(s) are missing: " + ", ".join(missing)
             )
 
-        pipeline = Gst.parse_launch(build_native_capture_launch(status, decoder_name))
+        pipeline = Gst.parse_launch(build_native_capture_launch(status))
         if pipeline is None:
             raise GStreamerError("GStreamer could not create the persistent H.264 capture pipeline.")
         frame_valve = pipeline.get_by_name("frame_valve")
@@ -456,9 +455,8 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         if frame_valve is None or frame_decoder is None or frame_sink is None or rtsp_sink is None:
             pipeline.set_state(Gst.State.NULL)
             raise GStreamerError("The persistent H.264 pipeline is missing a required branch element.")
-        if decoder_name == "v4l2h264dec":
-            frame_decoder.set_property("capture-io-mode", 2)
-            frame_decoder.set_property("output-io-mode", 2)
+        frame_decoder.set_property("capture-io-mode", 2)
+        frame_decoder.set_property("output-io-mode", 2)
 
         frame_sink.connect("new-sample", sample_ready)
         rtsp_sink.connect("new-sample", rtsp_sample_ready)
@@ -503,7 +501,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         _set_status_state(current_state, "ready", current_state["source"])
         logging.info(
             "Persistent H.264 capture pipeline started at %s %s FPS with %s decoder",
-            status.get("resolution"), status.get("fps"), decoder_name,
+            status.get("resolution"), status.get("fps"), "v4l2h264dec",
         )
 
     def reconcile_camera_source():
@@ -683,9 +681,8 @@ def main():
         if native_h264:
             from petcam.infrastructure.streaming import sampler
 
-            output["pipeline"] = build_native_capture_launch(
-                camera_status, sampler.select_h264_decoder(Gst)
-            )
+            sampler.require_h264_hardware_decoder(Gst)
+            output["pipeline"] = build_native_capture_launch(camera_status)
             output["rtsp_pipeline"] = build_native_rtsp_launch()
         print(json.dumps(output))
         return

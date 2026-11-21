@@ -125,13 +125,14 @@ def read_latest_frame(socket_path=SOCKET_PATH, timeout=3):
     return frame
 
 
-def rtp_codec_elements(encoding_name, h264_decoder="avdec_h264"):
+H264_HARDWARE_DECODER = "v4l2h264dec"
+
+
+def rtp_codec_elements(encoding_name):
     """Return the depayloader, parser, and decoder for an RTSP video codec."""
     codec = str(encoding_name or "").upper()
     if codec == "H264":
-        if h264_decoder not in {"v4l2h264dec", "avdec_h264"}:
-            raise SamplerError(f"Unsupported H.264 decoder: {h264_decoder!r}")
-        return "rtph264depay", "h264parse", h264_decoder
+        return "rtph264depay", "h264parse", H264_HARDWARE_DECODER
     if codec in {"JPEG", "MJPEG"}:
         return "rtpjpegdepay", "jpegparse", "jpegdec"
     raise SamplerError(f"Unsupported RTSP video encoding: {encoding_name!r}")
@@ -144,28 +145,37 @@ def rtp_pipeline_element_names(encoding_name, depay_name, parser_name, decoder_n
         names.append("capsfilter")
     names.append(decoder_name)
     if str(encoding_name).upper() == "H264":
-        names.append("capsfilter")
-    names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
+        names.extend(("videorate", "capsfilter", "jpegenc", "appsink"))
+    else:
+        names.extend(("videoconvert", "videorate", "capsfilter", "jpegenc", "appsink"))
     return tuple(names)
 
 
-def select_h264_decoder(Gst):
-    """Prefer V4L2 only when its configured decoder device is present."""
-    if Gst.ElementFactory.find("v4l2h264dec") is None:
-        return "avdec_h264"
+def require_h264_hardware_decoder(Gst):
+    """Require the Raspberry Pi V4L2 H.264 decoder and its device node."""
+    if Gst.ElementFactory.find(H264_HARDWARE_DECODER) is None:
+        raise SamplerError(
+            f"Required hardware H.264 decoder {H264_HARDWARE_DECODER} is unavailable."
+        )
 
-    decoder = Gst.ElementFactory.make("v4l2h264dec", "sampler-h264-decoder-probe")
+    decoder = Gst.ElementFactory.make(H264_HARDWARE_DECODER, "sampler-h264-decoder-probe")
     if decoder is None:
-        return "avdec_h264"
+        raise SamplerError(
+            f"GStreamer could not create the hardware H.264 decoder {H264_HARDWARE_DECODER}."
+        )
 
     try:
         device = decoder.get_property("device")
-        if device and Path(device).exists():
-            return "v4l2h264dec"
     except Exception as error:
-        logging.debug("Unable to probe the V4L2 H.264 decoder device: %s", error)
+        raise SamplerError(
+            f"Unable to inspect the {H264_HARDWARE_DECODER} device: {error}"
+        ) from error
 
-    return "avdec_h264"
+    if not device or not Path(device).exists():
+        raise SamplerError(
+            f"Hardware H.264 decoder device is unavailable: {device or 'no device configured'}."
+        )
+    return H264_HARDWARE_DECODER
 
 
 def _load_gstreamer():
@@ -189,6 +199,7 @@ def check_gstreamer_runtime():
         "h264parse",
         "jpegparse",
         "jpegdec",
+        H264_HARDWARE_DECODER,
         "videoconvert",
         "videorate",
         "capsfilter",
@@ -196,13 +207,9 @@ def check_gstreamer_runtime():
         "appsink",
     )
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
-    if (
-        select_h264_decoder(Gst) == "avdec_h264"
-        and Gst.ElementFactory.find("avdec_h264") is None
-    ):
-        missing.append("an H.264 decoder (v4l2h264dec or avdec_h264)")
     if missing:
         raise SamplerError("Required GStreamer sampler element(s) are missing: " + ", ".join(missing))
+    require_h264_hardware_decoder(Gst)
     return True
 
 
@@ -248,12 +255,8 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
             return
         encoding = structure.get_string("encoding-name")
         is_h264 = str(encoding).upper() == "H264"
-        h264_decoder = select_h264_decoder(Gst) if is_h264 else "avdec_h264"
-
         try:
-            depay_name, parser_name, decoder_name = rtp_codec_elements(
-                encoding, h264_decoder
-            )
+            depay_name, parser_name, decoder_name = rtp_codec_elements(encoding)
         except SamplerError as error:
             logging.error("%s", error)
             return
@@ -285,16 +288,13 @@ def build_pipeline(Gst, GstRtsp, frame_buffer, rtsp_url=RTSP_URL, on_codec=None,
         decoder = elements[index]
         index += 1
         if is_h264:
-            decoder_caps_filter = elements[index]
-            index += 1
-            decoder_caps_filter.set_property(
-                "caps", Gst.Caps.from_string("video/x-raw,format=I420")
-            )
-            if decoder_name == "v4l2h264dec":
-                decoder.set_property("capture-io-mode", 2)
-                decoder.set_property("output-io-mode", 2)
+            decoder.set_property("capture-io-mode", 2)
+            decoder.set_property("output-io-mode", 2)
 
-        converter, rate, caps_filter, encoder, sink = elements[index:]
+        if is_h264:
+            rate, caps_filter, encoder, sink = elements[index:]
+        else:
+            _converter, rate, caps_filter, encoder, sink = elements[index:]
         for element in elements:
             pipeline.add(element)
 
