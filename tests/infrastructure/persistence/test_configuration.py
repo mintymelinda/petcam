@@ -374,7 +374,7 @@ class TransactionalApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "petcam.conf"
             last_good = Path(directory) / "petcam.conf.last-good"
-            config.write_text(MODULE.serialize_config(MODULE.DEFAULTS), encoding="utf-8")
+            config.write_bytes(MODULE.serialize_config(MODULE.DEFAULTS))
             restart = mock.Mock()
 
             with mock.patch.object(
@@ -403,7 +403,7 @@ class TransactionalApplyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             config = Path(directory) / "petcam.conf"
             last_good = Path(directory) / "petcam.conf.last-good"
-            config.write_text(MODULE.serialize_config(MODULE.DEFAULTS), encoding="utf-8")
+            config.write_bytes(MODULE.serialize_config(MODULE.DEFAULTS))
             restart = mock.Mock(side_effect=RuntimeError("restart failed"))
 
             with self.assertRaisesRegex(RuntimeError, "restart failed"):
