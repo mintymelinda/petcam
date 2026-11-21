@@ -292,31 +292,41 @@ class TransactionalApplyTests(unittest.TestCase):
         ready.assert_not_called()
 
     def test_mjpeg_readiness_waits_for_rtsp_service_after_camera_stream(self):
-        with tempfile.TemporaryDirectory() as directory:
-            status = Path(directory) / "g-streamer-status.json"
-            status.write_text(json.dumps({
-                "state": "ready", "source": "mjpeg_copy", "updated_at": MODULE.time.time()
-            }), encoding="utf-8")
-            with mock.patch.object(MODULE, "GSTREAMER_STATUS_PATH", status):
-                with mock.patch.object(MODULE, "wait_for_stream", return_value=True) as camera_ready:
-                    self.assertTrue(MODULE.wait_for_configured_capture(
-                        {"FORMAT": "MJPEG", "PORT": "8081"}
-                    ))
-            camera_ready.assert_called_once_with(8081)
+        with (
+            mock.patch.object(MODULE, "wait_for_stream", return_value=True) as camera_ready,
+            mock.patch.object(MODULE, "wait_for_rtsp_service", return_value=True) as rtsp_ready,
+            mock.patch.object(MODULE.time, "time", return_value=1234.0),
+        ):
+            self.assertTrue(MODULE.wait_for_configured_capture(
+                {"FORMAT": "MJPEG", "PORT": "8081"}
+            ))
+        camera_ready.assert_called_once_with(8081)
+        rtsp_ready.assert_called_once_with("mjpeg_copy", started_after=1234.0)
 
     def test_mjpeg_readiness_fails_when_rtsp_source_does_not_match(self):
+        with (
+            mock.patch.object(MODULE, "wait_for_stream", return_value=True),
+            mock.patch.object(MODULE, "wait_for_rtsp_service", return_value=False) as rtsp_ready,
+            mock.patch.object(MODULE.time, "time", return_value=1234.0),
+        ):
+            self.assertFalse(MODULE.wait_for_configured_capture(
+                {"FORMAT": "MJPEG", "PORT": "8081"}
+            ))
+        rtsp_ready.assert_called_once_with("mjpeg_copy", started_after=1234.0)
+
+    def test_rtsp_readiness_rejects_a_stale_previous_camera_heartbeat(self):
         with tempfile.TemporaryDirectory() as directory:
             status = Path(directory) / "g-streamer-status.json"
             status.write_text(json.dumps({
-                "state": "ready", "source": "native_h264", "updated_at": MODULE.time.time()
+                "state": "ready", "source": "mjpeg_copy", "updated_at": 100.0
             }), encoding="utf-8")
             with (
                 mock.patch.object(MODULE, "GSTREAMER_STATUS_PATH", status),
-                mock.patch.object(MODULE, "CAPTURE_STARTUP_TIMEOUT", 0),
-                mock.patch.object(MODULE, "wait_for_stream", return_value=True),
+                mock.patch.object(MODULE, "CAPTURE_STARTUP_TIMEOUT", 0.01),
+                mock.patch.object(MODULE.time, "time", return_value=101.0),
             ):
-                self.assertFalse(MODULE.wait_for_configured_capture(
-                    {"FORMAT": "MJPEG", "PORT": "8081"}
+                self.assertFalse(MODULE.wait_for_rtsp_service(
+                    "mjpeg_copy", started_after=100.5
                 ))
 
     def test_auto_mode_uses_rtsp_readiness_when_native_h264_was_selected(self):
