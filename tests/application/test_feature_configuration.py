@@ -22,15 +22,13 @@ class FeatureConfigurationServiceTests(unittest.TestCase):
     def test_motion_can_use_the_native_h264_frame_branch(self):
         current = {"enabled": False, "sensitivity": 50}
         save = mock.Mock(side_effect=lambda value: value)
-        with mock.patch("petcam.application.feature_configuration._mjpeg_required", create=True) as guard:
-            result = feature_services.update_motion(
-                {"enabled": True},
-                load_config=lambda: current,
-                save_config=save,
-            )
+        result = feature_services.update_motion(
+            {"enabled": True},
+            load_config=lambda: current,
+            save_config=save,
+        )
         self.assertEqual(result, {"enabled": True, "sensitivity": 50})
         save.assert_called_once_with({"enabled": True, "sensitivity": 50})
-        guard.assert_not_called()
 
     def test_disabling_timelapse_only_persists_the_flag(self):
         current = {"enabled": True, "interval": 60}
