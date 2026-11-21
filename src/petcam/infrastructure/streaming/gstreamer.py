@@ -409,7 +409,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
                 buffer.unmap(mapped)
         return Gst.FlowReturn.OK
 
-    def count_capture_frame(_sink):
+    def count_capture_frame(_pad, _info):
         # Source capture is independent of whether an RTSP client is connected.
         current_state["last_capture_frame_at"] = time.monotonic()
         return Gst.FlowReturn.OK
@@ -590,7 +590,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             if rtsp_media["appsrc"] is appsrc:
                 rtsp_media["prepared"] = True
                 # A prepared RTSP media pipeline does not prove that the camera
-                # is delivering buffers. count_frame() marks publishing on data.
+                # is delivering frames. The payloader probe marks RTSP output on data.
 
         def media_unprepared(_media):
             if rtsp_media["appsrc"] is appsrc:
