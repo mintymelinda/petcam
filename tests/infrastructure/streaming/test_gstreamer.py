@@ -27,6 +27,46 @@ class GStreamerOutputTests(unittest.TestCase):
         self.assertEqual(server.address, "::")
         self.assertEqual(server.service, "8554")
 
+
+    def test_h264_access_units_are_retimestamps_for_the_rtsp_media_clock(self):
+        class Buffer:
+            def __init__(self):
+                self.pts = 100000
+                self.dts = 90000
+                self.duration = 33333
+
+            def copy(self):
+                duplicate = Buffer()
+                duplicate.pts = self.pts
+                duplicate.dts = self.dts
+                duplicate.duration = self.duration
+                return duplicate
+
+        class Sample:
+            def __init__(self):
+                self.buffer = Buffer()
+
+            def get_buffer(self):
+                return self.buffer
+
+        class AppSrc:
+            def emit(self, action, buffer):
+                self.action = action
+                self.buffer = buffer
+                return "ok"
+
+        appsrc = AppSrc()
+        fake_gst = type("FakeGst", (), {
+            "CLOCK_TIME_NONE": 999999,
+            "FlowReturn": type("FlowReturn", (), {"ERROR": "error"}),
+        })()
+        result = MODULE.push_h264_access_unit(appsrc, Sample(), fake_gst)
+        self.assertEqual(result, "ok")
+        self.assertEqual(appsrc.action, "push-buffer")
+        self.assertEqual(appsrc.buffer.pts, 999999)
+        self.assertEqual(appsrc.buffer.dts, 999999)
+        self.assertEqual(appsrc.buffer.duration, 999999)
+
     def test_native_h264_pipeline_uses_v4l2_and_rtp_packetization_only(self):
         pipeline = MODULE.build_gstreamer_launch({
             "native_h264": True,
