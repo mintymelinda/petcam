@@ -357,7 +357,11 @@ def run_loop() -> int:
             import logging
 
             logging.exception("PetCam health monitor failed")
-        time.sleep(max(1, HEALTH_POLL_SECONDS - (time.monotonic() - started)))
+        remaining = max(0.0, HEALTH_POLL_SECONDS - (time.monotonic() - started))
+        while _running and remaining > 0:
+            interval = min(1.0, remaining)
+            time.sleep(interval)
+            remaining -= interval
     return 0
 
 
