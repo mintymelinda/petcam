@@ -367,7 +367,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
     frame_thread.start()
 
     frame_state = {"enabled": frame_consumers_enabled(), "published": False}
-    current_state = {"value": "starting", "fps": None, "source": source}
+    current_state = {"value": "starting", "fps": None, "source": source, "last_capture_frame_at": None}
     active = {"pipeline": None, "bus": None, "signature": None, "started_at": None, "fallback_requested": False}
     camera_unavailable = {"value": False}
     rtsp_clients = []
@@ -409,7 +409,14 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
                 buffer.unmap(mapped)
         return Gst.FlowReturn.OK
 
-    def count_frame(_pad, _info):
+    def count_capture_frame(_sink):
+        # Source capture is independent of whether an RTSP client is connected.
+        current_state["last_capture_frame_at"] = time.monotonic()
+        return Gst.FlowReturn.OK
+
+    def count_rtsp_frame(_pad, _info):
+        # "Publishing" means encoded frames reached the RTSP media payloader,
+        # not merely that the camera is feeding the local tee/appsink branch.
         now = time.monotonic()
         frame_times.append(now)
         current_state["last_frame_at"] = now
@@ -434,6 +441,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         frame_times.clear()
         current_state["fps"] = None
         current_state["last_frame_at"] = None
+        current_state["last_capture_frame_at"] = None
         _set_status_state(current_state, "ready", current_state["source"])
 
     def start_capture_pipeline(status):
@@ -463,7 +471,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         frame_valve.set_property("drop", not frame_state["enabled"])
         sink_pad = rtsp_sink.get_static_pad("sink")
         if sink_pad is not None:
-            sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_frame)
+            sink_pad.add_probe(Gst.PadProbeType.BUFFER, count_capture_frame)
 
         result = pipeline.set_state(Gst.State.PLAYING)
         if result == Gst.StateChangeReturn.FAILURE:
@@ -573,6 +581,10 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             logging.error("Native RTSP media pipeline is missing its appsrc bridge")
             return
         rtsp_media.update(appsrc=appsrc, prepared=False)
+        payloader = element.get_by_name("pay0")
+        payloader_pad = payloader.get_static_pad("sink") if payloader is not None else None
+        if payloader_pad is not None:
+            payloader_pad.add_probe(Gst.PadProbeType.BUFFER, count_rtsp_frame)
 
         def media_prepared(_media):
             if rtsp_media["appsrc"] is appsrc:
@@ -583,6 +595,10 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
         def media_unprepared(_media):
             if rtsp_media["appsrc"] is appsrc:
                 rtsp_media.update(appsrc=None, prepared=False)
+                current_state["fps"] = None
+                current_state["last_frame_at"] = None
+                frame_times.clear()
+                _set_status_state(current_state, "ready", current_state["source"])
 
         media.connect("prepared", media_prepared)
         media.connect("unprepared", media_unprepared)
@@ -622,7 +638,7 @@ def _run_native_h264_server(GLib, Gst, GstRtspServer, server, mounts, camera_sta
             active["pipeline"] is not None
             and not active["fallback_requested"]
             and active["started_at"] is not None
-            and now - (last_frame_at or active["started_at"]) > 8.0
+            and now - (current_state.get("last_capture_frame_at") or active["started_at"]) > 8.0
         ):
             active["fallback_requested"] = request_camera_fallback(
                 load_camera_status(), "no H.264 video buffers received within eight seconds"
