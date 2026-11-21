@@ -343,7 +343,7 @@ def run_stream(config: dict, stdscr) -> int:
     STREAM_STATUS.unlink(missing_ok=True)
     environment = os.environ.copy()
     environment["PETCAM_RUN"] = str(RUN_DIR)
-    gstreamer_process = None
+    streaming_process = None
     camera_marker_owned = False
 
     try:
@@ -370,30 +370,30 @@ def run_stream(config: dict, stdscr) -> int:
         os.replace(temporary, CAMERA_STATUS)
         camera_marker_owned = True
 
-        gstreamer_process = subprocess.Popen(
-            [sys.executable, "-m", "petcam.infrastructure.streaming.gstreamer"],
+        streaming_process = subprocess.Popen(
+            [sys.executable, "-m", "petcam.infrastructure.streaming.live555"],
             env=environment, stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         start_deadline = time.monotonic() + 20
         while time.monotonic() < start_deadline:
-            if gstreamer_process.poll() is not None:
-                raise RuntimeError("The H.264 RTSP server exited during startup.")
+            if streaming_process.poll() is not None:
+                raise RuntimeError("The Live555 H.264 RTSP server exited during startup.")
             status = _read_status()
             if status.get("state") in {"ready", "publishing"}:
                 break
             if status.get("state") == "error":
-                raise RuntimeError(status.get("message") or "The H.264 RTSP server failed.")
+                raise RuntimeError(status.get("message") or "The Live555 H.264 RTSP server failed.")
             time.sleep(0.2)
         else:
-            raise RuntimeError("The H.264 RTSP server did not become ready.")
+            raise RuntimeError("The Live555 H.264 RTSP server did not become ready.")
 
         url = f"rtsp://{socket.getfqdn()}:{RTSP_PORT}{RTSP_PATH}"
         metrics = ResourceMetrics()
         stdscr.timeout(1000)
         while True:
-            if gstreamer_process.poll() is not None:
-                raise RuntimeError("The H.264 RTSP server stopped unexpectedly.")
+            if streaming_process.poll() is not None:
+                raise RuntimeError("The Live555 H.264 RTSP server stopped unexpectedly.")
             status = _read_status()
             resources = metrics.sample()
             height, width = stdscr.getmaxyx()
@@ -420,7 +420,7 @@ def run_stream(config: dict, stdscr) -> int:
             if key in (ord("q"), ord("Q"), 27):
                 return 0
     finally:
-        _terminate(gstreamer_process)
+        _terminate(streaming_process)
         if camera_marker_owned:
             try:
                 marker = json.loads(CAMERA_STATUS.read_text(encoding="utf-8"))
