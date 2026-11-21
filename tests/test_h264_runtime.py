@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-import socket
 import unittest
 
-from petcam.cli import (
-    camera_modes,
-    inventory_signature,
-    parse_short_config,
-)
+from petcam.cli import camera_modes, inventory_signature, parse_short_config
 from petcam.configuration import ConfigurationError, validate_config
 from petcam.domain.camera.capabilities import parse_csi_cameras, parse_v4l2_modes
-from petcam.infrastructure.camera.csi import H264TCPBridge
+from petcam.infrastructure.camera.h264 import AnnexBNalFramer, H264AccessUnitFramer
 from petcam.infrastructure.streaming.gstreamer import (
     GStreamerError,
     build_rtsp_launch,
@@ -20,16 +15,10 @@ from petcam.infrastructure.streaming.gstreamer import (
 
 class ShortConfigurationTests(unittest.TestCase):
     def test_parses_usb_shortcut(self):
-        self.assertEqual(
-            parse_short_config("USB;1920x1080;30"),
-            ("USB", "1920x1080", 30.0),
-        )
+        self.assertEqual(parse_short_config("USB;1920x1080;30"), ("USB", "1920x1080", 30.0))
 
     def test_parses_csi_shortcut_case_insensitively(self):
-        self.assertEqual(
-            parse_short_config("csi;1280x720;29.97"),
-            ("CSI", "1280x720", 29.97),
-        )
+        self.assertEqual(parse_short_config("csi;1280x720;29.97"), ("CSI", "1280x720", 29.97))
 
     def test_rejects_invalid_shortcut(self):
         for value in ("USB;1920x1080", "MJPEG;1280x720;30", "USB;1280x720;0"):
@@ -44,10 +33,7 @@ class ShortConfigurationTests(unittest.TestCase):
             "resolution": "1280x720",
             "fps": 30,
         })
-        self.assertEqual(
-            set(config),
-            {"source", "device", "physical_path", "resolution", "fps"},
-        )
+        self.assertEqual(set(config), {"source", "device", "physical_path", "resolution", "fps"})
 
 
 class CameraModeTests(unittest.TestCase):
@@ -82,22 +68,16 @@ class CameraModeTests(unittest.TestCase):
 """
         cameras = parse_csi_cameras(output)
         self.assertEqual(len(cameras), 1)
-        self.assertEqual(
-            cameras[0]["modes"],
-            [{"width": 1920, "height": 1080, "fps": 30.0}],
-        )
+        self.assertEqual(cameras[0]["modes"], [{"width": 1920, "height": 1080, "fps": 30.0}])
 
     def test_inventory_signature_changes_when_camera_list_changes(self):
         first = [{"device": "/dev/video0", "physical_path": "usb-a", "modes": []}]
         second = first + [{"device": "/dev/video2", "physical_path": "usb-b", "modes": []}]
-        self.assertNotEqual(
-            inventory_signature("USB", first),
-            inventory_signature("USB", second),
-        )
+        self.assertNotEqual(inventory_signature("USB", first), inventory_signature("USB", second))
 
 
 class H264PipelineTests(unittest.TestCase):
-    def test_usb_source_is_native_h264_without_decoder(self):
+    def test_usb_source_passes_native_h264_access_units_without_parser(self):
         launch = build_source_launch({
             "native_h264": True,
             "backend": "usb",
@@ -107,7 +87,9 @@ class H264PipelineTests(unittest.TestCase):
         })
         self.assertIn("v4l2src", launch)
         self.assertIn("video/x-h264", launch)
-        self.assertIn("h264parse", launch)
+        self.assertIn("stream-format=byte-stream", launch)
+        self.assertIn("alignment=au", launch)
+        self.assertNotIn("h264parse", launch)
         self.assertNotIn("jpeg", launch.lower())
         self.assertNotIn("decode", launch.lower())
         self.assertNotIn("videoconvert", launch.lower())
@@ -122,23 +104,21 @@ class H264PipelineTests(unittest.TestCase):
         })
         self.assertIn("framerate=2997/100", launch)
 
-    def test_csi_source_is_native_h264_without_decoder(self):
-        launch = build_source_launch({
-            "native_h264": True,
-            "backend": "csi",
-            "tcp_port": 8556,
-            "resolution": "1280x720",
-            "fps": 30,
-        })
-        self.assertIn("tcpclientsrc", launch)
-        self.assertIn("h264parse", launch)
-        self.assertNotIn("decode", launch.lower())
+    def test_csi_is_not_routed_through_a_generic_tcp_pipeline(self):
+        with self.assertRaisesRegex(GStreamerError, "complete H.264 access units"):
+            build_source_launch({
+                "native_h264": True,
+                "backend": "csi",
+                "resolution": "1280x720",
+                "fps": 30,
+            })
 
-    def test_rtsp_factory_only_packetizes_h264(self):
+    def test_rtsp_factory_packetizes_access_units_without_parser(self):
         launch = build_rtsp_launch()
         self.assertIn("appsrc", launch)
-        self.assertIn("h264parse", launch)
+        self.assertIn("video/x-h264,stream-format=byte-stream,alignment=au", launch)
         self.assertIn("rtph264pay", launch)
+        self.assertNotIn("h264parse", launch)
         self.assertNotIn("rtpjpegpay", launch)
         self.assertNotIn("decode", launch.lower())
 
@@ -147,22 +127,37 @@ class H264PipelineTests(unittest.TestCase):
             build_source_launch({"native_h264": False, "backend": "usb"})
 
 
-class CsiBridgeTests(unittest.TestCase):
-    def test_encoder_waits_for_rtsp_source_connection_and_forwards_bytes(self):
-        bridge = H264TCPBridge(port=0)
-        bridge.start()
-        client = None
-        try:
-            self.assertFalse(bridge.wait_for_client(timeout=0.01))
-            port = bridge.listener.getsockname()[1]
-            client = socket.create_connection(("127.0.0.1", port), timeout=1)
-            self.assertTrue(bridge.wait_for_client(timeout=1))
-            bridge.publish(b"\\x00\\x00\\x00\\x01\\x67H264")
-            self.assertEqual(client.recv(9), b"\\x00\\x00\\x00\\x01\\x67H264")
-        finally:
-            if client is not None:
-                client.close()
-            bridge.stop()
+class H264AccessUnitFramingTests(unittest.TestCase):
+    @staticmethod
+    def nal(header: int, payload: bytes = b"\x80") -> bytes:
+        return b"\x00\x00\x00\x01" + bytes([header]) + payload
+
+    def test_annex_b_framer_handles_split_start_codes_and_final_nal(self):
+        sps = self.nal(0x67, b"\x42\x00\x1e")
+        pps = self.nal(0x68, b"\xce\x06")
+        framer = AnnexBNalFramer()
+        stream = sps + pps
+        output = []
+        output.extend(framer.feed(stream[:7]))
+        output.extend(framer.feed(stream[7:13]))
+        output.extend(framer.feed(stream[13:]))
+        output.extend(framer.flush())
+        self.assertEqual(output, [sps, pps])
+
+    def test_access_units_split_at_first_slice_and_keep_parameter_sets(self):
+        sps = self.nal(0x67, b"\x42\x00\x1e")
+        pps = self.nal(0x68, b"\xce\x06")
+        aud = self.nal(0x09, b"\xf0")
+        idr = self.nal(0x65)
+        first_p = self.nal(0x41)
+        second_p = self.nal(0x41)
+        framer = H264AccessUnitFramer()
+        stream = sps + pps + aud + idr + first_p + second_p
+        output = []
+        for offset in range(0, len(stream), 5):
+            output.extend(framer.feed(stream[offset:offset + 5]))
+        output.extend(framer.flush())
+        self.assertEqual(output, [sps + pps + aud + idr, first_p, second_p])
 
 
 if __name__ == "__main__":

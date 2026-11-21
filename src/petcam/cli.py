@@ -343,49 +343,32 @@ def run_stream(config: dict, stdscr) -> int:
     STREAM_STATUS.unlink(missing_ok=True)
     environment = os.environ.copy()
     environment["PETCAM_RUN"] = str(RUN_DIR)
-    capture_process = None
     gstreamer_process = None
     camera_marker_owned = False
 
     try:
-        if config["source"] == "CSI":
-            capture_command = [
-                sys.executable, "-m", "petcam.infrastructure.camera.csi",
-                "--camera", str(config["camera"]),
-                "--resolution", config["resolution"],
-                "--fps", str(config["fps"]),
-            ]
-            capture_process = subprocess.Popen(
-                capture_command, env=environment, stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        marker = {
+            "pid": os.getpid(),
+            "backend": config["source"].lower(),
+            "resolution": config["resolution"],
+            "fps": config["fps"],
+            "native_h264": True,
+        }
+        if config["source"] == "USB":
+            marker.update(
+                device=config["device"],
+                physical_path=config.get("physical_path", ""),
             )
-            marker_deadline = time.monotonic() + 20
-            while time.monotonic() < marker_deadline:
-                if capture_process.poll() is not None:
-                    raise RuntimeError("CSI H.264 capture exited before it could start.")
-                try:
-                    marker = json.loads(CAMERA_STATUS.read_text(encoding="utf-8"))
-                except (OSError, ValueError):
-                    marker = {}
-                if marker.get("pid") == capture_process.pid and marker.get("native_h264") is True:
-                    break
-                time.sleep(0.1)
-            else:
-                raise RuntimeError("CSI H.264 capture did not publish its hardware-encoder status.")
         else:
-            marker = {
-                "pid": os.getpid(),
-                "backend": "usb",
-                "device": config["device"],
-                "physical_path": config.get("physical_path", ""),
-                "resolution": config["resolution"],
-                "fps": config["fps"],
-                "native_h264": True,
-            }
-            temporary = CAMERA_STATUS.with_name(CAMERA_STATUS.name + ".tmp")
-            temporary.write_text(json.dumps(marker) + "\n", encoding="utf-8")
-            os.replace(temporary, CAMERA_STATUS)
-            camera_marker_owned = True
+            marker.update(
+                camera=config["camera"],
+                sensor=config.get("sensor", ""),
+                device_path=config.get("device_path", ""),
+            )
+        temporary = CAMERA_STATUS.with_name(CAMERA_STATUS.name + ".tmp")
+        temporary.write_text(json.dumps(marker) + "\n", encoding="utf-8")
+        os.replace(temporary, CAMERA_STATUS)
+        camera_marker_owned = True
 
         gstreamer_process = subprocess.Popen(
             [sys.executable, "-m", "petcam.infrastructure.streaming.gstreamer"],
@@ -411,8 +394,6 @@ def run_stream(config: dict, stdscr) -> int:
         while True:
             if gstreamer_process.poll() is not None:
                 raise RuntimeError("The H.264 RTSP server stopped unexpectedly.")
-            if capture_process is not None and capture_process.poll() is not None:
-                raise RuntimeError("CSI H.264 capture stopped unexpectedly.")
             status = _read_status()
             resources = metrics.sample()
             height, width = stdscr.getmaxyx()
@@ -440,7 +421,6 @@ def run_stream(config: dict, stdscr) -> int:
                 return 0
     finally:
         _terminate(gstreamer_process)
-        _terminate(capture_process)
         if camera_marker_owned:
             try:
                 marker = json.loads(CAMERA_STATUS.read_text(encoding="utf-8"))

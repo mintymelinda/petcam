@@ -7,12 +7,18 @@ import json
 import logging
 import os
 import re
+import shutil
 import signal
 import socket
+import subprocess
+import threading
 import time
 from collections import deque
 from fractions import Fraction
 from pathlib import Path
+
+from ..camera.discovery import detect_hardware_h264_encoder
+from ..camera.h264 import H264AccessUnitFramer
 
 RUN_DIR = Path(os.environ.get("PETCAM_RUN", f"/tmp/petcam-{os.getuid()}"))
 CAMERA_STATUS = RUN_DIR / "camera-status.json"
@@ -52,42 +58,34 @@ def _validate_mode(status: dict) -> tuple[int, int, float]:
 
 
 def build_source_launch(status: dict) -> str:
-    """Build an H.264-only source pipeline; no decoder or fallback is present."""
+    """Build the USB source path without parsing or decoding the encoded H.264."""
     if status.get("native_h264") is not True:
         raise GStreamerError("PetCam accepts only native H.264 camera sources.")
+    if status.get("backend") != "usb":
+        raise GStreamerError("CSI capture supplies complete H.264 access units directly.")
     width, height, fps = _validate_mode(status)
-    common = (
-        " ! h264parse config-interval=-1 ! "
-        "video/x-h264,stream-format=byte-stream,alignment=au ! "
+    device = str(status.get("device", ""))
+    if not re.fullmatch(r"/dev/(?:video[0-9]+|v4l/by-id/[A-Za-z0-9._:+-]+)", device):
+        raise GStreamerError("Configured USB camera device path is invalid.")
+    escaped_device = device.replace("\\", "\\\\").replace('"', '\\"')
+    frame_rate = Fraction(str(fps)).limit_denominator(1001)
+    return (
+        f'v4l2src name=camera_source device="{escaped_device}" do-timestamp=true'
+        " ! "
+        f"video/x-h264,width={width},height={height},"
+        f"framerate={frame_rate.numerator}/{frame_rate.denominator},"
+        "stream-format=byte-stream,alignment=au ! "
         "appsink name=rtsp_sink emit-signals=true max-buffers=2 drop=true "
         "sync=false wait-on-eos=false"
     )
-    if status.get("backend") == "usb":
-        device = str(status.get("device", ""))
-        if not re.fullmatch(r"/dev/(?:video[0-9]+|v4l/by-id/[A-Za-z0-9._:+-]+)", device):
-            raise GStreamerError("Configured USB camera device path is invalid.")
-        escaped_device = device.replace("\\", "\\\\").replace('"', '\\"')
-        frame_rate = Fraction(str(fps)).limit_denominator(1001)
-        return (
-            f'v4l2src name=camera_source device="{escaped_device}" do-timestamp=true'
-            f" ! video/x-h264,width={width},height={height},framerate={frame_rate.numerator}/{frame_rate.denominator}"
-            + common
-        )
-    if status.get("backend") == "csi":
-        port = status.get("tcp_port")
-        if not isinstance(port, int) or not 1 <= port <= 65535:
-            raise GStreamerError("Configured CSI H.264 bridge port is invalid.")
-        return f"tcpclientsrc host=127.0.0.1 port={port} do-timestamp=true" + common
-    raise GStreamerError("Configured camera source must be USB or CSI.")
 
 
 def build_rtsp_launch() -> str:
-    """Bridge encoded H.264 access units into the RTSP payloader unchanged."""
+    """Packetize complete encoded H.264 access units directly into RTP."""
     return (
         "( appsrc name=rtsp_source is-live=true format=time do-timestamp=true "
         "block=false max-bytes=1048576 "
         "caps=video/x-h264,stream-format=byte-stream,alignment=au ! "
-        "h264parse config-interval=-1 ! "
         "rtph264pay name=pay0 pt=96 config-interval=1 )"
     )
 
@@ -125,8 +123,9 @@ def _load_gstreamer():
 
 
 def check_gstreamer_runtime(Gst, backend: str) -> None:
-    required = ["h264parse", "appsink", "appsrc", "rtph264pay"]
-    required.append("v4l2src" if backend == "usb" else "tcpclientsrc")
+    required = ["appsink", "appsrc", "rtph264pay"]
+    if backend == "usb":
+        required.append("v4l2src")
     missing = [name for name in required if Gst.ElementFactory.find(name) is None]
     if missing:
         raise GStreamerError("Missing H.264 GStreamer element(s): " + ", ".join(missing))
@@ -139,48 +138,96 @@ def _hostname() -> str:
         return "<device-hostname>"
 
 
-def run_server(camera_status: dict) -> int:
-    GLib, Gst, GstRtspServer = _load_gstreamer()
-    check_gstreamer_runtime(Gst, str(camera_status.get("backend")))
-
+def _csi_capture_command(camera_status: dict) -> list[str]:
+    width, height, fps = _validate_mode(camera_status)
     try:
-        source_pipeline = Gst.parse_launch(build_source_launch(camera_status))
-    except Exception as error:
-        raise GStreamerError(f"Unable to construct the H.264 camera pipeline: {error}") from error
-    if source_pipeline is None:
-        raise GStreamerError("GStreamer could not create the H.264 camera pipeline.")
-    source_sink = source_pipeline.get_by_name("rtsp_sink")
-    if source_sink is None:
-        raise GStreamerError("H.264 source pipeline is missing its appsink.")
+        camera = int(camera_status.get("camera"))
+    except (TypeError, ValueError) as error:
+        raise GStreamerError("Configured CSI camera index is invalid.") from error
+    if camera < 0:
+        raise GStreamerError("Configured CSI camera index is invalid.")
+    if not shutil.which("rpicam-vid"):
+        raise GStreamerError("rpicam-vid is missing; install rpicam-apps-lite.")
+    encoder = detect_hardware_h264_encoder()
+    if encoder.get("available") is not True:
+        raise GStreamerError(
+            "No Raspberry Pi hardware H.264 encoder was detected. "
+            "CSI capture will not use software encoding."
+        )
+    return [
+        "rpicam-vid", "--camera", str(camera), "--timeout", "0",
+        "--nopreview", "--codec", "h264", "--inline",
+        "--width", str(width), "--height", str(height),
+        "--framerate", str(fps), "--output", "-",
+    ]
 
+
+def run_server(camera_status: dict) -> int:
+    backend = str(camera_status.get("backend", ""))
+    GLib, Gst, GstRtspServer = _load_gstreamer()
+    check_gstreamer_runtime(Gst, backend)
+
+    source_pipeline = None
+    source_sink = None
+    source_bus = None
+    csi_process = None
+    csi_reader = None
+    csi_stop = threading.Event()
+    csi_error = {"message": ""}
     loop = GLib.MainLoop()
     active_media = {"appsrc": None, "prepared": False}
     output_times: deque[float] = deque()
     capture_state = {"last_frame": None}
     state = {"value": "starting", "fps": None}
 
+    def push_access_unit(data: bytes) -> None:
+        capture_state["last_frame"] = time.monotonic()
+        if state["value"] == "starting":
+            state["value"] = "ready"
+        appsrc = active_media["appsrc"]
+        if appsrc is None or not active_media["prepared"]:
+            return
+        if appsrc.get_property("current-level-bytes") >= 1048576:
+            return
+        buffer = Gst.Buffer.new_allocate(None, len(data), None)
+        buffer.fill(0, data)
+        result = appsrc.emit("push-buffer", buffer)
+        if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
+            logging.debug("Dropping an H.264 access unit after appsrc returned %s", result)
+
     def push_sample(sink):
         sample = sink.emit("pull-sample")
         if sample is None:
             return Gst.FlowReturn.ERROR
+        buffer = sample.get_buffer()
+        if buffer is None:
+            return Gst.FlowReturn.ERROR
         capture_state["last_frame"] = time.monotonic()
+        if state["value"] == "starting":
+            state["value"] = "ready"
         appsrc = active_media["appsrc"]
         if appsrc is not None and active_media["prepared"]:
             if appsrc.get_property("current-level-bytes") < 1048576:
-                source_buffer = sample.get_buffer()
-                if source_buffer is not None:
-                    buffer = source_buffer.copy()
-                    buffer.pts = Gst.CLOCK_TIME_NONE
-                    buffer.dts = Gst.CLOCK_TIME_NONE
-                    buffer.duration = Gst.CLOCK_TIME_NONE
-                    result = appsrc.emit("push-buffer", buffer)
-                    if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
-                        logging.debug("Dropping an H.264 access unit after appsrc returned %s", result)
-        if state["value"] == "starting":
-            state["value"] = "ready"
+                encoded = buffer.copy()
+                encoded.pts = Gst.CLOCK_TIME_NONE
+                encoded.dts = Gst.CLOCK_TIME_NONE
+                encoded.duration = Gst.CLOCK_TIME_NONE
+                result = appsrc.emit("push-buffer", encoded)
+                if result not in (Gst.FlowReturn.OK, Gst.FlowReturn.FLUSHING):
+                    logging.debug("Dropping an H.264 access unit after appsrc returned %s", result)
         return Gst.FlowReturn.OK
 
-    source_sink.connect("new-sample", push_sample)
+    if backend == "usb":
+        try:
+            source_pipeline = Gst.parse_launch(build_source_launch(camera_status))
+        except Exception as error:
+            raise GStreamerError(f"Unable to construct the USB H.264 pipeline: {error}") from error
+        if source_pipeline is None:
+            raise GStreamerError("GStreamer could not create the USB H.264 pipeline.")
+        source_sink = source_pipeline.get_by_name("rtsp_sink")
+        if source_sink is None:
+            raise GStreamerError("USB H.264 source pipeline is missing its appsink.")
+        source_sink.connect("new-sample", push_sample)
 
     server = GstRtspServer.RTSPServer()
     server.set_address("0.0.0.0")
@@ -232,17 +279,15 @@ def run_server(camera_status: dict) -> int:
     if server.attach(None) == 0:
         raise GStreamerError("GStreamer RTSP server could not attach to the main loop.")
 
-    source_bus = source_pipeline.get_bus()
-    result = source_pipeline.set_state(Gst.State.PLAYING)
-    if result == Gst.StateChangeReturn.FAILURE:
-        raise GStreamerError("GStreamer could not start the H.264 camera source.")
-    state_result, _current, _pending = source_pipeline.get_state(5 * Gst.SECOND)
-    if state_result == Gst.StateChangeReturn.FAILURE:
-        raise GStreamerError("The H.264 camera source failed to enter PLAYING.")
+    if source_pipeline is not None:
+        source_bus = source_pipeline.get_bus()
+        result = source_pipeline.set_state(Gst.State.PLAYING)
+        if result == Gst.StateChangeReturn.FAILURE:
+            raise GStreamerError("GStreamer could not start the USB H.264 camera source.")
+        state_result, _current, _pending = source_pipeline.get_state(5 * Gst.SECOND)
+        if state_result == Gst.StateChangeReturn.FAILURE:
+            raise GStreamerError("The USB H.264 camera source failed to enter PLAYING.")
 
-    def verify_usb_caps() -> None:
-        if camera_status.get("backend") != "usb":
-            return
         source = source_pipeline.get_by_name("camera_source")
         pad = source.get_static_pad("src") if source is not None else None
         caps = None
@@ -253,7 +298,8 @@ def run_server(camera_status: dict) -> int:
                 break
             time.sleep(0.1)
         if caps is None or caps.is_empty():
-            raise GStreamerError("The USB camera did not negotiate capture caps.")
+            source_pipeline.set_state(Gst.State.NULL)
+            raise GStreamerError("The USB camera did not negotiate H.264 capture caps.")
         structure = caps.get_structure(0)
         try:
             media_type = structure.get_name()
@@ -261,7 +307,10 @@ def run_server(camera_status: dict) -> int:
             height = int(structure.get_value("height"))
             rate_num, rate_den = structure.get_fraction("framerate")[1:]
             actual_fps = rate_num / rate_den
+            stream_format = structure.get_string("stream-format")
+            alignment = structure.get_string("alignment")
         except (AttributeError, TypeError, ValueError, ZeroDivisionError) as error:
+            source_pipeline.set_state(Gst.State.NULL)
             raise GStreamerError("The USB camera returned incomplete H.264 capture caps.") from error
         expected_width, expected_height, expected_fps = _validate_mode(camera_status)
         if (
@@ -269,39 +318,84 @@ def run_server(camera_status: dict) -> int:
             or width != expected_width
             or height != expected_height
             or abs(actual_fps - expected_fps) >= 0.1
+            or stream_format != "byte-stream"
+            or alignment != "au"
         ):
+            source_pipeline.set_state(Gst.State.NULL)
             raise GStreamerError(
-                f"USB camera negotiated {media_type} {width}x{height} at {actual_fps:g} FPS; "
-                f"requested H.264 {expected_width}x{expected_height} at {expected_fps:g} FPS."
+                f"USB camera negotiated {media_type} {width}x{height} at {actual_fps:g} FPS "
+                f"({stream_format}/{alignment}); requested byte-stream H.264 access units "
+                f"{expected_width}x{expected_height} at {expected_fps:g} FPS."
             )
 
-    verify_usb_caps()
     logging.info("H.264 RTSP endpoint: rtsp://%s:%s%s", _hostname(), RTSP_PORT, RTSP_PATH)
     write_status("starting", camera_status)
 
-    def heartbeat():
-        message = source_bus.timed_pop_filtered(
-            0, Gst.MessageType.ERROR | Gst.MessageType.EOS
+    started_at = time.monotonic()
+
+    def csi_reader() -> None:
+        assert csi_process is not None and csi_process.stdout is not None
+        framer = H264AccessUnitFramer()
+        try:
+            while not csi_stop.is_set():
+                chunk = csi_process.stdout.read(65536)
+                if not chunk:
+                    break
+                for access_unit in framer.feed(chunk):
+                    push_access_unit(access_unit)
+            for access_unit in framer.flush():
+                push_access_unit(access_unit)
+            if not csi_stop.is_set():
+                csi_error["message"] = "rpicam-vid stopped producing H.264 data."
+        except Exception as error:
+            csi_error["message"] = str(error)
+            logging.exception("CSI H.264 access-unit framing failed")
+
+    if backend == "csi":
+        command = _csi_capture_command(camera_status)
+        csi_process = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            bufsize=0,
         )
-        if message is not None:
-            if message.type == Gst.MessageType.ERROR:
-                error, debug = message.parse_error()
-                detail = f" ({debug})" if debug else ""
-                text = f"H.264 camera source failed: {error}{detail}"
-            else:
-                text = "H.264 camera source reached end-of-stream."
-            logging.error(text)
-            write_status("error", camera_status, message=text)
-            loop.quit()
-            return False
+        csi_reader = threading.Thread(target=csi_reader, name="petcam-csi-h264-reader", daemon=True)
+        csi_reader.start()
+
+    def heartbeat():
+        if source_bus is not None:
+            message = source_bus.timed_pop_filtered(
+                0, Gst.MessageType.ERROR | Gst.MessageType.EOS
+            )
+            if message is not None:
+                if message.type == Gst.MessageType.ERROR:
+                    error, debug = message.parse_error()
+                    detail = f" ({debug})" if debug else ""
+                    text = f"USB H.264 camera source failed: {error}{detail}"
+                else:
+                    text = "USB H.264 camera source reached end-of-stream."
+                logging.error(text)
+                write_status("error", camera_status, message=text)
+                loop.quit()
+                return False
+
+        if csi_process is not None:
+            code = csi_process.poll()
+            if code is not None:
+                text = csi_error["message"] or f"rpicam-vid exited with status {code}."
+                logging.error(text)
+                write_status("error", camera_status, message=text)
+                loop.quit()
+                return False
 
         now = time.monotonic()
         last_frame = capture_state["last_frame"]
         if last_frame is not None and now - last_frame > 3:
             output_times.clear()
             state.update(value="ready", fps=None)
-        if last_frame is None and now - started_at[0] > 12:
-            text = "No H.264 frames received from the selected camera."
+        if last_frame is None and now - started_at > 12:
+            text = "No H.264 access units received from the selected camera."
             logging.error(text)
             write_status("error", camera_status, message=text)
             loop.quit()
@@ -309,7 +403,6 @@ def run_server(camera_status: dict) -> int:
         write_status(state["value"], camera_status, state["fps"])
         return True
 
-    started_at = [time.monotonic()]
     GLib.timeout_add_seconds(1, heartbeat)
 
     def stop(_signum, _frame):
@@ -320,7 +413,18 @@ def run_server(camera_status: dict) -> int:
     try:
         loop.run()
     finally:
-        source_pipeline.set_state(Gst.State.NULL)
+        csi_stop.set()
+        if csi_process is not None and csi_process.poll() is None:
+            csi_process.terminate()
+            try:
+                csi_process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                csi_process.kill()
+                csi_process.wait(timeout=2)
+        if csi_reader is not None and csi_reader.is_alive():
+            csi_reader.join(timeout=2)
+        if source_pipeline is not None:
+            source_pipeline.set_state(Gst.State.NULL)
         write_status("stopped", camera_status)
     return 0
 
