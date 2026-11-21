@@ -24,7 +24,7 @@ std::uint64_t sequence = 1;
 std::thread worker;
 TaskScheduler* scheduler = nullptr;
 EventTriggerId shutdownId = 0;
-char watch = 0;
+EventLoopWatchVariable watch = 0;
 bool startupDone = false;
 std::condition_variable startupCondition;
 int startupCode = -1;
