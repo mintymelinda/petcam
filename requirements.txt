@@ -1,4 +1,2 @@
-# No PyPI dependencies are currently required.
-# Runtime Python dependencies come from Raspberry Pi OS:
-# - python3 (standard library)
-# - python3-gi (GObject introspection bindings for GStreamer)
+# No PyPI dependencies are required.
+# Python uses the standard library; RTSP/RTP is provided by native Live555.
