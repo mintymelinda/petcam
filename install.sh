@@ -4,8 +4,8 @@ set -Eeuo pipefail
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="${PETCAM_INSTALL_ROOT:-/opt/petcam}"
 
-log() { printf '[petcam-install] %s\\n' "$*"; }
-fail() { printf '[petcam-install] ERROR: %s\\n' "$*" >&2; exit 1; }
+log() { printf '[petcam-install] %s\n' "$*"; }
+fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 
 [[ "$EUID" -eq 0 ]] || fail "Run as root: sudo $0"
 command -v apt-get >/dev/null 2>&1 || fail "Raspberry Pi OS / Debian with apt is required."
