@@ -8,7 +8,7 @@ fail() { printf '[petcam-install] ERROR: %s\n' "$*" >&2; exit 1; }
 command -v apt-get >/dev/null 2>&1 || fail "Raspberry Pi OS / Debian with apt is required."
 command -v dpkg >/dev/null 2>&1 || fail "dpkg is required."
 [[ -f "$REPO_ROOT/src/petcam/cli.py" && -f "$REPO_ROOT/requirements.apt" && -x "$REPO_ROOT/petcam" ]] || fail "Run this installer from a complete PetCam source checkout."
-[[ -f "$REPO_ROOT/scripts/configure-live555-repository.sh" && -f "$REPO_ROOT/src/petcam/infrastructure/streaming/live555_server.cpp" ]] || fail "Live555 installer source files are missing."
+[[ -f "$REPO_ROOT/src/petcam/infrastructure/streaming/live555_server.cpp" ]] || fail "Live555 installer source files are missing."
 package_arch="$(dpkg --print-architecture)"
 [[ "$package_arch" == "armhf" ]] || fail "PetCam requires ARMHF; detected '$package_arch'."
 long_bits="$(getconf LONG_BIT)"
@@ -26,8 +26,8 @@ else
     *) fail "Unable to confirm an ARMv6-or-newer CPU; detected '$(uname -m)'." ;;
   esac
 fi
-log "Configuring the signed Live555 Trixie ARMHF package repository."
-bash "$REPO_ROOT/scripts/configure-live555-repository.sh"
+log "Refreshing the Raspberry Pi OS package indexes."
+apt-get update
 APT_PACKAGES=()
 while IFS= read -r package || [[ -n "$package" ]]; do
   package="${package%%#*}"
