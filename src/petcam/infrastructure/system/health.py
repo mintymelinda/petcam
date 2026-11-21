@@ -22,7 +22,6 @@ from . import processes as process_control
 
 STATE_FILE = Path("/var/lib/petcam/health.json")
 BACKEND_STREAM_URL = "http://127.0.0.1:8081/stream"
-PUBLIC_STREAM_URL = "http://127.0.0.1:8080/stream"
 CAMERA_STATUS_FILE = Path("/var/lib/petcam/camera-status.json")
 RTSP_STATUS_FILE = Path("/run/petcam/g-streamer-status.json")
 RTSP_STATUS_MAX_AGE_SECONDS = 45
@@ -36,7 +35,6 @@ def backend_stream_url() -> str:
         return BACKEND_STREAM_URL
 STARTUP_GRACE_SECONDS = 30
 BACKEND_FRAME_TIMEOUT_SECONDS = 15
-PUBLIC_FRAME_TIMEOUT_SECONDS = 5
 BACKOFF_BASE_SECONDS = 30
 BACKOFF_MAX_SECONDS = 300
 HEALTH_POLL_SECONDS = 30
@@ -224,7 +222,7 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
     report["rtsp_service_state"] = rtsp["state"]
     report["web_service_state"] = web["state"]
     report["backend_stream_ready"] = False
-    report["public_stream_ready"] = False
+    report["public_stream_ready"] = None
     report["camera_connected"] = None
 
     required_services = (backend, rtsp, web) if web_enabled else (backend, rtsp)
@@ -288,17 +286,10 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
             "The web manager process is not active while the local capture stream is healthy.", now,
         )
 
-    if h264_mode or not web_enabled:
-        # Native H.264 and an intentionally disabled manager have no HTTP MJPEG proxy.
-        report["public_stream_ready"] = None
-    else:
-        public_ready = probe_stream(PUBLIC_STREAM_URL, PUBLIC_FRAME_TIMEOUT_SECONDS)
-        report["public_stream_ready"] = public_ready
-        if not public_ready:
-            return _recover(
-                report, previous, "web-ui",
-                "The local capture stream is healthy but the public OBS stream proxy is not producing frames.", now,
-            )
+    # PetCam exposes MJPEG capture locally on BACKEND_STREAM_URL and RTSP on
+    # port 8554. There is no separate public HTTP MJPEG proxy: the optional
+    # dashboard is not in the media path and must not gate camera health.
+    report["public_stream_ready"] = None
 
     report["state"] = "healthy"
     report["reason"] = ""
