@@ -1,10 +1,15 @@
 #!/usr/bin/env sh
 set -eu
 
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 APP_ROOT="${PETCAM_ROOT:-/opt/petcam}"
+
 if [ ! -d "$APP_ROOT/src/petcam" ]; then
-  SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-  APP_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+  if [ -d "$SCRIPT_DIR/src/petcam" ]; then
+    APP_ROOT="$SCRIPT_DIR"
+  else
+    APP_ROOT=$(CDPATH= cd -- "$SCRIPT_DIR/.." && pwd)
+  fi
 fi
 if [ ! -d "$APP_ROOT/src/petcam" ]; then
   echo "petcam: application source not found at $APP_ROOT/src/petcam" >&2
