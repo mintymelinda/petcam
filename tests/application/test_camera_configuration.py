@@ -62,13 +62,3 @@ def test_save_selection_propagates_persistence_failure_without_retrying():
 
     assert len(persisted) == 1
 
-
-def test_save_selection_rejects_non_h264_modes():
-    request = selection()
-    request["mode"]["format"] = "MJPEG"
-
-    with pytest.raises(ValueError, match="Only native USB H.264"):
-        application.save_selection(
-            request,
-            **dependencies(lambda config: config),
-        )

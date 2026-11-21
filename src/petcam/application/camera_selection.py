@@ -11,8 +11,6 @@ def resolve_camera_selection(data, *, discover_cameras, mode_supports_fps):
     kind = data.get("kind")
     mode = data.get("mode") or {}
     mode_format = str(mode.get("format") or "auto").upper()
-    if mode_format != "H264":
-        raise ValueError("Only native USB H.264 camera modes are currently supported.")
     width, height, fps = mode.get("width"), mode.get("height"), mode.get("fps")
     if mode_format == "H264" and kind != "usb":
         raise ValueError("Native H.264 capture is available only for USB cameras.")

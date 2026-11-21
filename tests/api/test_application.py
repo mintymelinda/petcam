@@ -370,7 +370,7 @@ class WebManagerTests(unittest.TestCase):
                 mock.patch.object(MODULE, "parse_config", return_value=previous_camera), \
                 mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": False}), \
                 mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "persist_camera_selection") as apply:
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-kiyo",
                 "mode": {"format": "H264", "width": 1920, "height": 1080, "fps": 30},
@@ -388,7 +388,7 @@ class WebManagerTests(unittest.TestCase):
             mock.patch.object(MODULE, "parse_config", return_value=MODULE.parse_config()),
             mock.patch.object(MODULE, "load_timelapse_config", return_value={"enabled": True}),
             mock.patch.object(MODULE, "load_motion_config", return_value={"enabled": False}),
-            mock.patch.object(MODULE, "apply_config") as apply,
+            mock.patch.object(MODULE, "persist_camera_selection") as apply,
         ):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-kiyo",
@@ -404,7 +404,7 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": [30], "format": "MJPG"}],
         }]
         try:
-            with mock.patch.object(MODULE, "apply_config") as apply:
+            with mock.patch.object(MODULE, "persist_camera_selection") as apply:
                 MODULE.save_selection({
                     "kind": "usb",
                     "device": "/dev/video0",
@@ -425,7 +425,7 @@ class WebManagerTests(unittest.TestCase):
         }
         with (
             mock.patch.object(MODULE, "camera_inventory", return_value=[camera]),
-            mock.patch.object(MODULE, "apply_config") as apply,
+            mock.patch.object(MODULE, "persist_camera_selection") as apply,
         ):
             MODULE.save_selection({
                 "kind": "usb", "camera_id": "usb-fast",
@@ -444,7 +444,7 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": [30], "format": "MJPG"}],
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "persist_camera_selection") as apply:
             MODULE.save_selection({
                 "kind": "usb",
                 "camera_id": "usb-stable",
@@ -467,7 +467,7 @@ class WebManagerTests(unittest.TestCase):
             "modes": [{"width": 640, "height": 480, "fps": 30}],
         }
         with mock.patch.object(MODULE, "camera_inventory", return_value=[camera]), \
-                mock.patch.object(MODULE, "apply_config") as apply:
+                mock.patch.object(MODULE, "persist_camera_selection") as apply:
             MODULE.save_selection({
                 "kind": "csi",
                 "camera_id": "csi-stable",

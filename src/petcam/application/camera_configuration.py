@@ -11,10 +11,9 @@ def save_selection(
     persist_selection,
 ):
     """Validate a native H.264 mode and hand it to the GStreamer pipeline."""
-    cameras = discover_cameras()
     values = resolve_camera_selection(
         data,
-        discover_cameras=lambda: cameras,
+        discover_cameras=discover_cameras,
         mode_supports_fps=mode_supports_fps,
     )
     # The capture worker republishes selected camera metadata. GStreamer then
