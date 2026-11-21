@@ -72,10 +72,12 @@ def serve_static_asset(handler, name):
 
 
 def device_mdns_hostname():
-    """Return the configured FQDN, falling back to the device's mDNS name."""
-    hostname = socket.getfqdn().strip().rstrip(".")
-    if not hostname:
-        hostname = socket.gethostname().strip().rstrip(".")
+    """Prefer the hostname configured in Imager, then its resolved FQDN."""
+    hostname = socket.gethostname().strip().rstrip(".")
+    if "." not in hostname:
+        resolved_hostname = socket.getfqdn().strip().rstrip(".")
+        if "." in resolved_hostname:
+            hostname = resolved_hostname
     if not hostname:
         raise RuntimeError("Unable to determine the configured device hostname")
     return hostname if "." in hostname else f"{hostname}.local"
