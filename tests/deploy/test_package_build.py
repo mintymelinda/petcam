@@ -99,6 +99,7 @@ class PetCamPackageBuildTests(unittest.TestCase):
         self.assertIn("gstreamer1.0-plugins-base", requirements)
         self.assertIn("gstreamer1.0-plugins-good", requirements)
         self.assertIn("gstreamer1.0-plugins-bad", requirements)
+        self.assertNotIn("gstreamer1.0-tools", requirements)
         self.assertNotIn("gstreamer1.0-plugins-ugly", requirements)
         self.assertNotIn("gstreamer1.0-libav", requirements)
 
