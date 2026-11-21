@@ -126,7 +126,7 @@ def run_h264(camera: int, resolution: str, fps: float, tcp_port: int = 8556) -> 
             "CSI streaming requires a hardware encoder; software encoding is not used."
         )
     if not shutil_which("rpicam-vid"):
-        raise RuntimeError("rpicam-vid is required for CSI H.264 capture; install rpicam-apps.")
+        raise RuntimeError("rpicam-vid is required for CSI H.264 capture; install rpicam-apps-lite.")
 
     bridge = H264TCPBridge(port=tcp_port)
     bridge.start()

@@ -9,6 +9,7 @@ from petcam.cli import (
 )
 from petcam.configuration import ConfigurationError, validate_config
 from petcam.domain.camera.capabilities import parse_csi_cameras, parse_v4l2_modes
+from petcam.infrastructure.camera.csi import H264TCPBridge
 from petcam.infrastructure.streaming.gstreamer import (
     GStreamerError,
     build_rtsp_launch,
@@ -143,6 +144,24 @@ class H264PipelineTests(unittest.TestCase):
     def test_non_native_camera_source_is_rejected(self):
         with self.assertRaises(GStreamerError):
             build_source_launch({"native_h264": False, "backend": "usb"})
+
+
+class CsiBridgeTests(unittest.TestCase):
+    def test_encoder_waits_for_rtsp_source_connection_and_forwards_bytes(self):
+        bridge = H264TCPBridge(port=0)
+        bridge.start()
+        client = None
+        try:
+            self.assertFalse(bridge.wait_for_client(timeout=0.01))
+            port = bridge.listener.getsockname()[1]
+            client = __import__("socket").create_connection(("127.0.0.1", port), timeout=1)
+            self.assertTrue(bridge.wait_for_client(timeout=1))
+            bridge.publish(b"\\x00\\x00\\x00\\x01\\x67H264")
+            self.assertEqual(client.recv(9), b"\\x00\\x00\\x00\\x01\\x67H264")
+        finally:
+            if client is not None:
+                client.close()
+            bridge.stop()
 
 
 if __name__ == "__main__":
