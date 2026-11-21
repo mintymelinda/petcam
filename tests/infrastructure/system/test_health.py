@@ -78,7 +78,7 @@ class HealthMonitorTests(unittest.TestCase):
         with (
             mock.patch.object(MODULE, "service_snapshot", side_effect=snapshot),
             mock.patch.object(MODULE, "parse_config", return_value={"FORMAT": "MJPEG"}),
-            mock.patch.object(MODULE, "probe_stream") as probe,
+            mock.patch.object(MODULE, "probe_stream", return_value=True) as probe,
             mock.patch.object(MODULE, "restart_service") as restart,
         ):
             report = MODULE.check_health(now=1000)
@@ -87,7 +87,7 @@ class HealthMonitorTests(unittest.TestCase):
         self.assertTrue(report["backend_stream_ready"])
         self.assertTrue(report["rtsp_output_ready"])
         self.assertIsNone(report["public_stream_ready"])
-        probe.assert_not_called()
+        probe.assert_called_once_with(MODULE.backend_stream_url(), MODULE.BACKEND_FRAME_TIMEOUT_SECONDS)
         restart.assert_not_called()
 
     def test_csi_native_h264_rtsp_status_is_accepted_as_ready(self):
