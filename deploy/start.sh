@@ -2,7 +2,7 @@
 set -Eeuo pipefail
 REPO_ROOT="${1:-${PETCAM_ROOT:-/opt/petcam}}"
 ETC_ROOT="${PETCAM_ETC:-/etc/petcam}"
-[[ -d "$REPO_ROOT/src/petcam" ]] || { printf '[petcam-start] ERROR: source checkout not found at %s\\n' "$REPO_ROOT" >&2; exit 1; }
+[[ -d "$REPO_ROOT/src/petcam" ]] || { printf '[petcam-start] ERROR: source checkout not found at %s\n' "$REPO_ROOT" >&2; exit 1; }
 command -v openssl >/dev/null || { echo '[petcam-start] ERROR: openssl is required.' >&2; exit 1; }
 install -d -m 0755 "$ETC_ROOT"
 
@@ -16,7 +16,7 @@ if [[ ! "$hostname_value" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?$ ]]; then
   hostname_value=petcam
 fi
 valid_fqdn() {
-  [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]
+  [[ "$1" =~ ^[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9-]*[A-Za-z0-9])?)+$ ]]
 }
 if ! valid_fqdn "$fqdn_value" && valid_fqdn "$hostname_value.$domain_value"; then
   fqdn_value="$hostname_value.$domain_value"
@@ -59,13 +59,13 @@ if [[ -s "$ETC_ROOT/web-manager.crt" && -s "$ETC_ROOT/web-manager.key" ]]; then
 fi
 
 if (( ! certificate_valid )); then
-  printf '[petcam-start] Generating the device HTTPS certificate for %s.\\n' "$portal_hostname"
+  printf '[petcam-start] Generating the device HTTPS certificate for %s.\n' "$portal_hostname"
   san_value="$(IFS=,; printf '%s' "${san_entries[*]}")"
   key_tmp="$ETC_ROOT/web-manager.key.tmp.$$"
   cert_tmp="$ETC_ROOT/web-manager.crt.tmp.$$"
   trap 'rm -f "$key_tmp" "$cert_tmp"' EXIT
-  openssl req -x509 -newkey rsa:2048 -nodes -days 825 \\
-    -subj "/CN=$portal_hostname" -addext "subjectAltName=$san_value" \\
+  openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+    -subj "/CN=$portal_hostname" -addext "subjectAltName=$san_value" \
     -keyout "$key_tmp" -out "$cert_tmp"
   install -m 0600 "$key_tmp" "$ETC_ROOT/web-manager.key"
   install -m 0644 "$cert_tmp" "$ETC_ROOT/web-manager.crt"
@@ -73,7 +73,7 @@ if (( ! certificate_valid )); then
   trap - EXIT
 fi
 chmod 0600 "$ETC_ROOT/web-manager.key"
-printf '[petcam-start] Setup portal: https://%s:8443/setup\\n' "$portal_hostname"
+printf '[petcam-start] Setup portal: https://%s:8443/setup\n' "$portal_hostname"
 [[ "${PETCAM_INITIALIZE_ONLY:-0}" == 1 ]] && exit 0
 cd "$REPO_ROOT"
 exec env PYTHONPATH="$REPO_ROOT/src" /usr/bin/python3 -m petcam.infrastructure.system.supervisor
