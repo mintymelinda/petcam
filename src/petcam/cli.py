@@ -355,7 +355,10 @@ def run_stream(config: dict, stdscr) -> int:
                 "--resolution", config["resolution"],
                 "--fps", str(config["fps"]),
             ]
-            capture_process = subprocess.Popen(capture_command, env=environment)
+            capture_process = subprocess.Popen(
+                capture_command, env=environment, stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
             marker_deadline = time.monotonic() + 20
             while time.monotonic() < marker_deadline:
                 if capture_process.poll() is not None:
@@ -386,7 +389,8 @@ def run_stream(config: dict, stdscr) -> int:
 
         gstreamer_process = subprocess.Popen(
             [sys.executable, "-m", "petcam.infrastructure.streaming.gstreamer"],
-            env=environment,
+            env=environment, stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
         start_deadline = time.monotonic() + 20
         while time.monotonic() < start_deadline:

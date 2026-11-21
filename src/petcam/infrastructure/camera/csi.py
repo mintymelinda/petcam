@@ -27,6 +27,7 @@ class H264TCPBridge:
         self.port = port
         self.listener: socket.socket | None = None
         self.clients: set[socket.socket] = set()
+        self.client_connected = threading.Event()
         self.lock = threading.Lock()
         self.stopping = threading.Event()
         self.thread: threading.Thread | None = None
@@ -49,10 +50,14 @@ class H264TCPBridge:
                 client.settimeout(1.0)
                 with self.lock:
                     self.clients.add(client)
+                    self.client_connected.set()
             except socket.timeout:
                 continue
             except OSError:
                 return
+
+    def wait_for_client(self, timeout: float = 15.0) -> bool:
+        return self.client_connected.wait(timeout)
 
     def publish(self, data: bytes) -> None:
         stale = []
@@ -144,11 +149,16 @@ def run_h264(camera: int, resolution: str, fps: float, tcp_port: int = 8556) -> 
         "--height", resolution.split("x", 1)[1], "--framerate", str(fps), "--output", "-",
     ]
     try:
+        if not bridge.wait_for_client():
+            raise RuntimeError("The H.264 RTSP server did not connect to the CSI capture bridge.")
         logging.info(
             "Starting CSI camera %s at %s %s FPS with hardware encoder %s",
             camera, resolution, fps, encoder["encoder"],
         )
-        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=None, bufsize=0)
+        process = subprocess.Popen(
+            command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL, bufsize=0,
+        )
         assert process.stdout is not None
         while not stopping.is_set():
             chunk = process.stdout.read(65536)
