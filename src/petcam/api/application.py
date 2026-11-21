@@ -182,24 +182,16 @@ def apply_service_config_transaction(save, previous, candidate, commands, rollba
 def update_timelapse(data):
     return feature_services.update_timelapse(
         data,
-        parse_config=parse_config,
-        config_path=CONFIG,
         load_config=load_timelapse_config,
         save_config=save_timelapse_config,
-        supervisor_command=process_control.supervisor_command,
-        apply_transaction=apply_service_config_transaction,
     )
 
 
 def update_motion(data):
     return feature_services.update_motion(
         data,
-        parse_config=parse_config,
-        config_path=CONFIG,
         load_config=load_motion_config,
         save_config=save_motion_config,
-        supervisor_command=process_control.supervisor_command,
-        apply_transaction=apply_service_config_transaction,
     )
 
 
