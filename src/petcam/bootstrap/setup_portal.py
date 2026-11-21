@@ -95,7 +95,6 @@ button:disabled{opacity:.55;cursor:wait}
 <p id="camera-mode-status" class="muted" role="status">Waiting for active camera…</p>
 </section>
 <section class="panel" aria-labelledby="full-ui-heading"><h2 id="full-ui-heading">Full Web UI</h2>
-<p id="web-state" class="status-line" role="status">Checking status…</p>
 <button id="toggle-web-ui" class="primary" type="button" disabled>Checking…</button>
 <p id="readiness" role="status" aria-live="polite">Checking service health…</p>
 <a id="open-manager" class="button" href="/">Open Full UI</a>
@@ -112,10 +111,9 @@ let readinessTimer=null,streamStatusTimer=null,webEnabled=false,webUiReady=false
 function stopReadinessChecks(){if(readinessTimer!==null)clearInterval(readinessTimer);readinessTimer=null;}
 function stopStreamStatusChecks(){if(streamStatusTimer!==null)clearInterval(streamStatusTimer);streamStatusTimer=null;}
 function renderWebUi(){const button=$("toggle-web-ui");button.textContent=webEnabled?"Disable Full UI":"Enable Full UI";button.disabled=requestPending;
- $("web-state").textContent=webEnabled?"Full Web UI is enabled.":"Full Web UI is disabled.";
- $("open-manager").hidden=!(webEnabled&&webUiReady);
- if(!webEnabled){$("readiness").textContent="Enable the Full UI to start its services.";return;}
- $("readiness").textContent=webUiReady?"All core services are healthy. The Full UI is ready.":"Starting services and checking health…";}
+ $("open-manager").hidden=!(webEnabled&&webUiReady);$("readiness").hidden=!webEnabled;
+ if(!webEnabled)return;
+ $("readiness").textContent=webUiReady?"All core services are healthy.":"Starting services and checking health…";}
 async function refreshManagerReadiness(){if(!webEnabled)return;try{const result=await api("manager-status");webUiReady=result.ready===true;}catch(_){webUiReady=false;}renderWebUi();}
 function startReadinessChecks(){stopReadinessChecks();refreshManagerReadiness();readinessTimer=setInterval(refreshManagerReadiness,2000);}
 async function refreshStreamStatus(){try{const status=await api("stream-status");const active=status.active_camera||{};
