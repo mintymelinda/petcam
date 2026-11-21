@@ -25,6 +25,7 @@ PUBLIC_STREAM_URL = "http://127.0.0.1:8080/stream"
 CAMERA_STATUS_FILE = Path("/var/lib/petcam/camera-status.json")
 RTSP_STATUS_FILE = Path("/run/petcam/g-streamer-status.json")
 RTSP_STATUS_MAX_AGE_SECONDS = 45
+WEB_CONFIG_FILE = Path("/etc/petcam/web-manager.json")
 
 
 def backend_stream_url() -> str:
@@ -56,6 +57,15 @@ def save_state(state: dict[str, Any]) -> None:
     temporary = STATE_FILE.with_suffix(".json.tmp")
     temporary.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     temporary.replace(STATE_FILE)
+
+
+def web_ui_enabled() -> bool:
+    """Read the explicit manager setting; the camera/RTSP core must not depend on it."""
+    try:
+        config = json.loads(WEB_CONFIG_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False
+    return isinstance(config, dict) and config.get("enabled") is True
 
 
 def service_snapshot(service: str) -> dict[str, Any]:
@@ -203,9 +213,10 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
         "last_recovery_result": previous.get("last_recovery_result"),
     }
 
+    web_enabled = web_ui_enabled()
     backend = service_snapshot("camera-capture")
     rtsp = service_snapshot("gstreamer-rtsp")
-    web = service_snapshot("web-ui")
+    web = service_snapshot("web-ui") if web_enabled else {"state": "disabled", "active_age": None}
     report["backend_service_state"] = backend["state"]
     report["rtsp_service_state"] = rtsp["state"]
     report["web_service_state"] = web["state"]
@@ -213,11 +224,12 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
     report["public_stream_ready"] = False
     report["camera_connected"] = None
 
-    if any(snapshot["state"] == "unknown" for snapshot in (backend, rtsp, web)):
+    required_services = (backend, rtsp, web) if web_enabled else (backend, rtsp)
+    if any(snapshot["state"] == "unknown" for snapshot in required_services):
         report["state"] = "service_state_unknown"
         report["reason"] = "supervisor process state could not be read; no restart was attempted."
         return _persist(report)
-    if any(_starting(snapshot) for snapshot in (backend, rtsp, web)):
+    if any(_starting(snapshot) for snapshot in required_services):
         report["state"] = "starting"
         report["reason"] = "A PetCam service is within its startup grace period."
         return _persist(report)
@@ -267,18 +279,14 @@ def _check_health_locked(now: float | None = None) -> dict[str, Any]:
             report, previous, "gstreamer-rtsp", reason, now,
         )
 
-    if _starting(web):
-        report["state"] = "starting"
-        report["reason"] = "The web proxy is within its startup grace period."
-        return _persist(report)
-    if web["state"] != "active":
+    if web_enabled and web["state"] != "active":
         return _recover(
             report, previous, "web-ui",
             "The web manager process is not active while the local capture stream is healthy.", now,
         )
 
-    if h264_mode:
-        # The HTTP Browser Source is deliberately unavailable in native H.264 mode.
+    if h264_mode or not web_enabled:
+        # Native H.264 and an intentionally disabled manager have no HTTP MJPEG proxy.
         report["public_stream_ready"] = None
     else:
         public_ready = probe_stream(PUBLIC_STREAM_URL, PUBLIC_FRAME_TIMEOUT_SECONDS)
