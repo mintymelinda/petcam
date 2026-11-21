@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <condition_variable>
+#include <chrono>
 #include <deque>
 #include <mutex>
 #include <string>
@@ -101,6 +102,7 @@ private:
 void stopEvent(void*) { watch = 1; }
 
 void serve(unsigned short port, std::string path) {
+  OutPacketBuffer::maxSize = static_cast<unsigned>(kMaxNal + 4);
   TaskScheduler* localScheduler = BasicTaskScheduler::createNew();
   UsageEnvironment* env = BasicUsageEnvironment::createNew(*localScheduler);
   RTSPServer* server = env ? RTSPServer::createNew(*env, Port(port), nullptr) : nullptr;
