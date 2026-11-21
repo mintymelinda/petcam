@@ -53,10 +53,20 @@ jobs:
           PETCAM_VERSION: trixie-${{ github.sha }}
         run: sudo ./build-image.sh "$RUNNER_TEMP/petcam-image"
 
-      - name: Upload compressed Raspberry Pi OS image
+      - name: Verify image archive and checksum
+        shell: bash
+        run: |
+          set -euo pipefail
+          image_file="$(find "$RUNNER_TEMP/petcam-image" -maxdepth 1 -type f -name '*.img.xz' -print -quit)"
+          test -n "$image_file"
+          test -s "$image_file.sha256"
+          (cd "$(dirname "$image_file")" && sha256sum --check "$(basename "$image_file").sha256")
+          xz --test "$image_file"
+
+      - name: Upload compressed Raspberry Pi OS image and checksum
         uses: actions/upload-artifact@v4
         with:
           name: petcam-trixie-armhf-image
-          path: ${{ runner.temp }}/petcam-image/*.img.xz
+          path: ${{ runner.temp }}/petcam-image/*.img.xz*
           if-no-files-found: error
           retention-days: 14
