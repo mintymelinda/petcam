@@ -53,7 +53,7 @@ g++ -std=c++17 -O2 -fPIC -shared \
   -lliveMedia -lgroupsock -lBasicUsageEnvironment -lUsageEnvironment -pthread
 chmod 0755 "$APP_ROOT/lib/libpetcam_live555.so"
 log "Removing compiler and development headers while retaining Live555 runtime libraries."
-apt-get purge -y g++ liblivemedia-dev
+apt-get purge -y g++ liblivemedia-dev libssl-dev
 apt-get autoremove -y
 install -m 0755 "$REPO_ROOT/petcam" /usr/local/bin/petcam
 log "Installed PetCam at $APP_ROOT."
